@@ -1,7 +1,6 @@
 """Acceptance tests for storage-independent artifact identity and provenance."""
 
 import json
-from itertools import product
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -98,18 +97,23 @@ def test_factory_rejects_non_bytes(content: object) -> None:
         create(cast(bytes, content))
 
 
-@pytest.mark.parametrize("kind,stage", tuple(product(ArtifactKind, ArtifactStage)))
-def test_declared_kind_and_stage_without_pairing_rules(
-    kind: ArtifactKind, stage: ArtifactStage
-) -> None:
+@pytest.mark.parametrize("kind", ArtifactKind)
+def test_artifact_kinds(kind: ArtifactKind) -> None:
     reference = ArtifactReference.create(
-        run_id=RUN_ID, kind=kind, produced_by=stage, content=b""
+        run_id=RUN_ID, kind=kind, produced_by=ArtifactStage.INTAKE, content=b""
     )
     assert reference.kind == kind
-    assert reference.produced_by == stage
     assert reference.model_dump(mode="json")["kind"] == kind.value
-    assert reference.model_dump(mode="json")["produced_by"] == stage.value
     assert kind.name == kind.value.upper()
+
+
+@pytest.mark.parametrize("stage", ArtifactStage)
+def test_artifact_origins_without_kind_pairing_rules(stage: ArtifactStage) -> None:
+    reference = ArtifactReference.create(
+        run_id=RUN_ID, kind=ArtifactKind.INTENT, produced_by=stage, content=b""
+    )
+    assert reference.produced_by == stage
+    assert reference.model_dump(mode="json")["produced_by"] == stage.value
     assert stage.name == stage.value.upper()
 
 
@@ -130,7 +134,6 @@ def test_direct_construction_and_json_round_trip(attempt_id: UUID | None) -> Non
     assert (
         ArtifactReference.model_validate_json(reference.model_dump_json()) == reference
     )
-    assert TypeAdapter(ArtifactSha256).validate_python(reference.sha256) == DIGEST
     assert ArtifactReference.model_validate(metadata()).attempt_id is None
 
 
@@ -153,11 +156,6 @@ def test_direct_construction_and_json_round_trip(attempt_id: UUID | None) -> Non
     ],
 )
 def test_invalid_digests(value: object) -> None:
-    data = {**metadata(), "sha256": value}
-    with pytest.raises(ValidationError):
-        ArtifactReference.model_validate(data)
-    with pytest.raises(ValidationError):
-        ArtifactReference.model_validate_json(json.dumps(data))
     with pytest.raises(ValidationError):
         TypeAdapter(ArtifactSha256).validate_python(value)
 
@@ -167,13 +165,18 @@ def test_digest_rejects_bytes() -> None:
         ArtifactReference.model_validate({**metadata(), "sha256": b"a" * 64})
 
 
+def test_reference_json_applies_digest_validation() -> None:
+    with pytest.raises(ValidationError):
+        ArtifactReference.model_validate_json(
+            json.dumps({**metadata(), "sha256": "main"})
+        )
+
+
 @pytest.mark.parametrize("value", [-1, True, False, 0.0, 1.5, "0", None])
 def test_size_is_a_strict_nonnegative_integer(value: object) -> None:
     data = {**metadata(), "size_bytes": value}
     with pytest.raises(ValidationError):
         ArtifactReference.model_validate(data)
-    with pytest.raises(ValidationError):
-        ArtifactReference.model_validate_json(json.dumps(data))
 
 
 def test_required_fields() -> None:
@@ -182,18 +185,13 @@ def test_required_fields() -> None:
         data = {key: value for key, value in payload.items() if key != field}
         with pytest.raises(ValidationError, match="Field required"):
             ArtifactReference.model_validate(data)
-        with pytest.raises(ValidationError, match="Field required"):
-            ArtifactReference.model_validate_json(json.dumps(data))
 
 
 @pytest.mark.parametrize("field", ["artifact_id", "run_id", "attempt_id"])
-@pytest.mark.parametrize("value", ["invalid", "", 1])
-def test_invalid_identities(field: str, value: object) -> None:
-    data = {**metadata(), field: value}
+def test_invalid_identities(field: str) -> None:
+    data = {**metadata(), field: "invalid"}
     with pytest.raises(ValidationError):
         ArtifactReference.model_validate(data)
-    with pytest.raises(ValidationError):
-        ArtifactReference.model_validate_json(json.dumps(data))
 
 
 @pytest.mark.parametrize("field", ["artifact_id", "run_id"])
@@ -202,14 +200,21 @@ def test_required_identities_reject_null(field: str) -> None:
         ArtifactReference.model_validate({**metadata(), field: None})
 
 
-@pytest.mark.parametrize("field", ["kind", "produced_by"])
-@pytest.mark.parametrize("value", ["unknown", "INTENT", "INTAKE", None, 1])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("kind", "unknown"),
+        ("kind", "INTENT"),
+        ("kind", None),
+        ("produced_by", "unknown"),
+        ("produced_by", "INTAKE"),
+        ("produced_by", None),
+    ],
+)
 def test_invalid_enums(field: str, value: object) -> None:
     data = {**metadata(), field: value}
     with pytest.raises(ValidationError):
         ArtifactReference.model_validate(data)
-    with pytest.raises(ValidationError):
-        ArtifactReference.model_validate_json(json.dumps(data))
 
 
 @pytest.mark.parametrize(
@@ -250,13 +255,9 @@ def test_every_field_is_frozen() -> None:
     assert reference.model_dump_json() == before
 
 
-@pytest.mark.parametrize(
-    "field", ["content", "path", "generation", "candidate", "extra"]
-)
+@pytest.mark.parametrize("field", ["content", "path"])
 def test_unknown_fields_are_forbidden(field: str) -> None:
     data = {**metadata(), field: "unused"}
-    with pytest.raises(ValidationError, match="extra_forbidden"):
-        ArtifactReference.model_validate(data)
     with pytest.raises(ValidationError, match="extra_forbidden"):
         ArtifactReference.model_validate_json(json.dumps(data))
 

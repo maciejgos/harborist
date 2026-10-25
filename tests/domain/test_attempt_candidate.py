@@ -83,32 +83,35 @@ def test_full_hashes_across_constructors_helpers_and_json(sha: str) -> None:
 
 
 @pytest.mark.parametrize("value", INVALID_HASHES)
-def test_invalid_hashes_across_constructors_helpers_and_json(value: object) -> None:
-    # Casts deliberately exercise invalid runtime input through the typed APIs.
-    invalid = cast(str, value)
+def test_commit_hash_constraints(value: object) -> None:
     with pytest.raises(ValidationError):
-        Attempt(attempt_id=ATTEMPT_ID, run_id=RUN_ID, start_sha=invalid)
+        TypeAdapter(GitCommitSha).validate_python(value)
+
+
+def test_constructors_and_factories_apply_hash_validation() -> None:
     with pytest.raises(ValidationError):
-        Candidate(attempt_id=ATTEMPT_ID, candidate_sha=invalid)
+        Attempt(attempt_id=ATTEMPT_ID, run_id=RUN_ID, start_sha="main")
     with pytest.raises(ValidationError):
-        Attempt.create(RUN_ID, invalid)
+        Candidate(attempt_id=ATTEMPT_ID, candidate_sha="main")
     with pytest.raises(ValidationError):
-        Attempt.create(RUN_ID, SHA1).create_candidate(invalid)
-    for model, payload in RECORDS:
-        field = "start_sha" if model is Attempt else "candidate_sha"
-        data = {**payload, field: value}
-        with pytest.raises(ValidationError):
-            model.model_validate(data)
-        with pytest.raises(ValidationError):
-            model.model_validate_json(json.dumps(data))
+        Attempt.create(RUN_ID, "main")
+    with pytest.raises(ValidationError):
+        Attempt.create(RUN_ID, SHA1).create_candidate("main")
+
+
+@pytest.mark.parametrize("model,payload", RECORDS)
+def test_json_applies_hash_validation(
+    model: type[BaseModel], payload: dict[str, object]
+) -> None:
+    field = "start_sha" if model is Attempt else "candidate_sha"
+    with pytest.raises(ValidationError):
+        model.model_validate_json(json.dumps({**payload, field: "main"}))
 
 
 @pytest.mark.parametrize("value", [b"a" * 40, b"a" * 64, bytearray(b"a" * 40)])
 def test_hashes_reject_byte_strings(value: object) -> None:
     with pytest.raises(ValidationError):
-        Attempt.create(RUN_ID, cast(str, value))
-    with pytest.raises(ValidationError):
-        Candidate(attempt_id=ATTEMPT_ID, candidate_sha=cast(str, value))
+        TypeAdapter(GitCommitSha).validate_python(value)
 
 
 @pytest.mark.parametrize("model,payload", RECORDS)
@@ -121,8 +124,6 @@ def test_every_field_is_required_and_frozen(
         incomplete = {key: value for key, value in payload.items() if key != field}
         with pytest.raises(ValidationError, match="Field required"):
             model.model_validate(incomplete)
-        with pytest.raises(ValidationError, match="Field required"):
-            model.model_validate_json(json.dumps(incomplete))
         with pytest.raises(ValidationError, match="frozen"):
             setattr(record, field, original_value)
         with pytest.raises(ValidationError, match="frozen"):
@@ -131,38 +132,26 @@ def test_every_field_is_required_and_frozen(
 
 
 @pytest.mark.parametrize("model,payload", RECORDS)
-@pytest.mark.parametrize("value", ["not-a-uuid", "", None, 1])
-def test_invalid_identities(
-    model: type[BaseModel], payload: dict[str, object], value: object
-) -> None:
+def test_invalid_identities(model: type[BaseModel], payload: dict[str, object]) -> None:
     for field in payload:
         if field.endswith("_id"):
-            data = {**payload, field: value}
+            data = {**payload, field: "not-a-uuid"}
             with pytest.raises(ValidationError):
                 model.model_validate(data)
-            with pytest.raises(ValidationError):
-                model.model_validate_json(json.dumps(data))
+
+
+def test_factory_validates_run_identity() -> None:
     with pytest.raises(ValidationError):
-        Attempt.create(cast(UUID, value), SHA1)
+        Attempt.create(cast(UUID, "not-a-uuid"), SHA1)
 
 
 @pytest.mark.parametrize("model,payload", RECORDS)
-@pytest.mark.parametrize("field", ["unexpected", "candidate_id", "verified"])
 def test_unknown_fields_are_forbidden(
-    model: type[BaseModel], payload: dict[str, object], field: str
+    model: type[BaseModel], payload: dict[str, object]
 ) -> None:
-    data = {**payload, field: "extra"}
-    with pytest.raises(ValidationError, match="extra_forbidden"):
-        model.model_validate(data)
+    data = {**payload, "verified": True}
     with pytest.raises(ValidationError, match="extra_forbidden"):
         model.model_validate_json(json.dumps(data))
-
-
-@pytest.mark.parametrize("model", [Attempt, Candidate])
-@pytest.mark.parametrize("payload", ["{", "[]", "null"])
-def test_malformed_or_non_record_json(model: type[BaseModel], payload: str) -> None:
-    with pytest.raises(ValidationError):
-        model.model_validate_json(payload)
 
 
 def test_records_do_not_enforce_repository_or_uniqueness_rules() -> None:

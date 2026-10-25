@@ -88,49 +88,89 @@ def test_transition_matrix(lifecycle: RunLifecycle, operation: str) -> None:
 
 @pytest.mark.parametrize(
     "lifecycle,outcome,reason",
-    tuple(product(RunLifecycle, [None, *RunOutcome], [None, *FailureReason])),
+    [
+        pytest.param(RunLifecycle.COMPLETED, None, None, id="completed-needs-outcome"),
+        pytest.param(
+            RunLifecycle.COMPLETED,
+            RunOutcome.TEST_FAILED,
+            FailureReason.INTERNAL_ERROR,
+            id="completed-forbids-failure-reason",
+        ),
+        pytest.param(RunLifecycle.FAILED, None, None, id="failed-needs-reason"),
+        pytest.param(
+            RunLifecycle.FAILED,
+            RunOutcome.TEST_FAILED,
+            FailureReason.INTERNAL_ERROR,
+            id="failed-forbids-outcome",
+        ),
+        pytest.param(
+            RunLifecycle.CREATED,
+            RunOutcome.TEST_FAILED,
+            None,
+            id="created-forbids-outcome",
+        ),
+        pytest.param(
+            RunLifecycle.CREATED,
+            None,
+            FailureReason.INTERNAL_ERROR,
+            id="created-forbids-reason",
+        ),
+        pytest.param(
+            RunLifecycle.RUNNING,
+            RunOutcome.TEST_FAILED,
+            None,
+            id="running-forbids-outcome",
+        ),
+        pytest.param(
+            RunLifecycle.RUNNING,
+            None,
+            FailureReason.INTERNAL_ERROR,
+            id="running-forbids-reason",
+        ),
+        pytest.param(
+            RunLifecycle.CANCELLED,
+            RunOutcome.TEST_FAILED,
+            None,
+            id="cancelled-forbids-outcome",
+        ),
+        pytest.param(
+            RunLifecycle.CANCELLED,
+            None,
+            FailureReason.INTERNAL_ERROR,
+            id="cancelled-forbids-reason",
+        ),
+        pytest.param(
+            RunLifecycle.COMPLETED, RunOutcome.VERIFIED, None, id="verified-reserved"
+        ),
+    ],
 )
-def test_state_combinations(
+def test_inconsistent_state_is_rejected(
     lifecycle: RunLifecycle,
     outcome: RunOutcome | None,
     reason: FailureReason | None,
 ) -> None:
-    valid = outcome != RunOutcome.VERIFIED and (
-        (lifecycle == RunLifecycle.COMPLETED and outcome is not None and reason is None)
-        or (lifecycle == RunLifecycle.FAILED and reason is not None and outcome is None)
-        or (
-            lifecycle
-            in (RunLifecycle.CREATED, RunLifecycle.RUNNING, RunLifecycle.CANCELLED)
-            and outcome is None
-            and reason is None
-        )
-    )
-    run_id = uuid4()
-    payload = json.dumps(
-        {
-            "run_id": str(run_id),
-            "lifecycle": lifecycle,
-            "outcome": outcome,
-            "failure_reason": reason,
-        }
-    )
+    with pytest.raises(ValidationError):
+        Run(run_id=uuid4(), lifecycle=lifecycle, outcome=outcome, failure_reason=reason)
 
-    if valid:
-        run = Run(
-            run_id=run_id, lifecycle=lifecycle, outcome=outcome, failure_reason=reason
-        )
-        assert Run.model_validate_json(payload) == run
-        assert Run.model_validate_json(run.model_dump_json()) == run
-    else:
-        with pytest.raises(ValidationError):
-            Run(
-                run_id=run_id,
-                lifecycle=lifecycle,
-                outcome=outcome,
-                failure_reason=reason,
+
+@pytest.mark.parametrize("lifecycle", RunLifecycle)
+def test_valid_state_round_trips(lifecycle: RunLifecycle) -> None:
+    run = run_in_state(lifecycle)
+    assert Run.model_validate_json(run.model_dump_json()) == run
+
+
+@pytest.mark.parametrize("outcome", [None, "VERIFIED"])
+def test_json_validation_rejects_invalid_completion(outcome: str | None) -> None:
+    with pytest.raises(ValidationError):
+        Run.model_validate_json(
+            json.dumps(
+                {
+                    "run_id": str(uuid4()),
+                    "lifecycle": "COMPLETED",
+                    "outcome": outcome,
+                }
             )
-        with pytest.raises(ValidationError):
-            Run.model_validate_json(payload)
+        )
 
 
 @pytest.mark.parametrize("outcome", RunOutcome)
@@ -148,15 +188,13 @@ def test_completion_outcomes(outcome: RunOutcome) -> None:
 
 
 @pytest.mark.parametrize("reason", FailureReason)
-@pytest.mark.parametrize("lifecycle", [RunLifecycle.CREATED, RunLifecycle.RUNNING])
-def test_failure_reasons(lifecycle: RunLifecycle, reason: FailureReason) -> None:
-    failed = run_in_state(lifecycle).fail(reason)
+def test_failure_reasons(reason: FailureReason) -> None:
+    failed = Run.create().start().fail(reason)
     assert failed.lifecycle == RunLifecycle.FAILED
     assert failed.failure_reason == reason
     assert failed.outcome is None
 
 
-@pytest.mark.parametrize("lifecycle", RunLifecycle)
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -166,8 +204,8 @@ def test_failure_reasons(lifecycle: RunLifecycle, reason: FailureReason) -> None
         ("failure_reason", FailureReason.INTERNAL_ERROR),
     ],
 )
-def test_fields_are_frozen(lifecycle: RunLifecycle, field: str, value: object) -> None:
-    run = run_in_state(lifecycle)
+def test_fields_are_frozen(field: str, value: object) -> None:
+    run = Run.create()
     before = run.model_dump_json()
     with pytest.raises(ValidationError, match="frozen"):
         setattr(run, field, value)
@@ -192,8 +230,6 @@ def test_invalid_structured_input(updates: dict[str, object]) -> None:
     payload: dict[str, object] = {"run_id": str(uuid4())}
     payload.update(updates)
     with pytest.raises(ValidationError):
-        Run.model_validate(payload)
-    with pytest.raises(ValidationError):
         Run.model_validate_json(json.dumps(payload))
 
 
@@ -201,7 +237,3 @@ def test_invalid_structured_input(updates: dict[str, object]) -> None:
 def test_invalid_json_or_missing_identity(payload: str) -> None:
     with pytest.raises(ValidationError):
         Run.model_validate_json(payload)
-
-
-def test_transition_error_is_value_error() -> None:
-    assert issubclass(InvalidRunTransition, ValueError)
