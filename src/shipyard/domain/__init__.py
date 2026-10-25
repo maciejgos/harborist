@@ -8,6 +8,12 @@ from shipyard.domain.artifact import (
 )
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
+from shipyard.domain.event import (
+    AttemptCreatedEvent,
+    DomainEvent,
+    RunEvent,
+    RunEventType,
+)
 from shipyard.domain.revision import GitCommitSha
 from shipyard.domain.run import (
     FailureReason,
@@ -38,11 +44,13 @@ __all__ = [
     "ArtifactSha256",
     "ArtifactStage",
     "Attempt",
+    "AttemptCreatedEvent",
     "BuildStageResult",
     "Candidate",
     "CriterionResult",
     "CriterionStatus",
     "DesignStageResult",
+    "DomainEvent",
     "FailureReason",
     "GitCommitSha",
     "InvalidRunTransition",
@@ -51,6 +59,8 @@ __all__ = [
     "ReviewStageResult",
     "ReviewSummary",
     "Run",
+    "RunEvent",
+    "RunEventType",
     "RunLifecycle",
     "RunOutcome",
     "StageResult",

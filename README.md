@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation: Run lifecycle, revision and artifact identity, and stage-result contracts.
+> **Status:** PoC domain foundation: lifecycle, revision and artifact identity, stage-result contracts, and event records.
 
 ## Development
 
@@ -43,6 +43,13 @@ ownership, kind, producing stage, SHA-256, and byte size. Its factory hashes exa
 in-memory bytes without storing content or accessing files. Origin is declared
 metadata; storage, integrity verification, and lineage are planned. See the
 [artifact identity specification](spec/004-artifact-identity/spec.md).
+
+`RunEvent` and `AttemptCreatedEvent` describe lifecycle facts using immutable
+validated snapshots. Factories generate event IDs and require explicit aware
+timestamps, normalized to UTC. `DomainEvent` supports discriminated JSON validation
+through Pydantic's `TypeAdapter`. Records do not emit events, establish historical
+ordering, or change domain state; persistence and full cancellation audit metadata
+are planned. See the [domain event specification](spec/005-domain-events/spec.md).
 
 ## Workflow
 
