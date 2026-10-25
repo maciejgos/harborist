@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation: Run lifecycle, Attempt, and candidate identity.
+> **Status:** PoC domain foundation: Run lifecycle, revision identity, and stage-result contracts.
 
 ## Development
 
@@ -28,6 +28,15 @@ immutable records; commit hashes accept full lowercase SHA-1 or SHA-256 syntax.
 Repository validation and Git operations are planned. See the
 [Attempt and candidate specification](spec/002-attempt-candidate-identity/spec.md)
 for the acceptance contract, with intent and implementation guidance alongside it.
+
+DESIGN, PLAN, BUILD, and REVIEW have immutable structured output contracts.
+`parse_stage_result` validates a complete JSON document against its expected stage
+without repairing output or inferring readiness from prose. REVIEW records an
+exact Candidate and per-criterion assessments, with derived summary counts.
+Process success, artifact existence, execution-context matching, and verification
+remain separate responsibilities; parsing output does not advance a Run or grant
+VERIFIED. See the
+[stage-result specification](spec/003-stage-result-contracts/spec.md).
 
 ## Workflow
 
