@@ -1,5 +1,8 @@
-"""Infrastructure-independent Run lifecycle contracts."""
+"""Infrastructure-independent Run, Attempt, and candidate contracts."""
 
+from shipyard.domain.attempt import Attempt
+from shipyard.domain.candidate import Candidate
+from shipyard.domain.revision import GitCommitSha
 from shipyard.domain.run import (
     FailureReason,
     InvalidRunTransition,
@@ -9,7 +12,10 @@ from shipyard.domain.run import (
 )
 
 __all__ = [
+    "Attempt",
+    "Candidate",
     "FailureReason",
+    "GitCommitSha",
     "InvalidRunTransition",
     "Run",
     "RunLifecycle",

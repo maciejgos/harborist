@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** First PoC slice: Python foundation and Run lifecycle domain model.
+> **Status:** PoC domain foundation: Run lifecycle, Attempt, and candidate identity.
 
 ## Development
 
@@ -17,10 +17,17 @@ uv run pyright
 
 The project pins Python 3.14. uv will download it if needed. Domain contracts are
 available through `shipyard.domain`; the CLI and workflow execution are planned.
-The acceptance contract for this slice is in
+The Run lifecycle acceptance contract is in
 [spec/001-run-lifecycle/spec.md](spec/001-run-lifecycle/spec.md), alongside its
 intake intent and implementation plan. VERIFIED is reserved and rejected until
 revision-bound verification is implemented.
+
+`Attempt` identifies one execution within a Run and its starting commit.
+`Candidate` identifies an owning Attempt and an exact resulting commit. Both are
+immutable records; commit hashes accept full lowercase SHA-1 or SHA-256 syntax.
+Repository validation and Git operations are planned. See the
+[Attempt and candidate specification](spec/002-attempt-candidate-identity/spec.md)
+for the acceptance contract, with intent and implementation guidance alongside it.
 
 ## Workflow
 
