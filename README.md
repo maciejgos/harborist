@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation: Run lifecycle, revision identity, and stage-result contracts.
+> **Status:** PoC domain foundation: Run lifecycle, revision and artifact identity, and stage-result contracts.
 
 ## Development
 
@@ -37,6 +37,12 @@ Process success, artifact existence, execution-context matching, and verificatio
 remain separate responsibilities; parsing output does not advance a Run or grant
 VERIFIED. See the
 [stage-result specification](spec/003-stage-result-contracts/spec.md).
+
+`ArtifactReference` records an immutable artifact version with Run/optional Attempt
+ownership, kind, producing stage, SHA-256, and byte size. Its factory hashes exact
+in-memory bytes without storing content or accessing files. Origin is declared
+metadata; storage, integrity verification, and lineage are planned. See the
+[artifact identity specification](spec/004-artifact-identity/spec.md).
 
 ## Workflow
 

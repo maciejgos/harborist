@@ -1,5 +1,11 @@
-"""Infrastructure-independent Run, Attempt, and candidate contracts."""
+"""Infrastructure-independent workflow and evidence contracts."""
 
+from shipyard.domain.artifact import (
+    ArtifactKind,
+    ArtifactReference,
+    ArtifactSha256,
+    ArtifactStage,
+)
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.revision import GitCommitSha
@@ -27,6 +33,10 @@ from shipyard.domain.stage_result import (
 
 __all__ = [
     "AgentStage",
+    "ArtifactKind",
+    "ArtifactReference",
+    "ArtifactSha256",
+    "ArtifactStage",
     "Attempt",
     "BuildStageResult",
     "Candidate",
