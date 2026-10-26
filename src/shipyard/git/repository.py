@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import TypeAdapter
 
-from shipyard.domain import GitCommitSha
+from shipyard.domain import Attempt, GitCommitSha
 
 _COMMIT_SHA_ADAPTER = TypeAdapter(GitCommitSha)
 _REPOSITORY_OVERRIDES = (
@@ -50,6 +50,30 @@ class GitRepository:
             return _COMMIT_SHA_ADAPTER.validate_python(output.decode("ascii").strip())
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitResolutionError(context) from error
+
+    def create_workspace(self, *, attempt: Attempt, path: Path) -> GitWorkspace:
+        """Create a fresh detached checkout without touching developer files."""
+        path = path.absolute()
+        try:
+            root = Path(self._run("rev-parse", "--show-toplevel").decode().strip())
+            if path.resolve().is_relative_to(root.resolve()) or path.exists():
+                raise ValueError("Workspace must be fresh and outside source checkout")
+            if (
+                self._run("--no-replace-objects", "cat-file", "-t", attempt.start_sha)
+                != b"commit\n"
+            ):
+                raise ValueError("Workspace base must be an actual commit")
+            self._run(
+                "--no-replace-objects",
+                "worktree",
+                "add",
+                "--detach",
+                str(path),
+                attempt.start_sha,
+            )
+        except (OSError, subprocess.CalledProcessError, ValueError) as error:
+            raise GitWorkspaceError("Cannot create isolated workspace") from error
+        return GitWorkspace(path=path, attempt=attempt)
 
     def read_file_at_commit(self, *, commit_sha: GitCommitSha, path: str) -> bytes:
         """Read a repository-root-relative blob without consulting mutable refs/files."""
@@ -96,3 +120,15 @@ class GitRepository:
             capture_output=True,
             env=environment,
         ).stdout
+
+
+class GitWorkspaceError(ValueError):
+    """A workspace or candidate operation failed; partial state is retained."""
+
+
+class GitWorkspace:
+    """An explicit isolated checkout bound to one immutable Attempt."""
+
+    def __init__(self, *, path: Path, attempt: Attempt) -> None:
+        self.path = path
+        self.attempt = attempt
