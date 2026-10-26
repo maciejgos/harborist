@@ -1,4 +1,4 @@
-"""Phase 4 integration: real subprocesses and Git, synthetic provider and TEST."""
+"""Native-stage integration: real subprocesses and Git, synthetic provider and TEST."""
 
 import json
 from pathlib import Path
@@ -10,6 +10,7 @@ from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
 from shipyard.domain.stage_result import AgentStage
+from shipyard.git import GitRepository
 from tests.agents.test_codex import fake
 from tests.git_helpers import git, init_repository
 
@@ -52,12 +53,16 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
 }))
 """,
     )
-    workspace = tmp_path / "workspace"
-    init_repository(workspace)
-    git(workspace, "commit", "--allow-empty", "-m", "base")
+    repository = tmp_path / "repository"
+    init_repository(repository)
+    git(repository, "commit", "--allow-empty", "-m", "base")
     attempt = Attempt.create(
-        frozen_contract.run_id, git(workspace, "rev-parse", "HEAD")
+        frozen_contract.run_id, git(repository, "rev-parse", "HEAD")
     )
+    isolated = GitRepository(path=repository).create_workspace(
+        attempt=attempt, path=tmp_path / "workspace"
+    )
+    workspace = isolated.path
     upstream: dict[str, Path] = {}
     for stage in (AgentStage.DESIGN, AgentStage.PLAN, AgentStage.BUILD):
         directory = tmp_path / stage.value
@@ -81,10 +86,12 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
             upstream["spec.md"] = directory / "spec.md"
         if stage == AgentStage.PLAN:
             upstream["plan.md"] = directory / "plan.md"
-    # Phase 5's candidate creation and Phase 6's TEST are supplied by the fixture.
-    git(workspace, "add", "implemented.txt")
-    git(workspace, "commit", "-m", "candidate")
-    candidate = attempt.create_candidate(git(workspace, "rev-parse", "HEAD"))
+    candidate = isolated.publish_candidate()
+    assert (
+        git(repository, "rev-parse", isolated.candidate_ref) == candidate.candidate_sha
+    )
+    assert git(repository, "rev-parse", "HEAD") == attempt.start_sha
+    # Phase 6 trusted TEST execution is still synthetic here.
     evidence = tmp_path / "test-evidence.json"
     evidence.write_text(json.dumps({"candidate": candidate.model_dump(mode="json")}))
     receipt = StageReceipt(

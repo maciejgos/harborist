@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 5 — Git workspaces and candidates (2026-10-26)
+
+- Added detached Attempt workspaces at exact base commits while preserving dirty
+  developer files and index.
+- Added Shipyard candidate commits and atomic create-only Run refs, independently
+  checkoutable by exact SHA, with hook/signing suppression and clean-state guards.
+- Added real Git acceptance tests, native subprocess integration and Phase 5 audit.
+  Trusted TEST, full workflow orchestration and cleanup remain later work.
+
 ## Phase 4 — Native-agent stage execution (2026-10-26)
 
 - Added a provider-neutral synchronous NativeAgent port, stage-specific structured

@@ -2,9 +2,42 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 4 complete: independent DESIGN, PLAN, BUILD and REVIEW
-> execution through NativeAgent and the Codex CLI adapter. Ready for Phase 5
-> (Git workspaces and candidate creation). The full CLI workflow remains planned.
+> **Status:** Phase 5 complete: independent native stages, isolated Git worktrees,
+> candidate commits and create-only candidate refs. Ready for Phase 6 trusted TEST.
+> The full CLI workflow remains planned.
+
+## Git workspaces and candidates
+
+```python
+from pathlib import Path
+from shipyard.domain import Attempt
+from shipyard.git import GitRepository
+
+repository = GitRepository(path=Path("/path/to/repository"))
+attempt = Attempt.create(run_id, repository.resolve_base())
+workspace = repository.create_workspace(attempt=attempt, path=Path("/path/to/build"))
+# Pass workspace.path to execute_stage for BUILD; leave HEAD at start_sha.
+candidate = workspace.publish_candidate()
+```
+
+Use the frozen contract base SHA when creating an actual Run's Attempt. The caller
+validates Run/Attempt ownership and calls publication only after successful BUILD.
+Workspace destinations must be fresh and outside the source checkout. Creation
+checks out the exact start commit detached and preserves developer files/index.
+BUILD must leave HEAD unchanged; Shipyard stages edits, deletions and nonignored
+new files and creates the commit, including for a no-change result. Remove ignored
+build residue explicitly before publication; it is never silently deleted.
+
+The candidate remains reachable at `refs/shipyard/runs/<run-id>/candidate`.
+Publication is create-only: an existing ref is never overwritten. A separate
+checkout can use `candidate.candidate_sha` without access to the BUILD workspace.
+Hooks and commit signing are disabled for harness operations. Errors raise
+`GitWorkspaceError` and retain partial worktrees/commits for inspection. There is
+no automatic cleanup, retry/ref replacement, budget enforcement or CLI run loop.
+These synchronous operations assume a quiescent workspace and a local non-bare
+source checkout; they provide isolation of state, not a security boundary.
+
+See the [Phase 5 acceptance audit](spec/033-phase5-acceptance-audit/report.md).
 
 ## Development
 

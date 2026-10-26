@@ -2,9 +2,9 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phases 2–4 are complete: frozen intake, methodology/routing and independent
-native-agent execution. See the [Phase 4 audit](spec/030-phase4-acceptance-audit/report.md).
-Git workspace/candidate creation and trusted-check executors remain later work.
+Phases 2–5 are complete: frozen intake, methodology/routing and independent
+native-agent execution plus Git workspaces/candidates. See the [Phase 5 audit](spec/033-phase5-acceptance-audit/report.md).
+Trusted-check executors remain later work.
 
 ## Bird's Eye View
 
@@ -153,7 +153,7 @@ src/shipyard/
 ├── playbooks/      # frozen document compiler and packaged canonical playbook
 ├── skills/         # stage guidance composition and packaged engineering skill
 ├── agents/         # NativeAgent boundary and Codex adapter
-├── git/            # commit resolution; worktrees/candidate operations planned
+├── git/            # commit resolution; isolated worktrees and candidate publication
 ├── verification/   # frozen shipyard.yaml; trusted TEST execution planned
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
@@ -231,7 +231,7 @@ upstream artifacts and frozen methodology. It writes create-only per-stage
 captures with a manifest last, rejects upstream mutation, and requires a trusted
 successful TEST receipt plus clean exact-candidate workspace for REVIEW. It does
 not grant outcomes or advance routing. The planned `AttemptExecutor` will compose
-these stages with Git candidate creation, trusted TEST, full budget accounting,
+these stages with the implemented Git workspace/candidate APIs, trusted TEST, full budget accounting,
 Run lifecycle/event persistence and PACKAGE.
 
 ### `playbooks` / `skills`
@@ -293,11 +293,11 @@ The implemented `GitRepository` resolves a supplied repository's committed HEAD
 or explicit native Git commit-ish to a full validated SHA. It invokes system Git
 via a subprocess argument list with commit peeling and option termination.
 Repository-scoped environment overrides are cleared in a copy, normal configuration
-is preserved, and optional locking is disabled. The adapter performs no checkout,
+is preserved, and optional locking is disabled. The resolution operation performs no checkout,
 fetch, reset, commit, or ref update and preserves dirty developer state.
 
 Each call resolves afresh. Run creation must call once and persist
-the resulting immutable base SHA. Workspace/candidate operations remain planned.
+the resulting immutable base SHA. Workspace/candidate operations are described below.
 
 `read_file_at_commit` reads repository-root-relative blob bytes at a validated
 actual commit SHA without consulting mutable refs or checkout files. Git replacement
@@ -305,7 +305,7 @@ handling is disabled for object type/content reads so the requested original
 commit cannot silently supply replacement configuration. Read failures preserve
 their causes in `GitReadError`.
 
-The full Git boundary will own:
+The implemented Git boundary owns:
 
 - base ref resolution to immutable `base_sha`;
 - isolated worktree creation;
@@ -315,6 +315,16 @@ The full Git boundary will own:
 `require_clean_revision` provides a read-only pre/post REVIEW assertion for an
 existing checkout at the exact candidate SHA, rejecting tracked, untracked and
 ignored workspace changes. It performs no checkout or candidate creation.
+
+`create_workspace(attempt, path)` creates a fresh detached worktree at the exact
+Attempt start SHA outside the source checkout. `GitWorkspace.publish_candidate()`
+requires unchanged detached HEAD, stages BUILD changes and creates a commit with
+explicit harness identity, disabled hooks/signing and a clean-revision assertion.
+Ignored residue is rejected rather than removed. The Run-owned candidate ref is
+published with atomic create-only update-ref; existing refs cannot be overwritten.
+Failures retain partial state for inspection. Replacement objects are disabled.
+The caller validates ownership and BUILD success; no lifecycle grant is implied.
+Workspaces require exclusive sequential use; cleanup and retry remain caller-owned.
 
 Local uncommitted developer state is ignored.
 
