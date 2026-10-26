@@ -2,9 +2,10 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phase 2 intake and frozen Run contracts are complete; see the
-[acceptance audit](spec/018-phase2-acceptance-audit/report.md). Engine and delivery
-execution remain later-phase work.
+Phase 2 intake/frozen contracts and Phase 3 methodology/routing are complete; see
+the [Phase 2 audit](spec/018-phase2-acceptance-audit/report.md) and
+[Phase 3 audit](spec/026-phase3-acceptance-audit/report.md). Actual native-agent and
+trusted-check executors remain later-phase work.
 
 ## Bird's Eye View
 
@@ -150,8 +151,8 @@ src/shipyard/
 ├── application/    # durable intake; AttemptExecutor planned
 ├── intake/         # local Markdown and authenticated gh capture
 ├── configuration/  # operator settings and methodology content capture
-├── playbooks/      # bounded-repository-change
-├── skills/         # built-in Markdown skills
+├── playbooks/      # frozen document compiler and packaged canonical playbook
+├── skills/         # stage guidance composition and packaged engineering skill
 ├── agents/         # NativeAgent boundary and Codex adapter
 ├── git/            # commit resolution; worktrees/candidate operations planned
 ├── verification/   # frozen shipyard.yaml; trusted TEST execution planned
@@ -188,8 +189,9 @@ is a consistency check; committed-content reading remains the loader's job.
 
 Execution snapshots require actual methodology text with SHA-256 digests, explicit
 names/versions, a canonical playbook, unique skill names, an agent profile,
-trusted-local policy and a budget with a verification reserve. They declare future
-execution inputs without implementing the engine, skill composition or execution.
+trusted-local policy and a budget with a verification reserve. They declare frozen
+inputs consumed by the Phase 3 methodology compiler and guidance/routing layers;
+the snapshot itself performs no engine logic or executor invocation.
 Intake orchestration and CLI persist these inputs, completing the Phase 2 frozen
 contract. This record alone does not execute a Run.
 
@@ -224,8 +226,9 @@ verification loading and complete contract storage through explicit parameters. 
 returns a durable CREATED capture without agent/check execution. Non-CREATED
 inputs and capture failures are rejected. New intake compiles all frozen
 methodology before external I/O, rejecting legacy plain assets or weakened topology.
-Historical captures remain inspectable without being silently migrated. The planned `AttemptExecutor` will
-execute the canonical playbook and enforce transitions, budgets and outcomes.
+Historical captures remain inspectable without being silently migrated. The
+planned `AttemptExecutor` will dispatch actual executors through canonical routing
+and enforce runtime budgets and outcomes.
 
 ### `playbooks` / `skills`
 

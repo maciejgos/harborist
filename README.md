@@ -2,8 +2,9 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 2 complete: file/GitHub intake and durable frozen Run contracts.
-> Ready for Phase 3 (playbook engine and skills). Workflow execution remains planned.
+> **Status:** Phase 3 complete: canonical playbook routing, frozen methodology and
+> stage-scoped skills. Ready for Phase 4 (native-agent execution). Actual workflow
+> executors remain planned.
 
 ## Development
 
@@ -273,8 +274,8 @@ unsupported versions, invalid records and unreadable assets fail with
 `FileRunStore`, a complete `ExecutionSnapshot`, and an optional base ref. It creates
 an identity, resolves the base once, loads committed verification settings, captures
 intent and saves the contract in CREATED. It first compiles all frozen methodology,
-rejecting invalid topology or skill metadata before Git/source/storage I/O. An explicitly supplied CREATED `Run` may
-be used instead. Errors propagate through the existing adapter boundaries.
+rejecting invalid topology or skill metadata before Git/source/storage I/O. An
+explicitly supplied CREATED `Run` may be used instead. Errors propagate through the existing adapter boundaries.
 
 The settings loader captures bytes; the application owns this methodology
 validation gate. Historical captures remain inspectable without migration.
@@ -374,3 +375,4 @@ The PoC runs synchronously on the developer's machine. It uses the local environ
 - [Product Requirements Document](docs/Product%20Requirements%20Document%20v1.0.md)
 - [Phase 1 acceptance audit](spec/006-phase1-acceptance-audit/report.md)
 - [Phase 2 acceptance audit](spec/018-phase2-acceptance-audit/report.md)
+- [Phase 3 acceptance audit](spec/026-phase3-acceptance-audit/report.md)
