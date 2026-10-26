@@ -166,7 +166,7 @@ other content for committed-file reads. YAML source text is not retained.
 
 `VerificationConfigError` reports read/parsing/validation failures with causes.
 Checks are not executed, and Run outcomes are not changed. TEST execution,
-and intake orchestration remain planned. See
+remain planned. See
 the [verification configuration specification](spec/010-verification-config/spec.md).
 
 ## Frozen Run contract
@@ -199,7 +199,8 @@ only the canonical `bounded-repository-change` playbook is supported. Empty skil
 lists are explicit. The reserve must be positive and smaller than the total.
 
 This domain record performs no I/O or execution and does not grant verification.
-Old partial contracts without execution settings are rejected. Intake orchestration remains planned; Phase 2 is not yet complete. See the
+Old partial contracts without execution settings are rejected. Intake orchestration connects these boundaries; CLI wiring and Phase 2 acceptance
+audit remain planned. See the
 [execution snapshot specification](spec/012-execution-snapshot/spec.md).
 
 ## Complete Run persistence
@@ -230,6 +231,19 @@ reserved for verification; callers may pass an explicit `ExecutionBudget` to the
 loader. The target repository cannot set it. Unknown fields, duplicate YAML keys,
 unsupported versions, invalid records and unreadable assets fail with
 `SettingsError`. See [settings specification](spec/013-execution-settings/spec.md).
+
+## Durable intake use case
+
+`shipyard.application.create_run` accepts a source selector, `GitRepository`,
+`FileRunStore`, a complete `ExecutionSnapshot`, and an optional base ref. It creates
+an identity, resolves the base once, loads committed verification settings, captures
+intent and saves the contract in CREATED. An explicitly supplied CREATED `Run` may
+be used instead. Errors propagate through the existing adapter boundaries.
+
+The use case performs no agent calls or check execution. Invalid committed
+configuration is rejected before source capture/storage. Later execution failures
+and their reports remain part of the future workflow implementation. See
+[intake orchestration specification](spec/016-intake-orchestration/spec.md).
 
 ## Workflow
 

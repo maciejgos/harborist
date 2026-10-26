@@ -176,8 +176,8 @@ Execution snapshots require actual methodology text with SHA-256 digests, explic
 names/versions, a canonical playbook, unique skill names, an agent profile,
 trusted-local policy and a budget with a verification reserve. They declare future
 execution inputs without implementing the engine, skill composition or execution.
-Intake orchestration remains planned;
-this record alone does not make a Run executable or complete Phase 2.
+Intake orchestration now persists these inputs; CLI wiring and the Phase 2
+acceptance audit remain planned. This record alone does not execute a Run.
 
 ### `intake`
 
@@ -205,7 +205,11 @@ base-revision verification configuration.
 
 ### `application`
 
-Owns use cases and orchestration. `AttemptExecutor` executes the canonical playbook and enforces stage transitions, budgets, and terminal outcomes.
+The implemented `create_run` composes source capture, one base resolution, committed
+verification loading and complete contract storage through explicit parameters. It
+returns a durable CREATED capture without agent/check execution. Non-CREATED
+inputs and capture failures are rejected. The planned `AttemptExecutor` will
+execute the canonical playbook and enforce transitions, budgets and outcomes.
 
 ### `playbooks` / `skills`
 
