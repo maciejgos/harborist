@@ -225,7 +225,12 @@ execute the canonical playbook and enforce transitions, budgets and outcomes.
 
 ### `playbooks` / `skills`
 
-Playbooks decide **which stages run**. Skills provide **stage-specific guidance**. Skills contain no executable hooks in the PoC.
+Playbooks decide **which stages run**. The implemented immutable
+`PlaybookDefinition` fixes all seven stages, predecessor dependencies, executor
+authority, fresh agent invocation, read-only REVIEW and PACKAGE outside budget.
+The `canonical_playbook` factory requires an explicit version. These declarations
+do not execute stages. Skills provide **stage-specific guidance** and contain no
+executable hooks in the PoC.
 
 ### `agents`
 

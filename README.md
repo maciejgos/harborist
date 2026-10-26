@@ -275,6 +275,15 @@ configuration is rejected before source capture/storage. Later execution failure
 and their reports remain part of the future workflow implementation. See
 [intake orchestration specification](spec/016-intake-orchestration/spec.md).
 
+## Canonical playbook definition
+
+`shipyard.domain.playbook.canonical_playbook(version="1")` returns an immutable
+seven-stage definition with fixed dependencies and executor authority. TEST is
+trusted Shipyard execution; agent stages require fresh invocations; REVIEW is
+read-only and PACKAGE is outside budget. Modified/omitted stages or weakened
+metadata are rejected. This defines topology without executing it. See
+[canonical playbook specification](spec/019-canonical-playbook/spec.md).
+
 ## Workflow
 
 ```text
