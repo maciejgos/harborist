@@ -97,3 +97,68 @@ def test_expected_failures_are_nonzero_without_tracebacks(tmp_path: Path) -> Non
     )
     assert result.exit_code == 1
     assert "Cannot load Run" in result.stderr
+
+
+def test_saved_methodology_preview_is_frozen_and_stage_scoped(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.persistence import FileRunStore
+    from tests.methodology_helpers import skill_asset
+
+    contract = RunContract.model_validate(
+        {
+            **frozen_contract.model_dump(),
+            "execution": {
+                **frozen_contract.execution.model_dump(),
+                "skills": [skill_asset()],
+            },
+        }
+    )
+    store = FileRunStore(root=tmp_path)
+    store.save(contract)
+    path = tmp_path / str(contract.run_id) / "contract.json"
+    before = path.read_bytes()
+    args = [str(contract.run_id), "--runs-dir", str(tmp_path)]
+    result = runner.invoke(app, ["methodology", *args])
+    assert result.exit_code == 0, result.output
+    preview = json.loads(result.stdout)
+    assert len(preview["playbook"]["definition"]["stages"]) == 7
+    assert preview["skills"][0]["identity"]["name"] == "engineering"
+    result = runner.invoke(app, ["methodology", *args, "--stage", "build"])
+    assert result.exit_code == 0, result.output
+    assert (
+        json.loads(result.stdout)["skills"][0]["content"]
+        == "# Engineering\nFollow the acceptance contract.\n"
+    )
+    result = runner.invoke(app, ["methodology", *args, "--stage", "test"])
+    assert result.exit_code == 1
+    assert "agent stage" in result.stderr
+    assert path.read_bytes() == before
+
+
+def test_legacy_inspection_still_works_but_compilation_reports_error(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.persistence import FileRunStore
+    from tests.methodology_helpers import asset
+
+    legacy = RunContract.model_validate(
+        {
+            **frozen_contract.model_dump(),
+            "execution": {
+                **frozen_contract.execution.model_dump(),
+                "playbook": asset(
+                    name="bounded-repository-change",
+                    version="1",
+                    content="# Legacy guidance",
+                ),
+            },
+        }
+    )
+    FileRunStore(root=tmp_path).save(legacy)
+    args = [str(legacy.run_id), "--runs-dir", str(tmp_path)]
+    assert runner.invoke(app, ["inspect", *args]).exit_code == 0
+    result = runner.invoke(app, ["methodology", *args])
+    assert result.exit_code == 1
+    assert "Cannot compile playbook" in result.stderr
+    assert "Traceback" not in result.output

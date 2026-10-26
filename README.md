@@ -69,11 +69,16 @@ uv run shipyard intake 'github:owner/repo#42' \
   --repo /path/to/target --settings /path/to/operator.yaml
 
 uv run shipyard inspect RUN_UUID
+uv run shipyard methodology RUN_UUID
+uv run shipyard methodology RUN_UUID --stage build
 ```
 
-Intake prints a complete JSON contract and leaves the Run in CREATED. It does not
+Intake first validates methodology metadata, then prints a complete JSON contract
+and leaves the Run in CREATED. It does not
 execute agents or checks. Inspect validates the saved capture without consulting
-original inputs. Both commands accept `--runs-dir`; intake also accepts `--ref`,
+original inputs. `methodology` previews the frozen playbook and skills as JSON;
+`--stage` selects composed guidance for an agent stage. All commands accept
+`--runs-dir`; intake also accepts `--ref`,
 `--timeout` and `--verification-reserve`. Defaults are HEAD, 1800 seconds overall,
 300 seconds reserved, and `~/.shipyard/runs`. A shorter timeout must still exceed
 the reserve; override both when needed. Expected failures return nonzero status.
@@ -336,6 +341,15 @@ match the package resources. `shipyard.skills.defaults.load_default_methodology(
 returns frozen assets independently of the caller's working directory; an explicit
 agent profile is still required when adopting them into an execution snapshot.
 No existing Run is migrated. See [bundled methodology specification](spec/023-bundled-methodology/spec.md).
+
+## Saved methodology preview
+
+`shipyard methodology RUN_UUID` loads the saved capture and prints compiled
+playbook/skill metadata, guidance and exact content identities. Add `--stage build`
+(or design/plan/review) for composed guidance. It never reads current methodology
+files, executes stages or changes the saved contract. `inspect` remains available
+for historical plain Markdown captures; `methodology` returns a compilation error
+for those captures. See [preview specification](spec/025-methodology-preview/spec.md).
 
 ## Workflow
 

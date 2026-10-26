@@ -99,6 +99,7 @@ Intake commands available in Phase 2:
 shipyard intake file:./issue.md --settings ./operator.yaml
 shipyard intake github:owner/repo#42 --settings ./operator.yaml
 shipyard inspect <run-id>
+shipyard methodology <run-id> [--stage build]
 ```
 
 Additional intake options:
@@ -113,7 +114,8 @@ Additional intake options:
 
 The CLI prints complete contract JSON and leaves captures in CREATED. Full workflow
 execution and `shipyard run` remain future work. Methodology content is frozen here;
-Phase 3 owns its engine/composition semantics.
+Phase 3 compilation and routing validate its topology and skill scope. The
+methodology command previews frozen metadata/guidance without execution or writes.
 
 GitHub Issue intake uses the developer's local authenticated `gh` environment.
 

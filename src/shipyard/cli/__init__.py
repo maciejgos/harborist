@@ -9,9 +9,10 @@ import typer
 
 from shipyard.application import create_run
 from shipyard.configuration import load_execution_settings
-from shipyard.domain import ExecutionBudget
+from shipyard.domain import ArtifactStage, ExecutionBudget
 from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
+from shipyard.skills import compile_methodology, compose_guidance
 
 app = typer.Typer(
     no_args_is_help=True, help="Freeze and inspect Shipyard Run contracts."
@@ -82,3 +83,45 @@ def inspect(
     except ValueError as error:
         _fail(error)
     typer.echo(contract.model_dump_json())
+
+
+@app.command()
+def methodology(
+    run_id: UUID,
+    runs_dir: Annotated[
+        Path, typer.Option(help="Filesystem Runs root.")
+    ] = _DEFAULT_RUNS,
+    stage: Annotated[
+        ArtifactStage | None,
+        typer.Option(help="Preview guidance for one native-agent stage."),
+    ] = None,
+) -> None:
+    """Preview saved methodology; does not execute or modify the Run."""
+    try:
+        contract = FileRunStore(root=runs_dir).load(run_id)
+        compiled = compile_methodology(contract.execution)
+        if stage is not None:
+            output = compose_guidance(compiled, stage=stage).model_dump_json()
+        else:
+            output = json.dumps(
+                {
+                    "playbook": {
+                        "identity": compiled.playbook.identity.model_dump(mode="json"),
+                        "definition": compiled.playbook.definition.model_dump(
+                            mode="json"
+                        ),
+                        "guidance": compiled.playbook.guidance,
+                    },
+                    "skills": [
+                        {
+                            "identity": skill.identity.model_dump(mode="json"),
+                            "metadata": skill.metadata.model_dump(mode="json"),
+                            "guidance": skill.guidance,
+                        }
+                        for skill in compiled.skills
+                    ],
+                }
+            )
+    except ValueError as error:
+        _fail(error)
+    typer.echo(output)
