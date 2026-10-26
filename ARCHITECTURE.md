@@ -232,6 +232,13 @@ The `canonical_playbook` factory requires an explicit version. These declaration
 do not execute stages. Skills provide **stage-specific guidance** and contain no
 executable hooks in the PoC.
 
+Methodology compilation reads only frozen asset content. Validated YAML front
+matter binds playbook identity/topology or skill identity/description/agent-stage
+scope. Unknown skill control fields are rejected; opaque body prose has no
+workflow authority. Content-bound identities include exact source SHA-256.
+Legacy Phase 2 plain Markdown is inspectable, but cannot compile as methodology
+without an explicit front-matter migration.
+
 ### `agents`
 
 Defines the `NativeAgent` boundary. Codex is the first adapter.

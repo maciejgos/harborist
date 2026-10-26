@@ -284,6 +284,19 @@ read-only and PACKAGE is outside budget. Modified/omitted stages or weakened
 metadata are rejected. This defines topology without executing it. See
 [canonical playbook specification](spec/019-canonical-playbook/spec.md).
 
+## Frozen methodology documents
+
+`shipyard.playbooks.parse_playbook` and `parse_skill` compile captured assets with
+leading YAML front matter. Playbooks declare `id`, `version` and canonical `stages`;
+skills declare `id`, `version`, `description` and their agent `stages`. Front-matter
+identity must match the frozen asset. Skill metadata cannot declare dependencies,
+executors or hooks. Bodies remain exact opaque guidance; no file or tool is read.
+
+Document identities include kind, name, version and exact source SHA-256. Changed
+bytes remain distinguishable even when a version label is reused. Legacy plain
+Markdown captures can still be inspected, but compilation requires explicit front
+matter. See [methodology document specification](spec/020-methodology-documents/spec.md).
+
 ## Workflow
 
 ```text
