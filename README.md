@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation, local Markdown intake, and create-only filesystem intent persistence.
+> **Status:** PoC domain foundation, local Markdown intake, filesystem intent persistence, and Git base resolution.
 
 ## Development
 
@@ -25,7 +25,8 @@ revision-bound verification is implemented.
 `Attempt` identifies one execution within a Run and its starting commit.
 `Candidate` identifies an owning Attempt and an exact resulting commit. Both are
 immutable records; commit hashes accept full lowercase SHA-1 or SHA-256 syntax.
-Repository validation and Git operations are planned. See the
+Commit resolution is available through `GitRepository`; candidate creation and
+workspace operations remain planned. See the
 [Attempt and candidate specification](spec/002-attempt-candidate-identity/spec.md)
 for the acceptance contract, with intent and implementation guidance alongside it.
 
@@ -100,6 +101,29 @@ partial files; subsequent loads reject them and saves preserve them for inspecti
 This store does not provide full Run persistence, automatic repair, atomic
 multi-file publication, or power-loss durability guarantees. See the
 [intent persistence specification](spec/008-intent-persistence/spec.md).
+
+## Git base resolution
+
+Resolve committed HEAD or a native Git commit-ish through system Git:
+
+```python
+from shipyard.git import GitRepository
+
+repository = GitRepository(path=Path("."))
+base_sha = repository.resolve_base()
+earlier_sha = repository.resolve_base(ref="HEAD~1")
+```
+
+The adapter returns a validated full commit SHA, accepts commit tags and native
+revision expressions, and rejects non-commit targets. It preserves developer
+branches, index, and working files. Repository-scoped environment overrides are
+cleared in the subprocess while normal Git configuration is retained.
+`GitResolutionError` preserves launch/process/output failures as causes.
+
+Each explicit call resolves afresh. Later Run creation must resolve once and
+persist the SHA; this adapter does not freeze a Run contract, create worktrees,
+or manage candidate commits/refs. See the
+[Git base resolution specification](spec/009-git-base-resolution/spec.md).
 
 ## Workflow
 

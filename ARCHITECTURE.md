@@ -139,7 +139,7 @@ src/shipyard/
 ├── playbooks/      # bounded-repository-change
 ├── skills/         # built-in Markdown skills
 ├── agents/         # NativeAgent boundary and Codex adapter
-├── git/            # base SHA, worktrees, candidate commit/ref
+├── git/            # commit resolution; worktrees/candidate operations planned
 ├── verification/   # shipyard.yaml and trusted TEST execution
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
@@ -193,7 +193,17 @@ Defines the `NativeAgent` boundary. Codex is the first adapter.
 
 ### `git`
 
-Owns committed repository state:
+The implemented `GitRepository` resolves a supplied repository's committed HEAD
+or explicit native Git commit-ish to a full validated SHA. It invokes system Git
+via a subprocess argument list with commit peeling and option termination.
+Repository-scoped environment overrides are cleared in a copy, normal configuration
+is preserved, and optional locking is disabled. The adapter performs no checkout,
+fetch, reset, commit, or ref update and preserves dirty developer state.
+
+Each call resolves afresh. Run creation must eventually call once and persist
+the resulting immutable base SHA. Workspace/candidate operations remain planned.
+
+The full Git boundary will own:
 
 - base ref resolution to immutable `base_sha`;
 - isolated worktree creation;
