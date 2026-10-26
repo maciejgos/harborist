@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, and frozen verification configuration.
+> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, frozen verification configuration, and a minimal Run contract.
 
 ## Development
 
@@ -73,7 +73,7 @@ actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
 UTF-8 decoding errors with their original causes.
 
 This API returns an in-memory capture and leaves the Run unchanged. Semantic
-normalization, YAML metadata extraction, GitHub/CLI intake, and the full frozen
+normalization, YAML metadata extraction, GitHub/CLI intake, and the complete frozen
 Run contract are planned. See the
 [Markdown intake specification](spec/007-markdown-intake/spec.md).
 
@@ -156,6 +156,35 @@ other content for committed-file reads. YAML source text is not retained.
 Checks are not executed, and Run outcomes are not changed. TEST execution,
 configuration persistence, and the full frozen Run contract remain planned. See
 the [verification configuration specification](spec/010-verification-config/spec.md).
+
+## Minimal frozen Run contract
+
+Compose the previously captured inputs without repeating intake or Git resolution:
+
+```python
+from shipyard.domain import RunContract
+
+contract = RunContract(
+    run_id=run.run_id,
+    intent=intent,
+    base_sha=base_sha,
+    verification=verification,
+)
+serialized = contract.model_dump_json()
+restored_contract = RunContract.model_validate_json(serialized)
+```
+
+The immutable contract requires matching intent Run ownership and verification
+base SHA. Equivalent validated values, including the same existing identities,
+produce identical compact JSON regardless of input mapping key order. Exact
+Markdown, check order, command text, and provenance survive round-trips.
+
+This is a domain-only, partial execution contract. It performs no I/O, generates
+no identities, and does not change Run lifecycle or grant verification. Provenance
+consistency does not independently prove Git content. Contract persistence and
+one-contract-per-Run enforcement remain planned, alongside playbook/skill versions,
+agent profile, execution budget, and policy fields. Phase 2 is not yet complete.
+See the [Run contract specification](spec/011-run-contract/spec.md).
 
 ## Workflow
 

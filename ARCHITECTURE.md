@@ -164,6 +164,18 @@ ExecutionBudget
 
 **Invariant:** domain code does not depend on CLI, Codex-specific details, GitHub transport, or filesystem layout.
 
+The implemented `RunContract` is a partial frozen execution contract, separate from
+Run lifecycle state. It composes existing `run_id`, `IntentSnapshot`, `base_sha`,
+and `VerificationConfigSnapshot`, rejecting mismatched intent ownership or
+verification base SHA. Construction performs no I/O and generates no identities.
+Existing Pydantic JSON APIs preserve values and serialize equivalent validated
+inputs deterministically, including their existing identities. Matching provenance
+is a consistency check; committed-content reading remains the loader's job.
+
+Contract persistence, one-contract-per-Run enforcement, methodology versions,
+execution profile, budget, and policy fields remain planned. This record alone
+does not make a Run executable or complete PRD §4.9/Phase 2.
+
 ### `intake`
 
 The Markdown adapter resolves a local path, reads bytes once, strictly decodes

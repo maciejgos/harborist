@@ -23,6 +23,7 @@ from shipyard.domain.run import (
     RunLifecycle,
     RunOutcome,
 )
+from shipyard.domain.run_contract import RunContract
 from shipyard.domain.stage_result import (
     AgentStage,
     BuildStageResult,
@@ -66,6 +67,7 @@ __all__ = [
     "ReviewStageResult",
     "ReviewSummary",
     "Run",
+    "RunContract",
     "RunEvent",
     "RunEventType",
     "RunLifecycle",
