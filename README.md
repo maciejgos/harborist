@@ -297,6 +297,18 @@ bytes remain distinguishable even when a version label is reused. Legacy plain
 Markdown captures can still be inspected, but compilation requires explicit front
 matter. See [methodology document specification](spec/020-methodology-documents/spec.md).
 
+## Stage guidance composition
+
+`shipyard.skills.compile_methodology(execution)` parses all frozen methodology
+inputs. `compose_guidance(compiled, stage=ArtifactStage.BUILD)` selects skills for
+the requested agent stage in configured order. It returns immutable sections with
+exact bodies, descriptions and content-bound identities. A stage may have no
+matching skills. INTAKE/TEST/PACKAGE cannot receive agent skill composition.
+
+Guidance is kept separate from the playbook's control metadata. Prose never
+changes dependencies or executor authority. Provider prompt formatting/invocation
+remains Phase 4. See [stage guidance specification](spec/021-stage-guidance/spec.md).
+
 ## Workflow
 
 ```text

@@ -239,6 +239,12 @@ workflow authority. Content-bound identities include exact source SHA-256.
 Legacy Phase 2 plain Markdown is inspectable, but cannot compile as methodology
 without an explicit front-matter migration.
 
+`compile_methodology` parses a frozen execution snapshot; `compose_guidance` filters
+skills by native-agent stage in configured order and returns immutable sections
+with exact content/provenance. Shipyard-owned stages do not receive composed agent
+skills. Guidance cannot add steps, dependencies, executors or hooks; provider prompt
+formatting and execution remain Phase 4.
+
 ### `agents`
 
 Defines the `NativeAgent` boundary. Codex is the first adapter.
