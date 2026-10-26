@@ -2,9 +2,9 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 3 complete: canonical playbook routing, frozen methodology and
-> stage-scoped skills. Ready for Phase 4 (native-agent execution). Actual workflow
-> executors remain planned.
+> **Status:** Phase 4 complete: independent DESIGN, PLAN, BUILD and REVIEW
+> execution through NativeAgent and the Codex CLI adapter. Ready for Phase 5
+> (Git workspaces and candidate creation). The full CLI workflow remains planned.
 
 ## Development
 
@@ -317,8 +317,8 @@ exact bodies, descriptions and content-bound identities. A stage may have no
 matching skills. INTAKE/TEST/PACKAGE cannot receive agent skill composition.
 
 Guidance is kept separate from the playbook's control metadata. Prose never
-changes dependencies or executor authority. Provider prompt formatting/invocation
-remains Phase 4. See [stage guidance specification](spec/021-stage-guidance/spec.md).
+changes dependencies or executor authority. Phase 4 implements provider prompt
+formatting and invocation. See [stage guidance specification](spec/021-stage-guidance/spec.md).
 
 ## Playbook routing
 
@@ -358,7 +358,8 @@ for those captures. See [preview specification](spec/025-methodology-preview/spe
 INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE
 ```
 
-The planned PoC uses Codex through a native-agent abstraction and will provide:
+The PoC implements independent Codex stages through a native-agent abstraction.
+Its full workflow will combine:
 
 - Markdown and GitHub Issue intake (implemented);
 - isolated Git worktrees;
@@ -376,3 +377,87 @@ The PoC runs synchronously on the developer's machine. It uses the local environ
 - [Phase 1 acceptance audit](spec/006-phase1-acceptance-audit/report.md)
 - [Phase 2 acceptance audit](spec/018-phase2-acceptance-audit/report.md)
 - [Phase 3 acceptance audit](spec/026-phase3-acceptance-audit/report.md)
+- [Phase 4 acceptance audit](spec/030-phase4-acceptance-audit/report.md)
+
+## Independent native-agent stages (Phase 4)
+
+`shipyard.application.stages.execute_stage` executes one stage synchronously.
+It accepts a reloaded `RunContract`, its `Attempt`, an existing workspace,
+explicit upstream artifact paths, a new output directory outside the workspace,
+an injected `NativeAgent`, and positive `remaining_seconds`. For example:
+
+```python
+from pathlib import Path
+from shipyard.agents.codex import CodexAgent
+from shipyard.application.stages import execute_stage
+from shipyard.domain.attempt import Attempt
+from shipyard.domain.run_contract import RunContract
+from shipyard.domain.stage_result import AgentStage
+
+contract = RunContract.model_validate_json(Path("contract.json").read_bytes())
+attempt = Attempt.create(contract.run_id, contract.base_sha)
+result = execute_stage(
+    contract=contract,
+    attempt=attempt,
+    stage=AgentStage.DESIGN,
+    workspace=Path("/absolute/path/to/prepared/workspace"),
+    upstream={},
+    output_dir=Path("/absolute/path/to/new/design-capture"),
+    agent=CodexAgent(),
+    remaining_seconds=300,
+)
+```
+
+The caller prepares the workspace and calculates remaining budget. This API does
+not start or finish a Run. There is no `shipyard run` command yet.
+
+| Stage | Durable upstream inputs | Captured Markdown |
+|---|---|---|
+| DESIGN | Frozen contract intent | `spec.md` |
+| PLAN | Frozen intent, `spec.md` | `plan.md` |
+| BUILD | Frozen intent, `spec.md`, `plan.md` | Optional revised `plan.md` |
+| REVIEW | `spec.md`, `test-evidence.json`; frozen intent is also supplied | `review.md` |
+
+Pass upstream files as a mapping from the names above to explicit paths. Frozen
+intent is supplied from the contract; an optional `intent.md` path must match it
+exactly. Original input bytes are checked after invocation. BUILD returns plan
+revisions into its new capture, preserving earlier versions, and cannot rewrite
+the authoritative upstream spec. An invalid invocation leaves its partial capture
+without `manifest.json`; retry with a new directory.
+
+REVIEW additionally requires `candidate` and a trusted successful TEST
+`StageReceipt` for that exact candidate. Its Attempt must match, and the existing
+workspace must be clean at the exact candidate SHA before and after execution.
+Untracked and ignored files are rejected for REVIEW. TEST receipts are supplied by
+the caller; this API does not prove checks ran or validate the evidence contents.
+Phase 6 supplies trusted checks and Phase 7 validates criterion coverage/evidence.
+No native-agent result grants VERIFIED.
+
+Each successful directory contains `request.json` (frozen input text, guidance,
+profile and candidate context), `stage-result.json`, its Markdown outputs, and a
+completion `manifest.json` with Run/Attempt ownership and artifact digests/sizes.
+Directories are create-only; inputs and failed captures are never overwritten.
+
+`CodexAgent` starts a fresh `codex exec --ephemeral --ignore-user-config` for each
+call, sends the prompt on stdin, and uses a stage-specific `--output-schema` and
+fresh `--output-last-message` file. It requests read-only access for DESIGN, PLAN
+and REVIEW, workspace-write for BUILD, and no approval prompts. Markdown is
+returned inside the final JSON envelope and written by Shipyard. Provider output
+has `result`, `artifact` and `plan_update` fields; `artifact` is null for BUILD,
+and `plan_update` is null except when BUILD revises the plan.
+
+The frozen profile must use `provider: codex`. `model` is explicit. Initially,
+profile `arguments` supports only pairs such as
+`["--config", 'model_reasoning_effort="high"']` (also `-c`), with effort values
+minimal/low/medium/high/xhigh. Other arguments are rejected before launch to
+preserve Shipyard's workspace, output and invocation controls. Authentication
+comes from the operator's local Codex installation; no provider secrets are saved.
+The adapter enforces the supplied per-call timeout, kills its process group on
+timeout, bounds final output to 4 MiB and discards raw transcripts. Launch errors,
+nonzero exits, missing/invalid final messages and invalid stage contracts fail the
+stage. Run-level failure mapping and PACKAGE remain later work.
+
+The [Phase 4 audit](spec/030-phase4-acceptance-audit/report.md) records acceptance
+evidence. Tests use a fake provider executable with real subprocesses and Git;
+a live authenticated provider call has not been validated. CLI flag references:
+[official Codex commands](https://learn.chatgpt.com/docs/developer-commands#codex-exec).

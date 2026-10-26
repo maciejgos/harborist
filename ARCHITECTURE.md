@@ -2,10 +2,9 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phase 2 intake/frozen contracts and Phase 3 methodology/routing are complete; see
-the [Phase 2 audit](spec/018-phase2-acceptance-audit/report.md) and
-[Phase 3 audit](spec/026-phase3-acceptance-audit/report.md). Actual native-agent and
-trusted-check executors remain later-phase work.
+Phases 2–4 are complete: frozen intake, methodology/routing and independent
+native-agent execution. See the [Phase 4 audit](spec/030-phase4-acceptance-audit/report.md).
+Git workspace/candidate creation and trusted-check executors remain later work.
 
 ## Bird's Eye View
 
@@ -148,7 +147,7 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point and presentation
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
-├── application/    # durable intake; AttemptExecutor planned
+├── application/    # durable intake and independent native stages; run loop planned
 ├── intake/         # local Markdown and authenticated gh capture
 ├── configuration/  # operator settings and methodology content capture
 ├── playbooks/      # frozen document compiler and packaged canonical playbook
@@ -227,8 +226,13 @@ returns a durable CREATED capture without agent/check execution. Non-CREATED
 inputs and capture failures are rejected. New intake compiles all frozen
 methodology before external I/O, rejecting legacy plain assets or weakened topology.
 Historical captures remain inspectable without being silently migrated. The
-planned `AttemptExecutor` will dispatch actual executors through canonical routing
-and enforce runtime budgets and outcomes.
+implemented `execute_stage` invokes one injected NativeAgent using durable
+upstream artifacts and frozen methodology. It writes create-only per-stage
+captures with a manifest last, rejects upstream mutation, and requires a trusted
+successful TEST receipt plus clean exact-candidate workspace for REVIEW. It does
+not grant outcomes or advance routing. The planned `AttemptExecutor` will compose
+these stages with Git candidate creation, trusted TEST, full budget accounting,
+Run lifecycle/event persistence and PACKAGE.
 
 ### `playbooks` / `skills`
 
@@ -250,7 +254,7 @@ without an explicit front-matter migration.
 skills by native-agent stage in configured order and returns immutable sections
 with exact content/provenance. Shipyard-owned stages do not receive composed agent
 skills. Guidance cannot add steps, dependencies, executors or hooks; provider prompt
-formatting and execution remain Phase 4.
+formatting and execution are implemented by the Phase 4 Codex adapter.
 
 `PlaybookExecution` is a pure immutable routing engine bound to one Attempt.
 Validated harness receipts advance only the next canonical stage. BUILD binds the
@@ -266,7 +270,20 @@ mutates a previously captured Run.
 
 ### `agents`
 
-Defines the `NativeAgent` boundary. Codex is the first adapter.
+`NativeAgent.execute(AgentRequest)` is a small synchronous port with no session
+continuity API. Requests carry stage, workspace, frozen profile/guidance, upstream
+text, remaining seconds and REVIEW candidate; outputs separate process status
+from structured final JSON. Parsing reuses existing stage contracts and rejects
+missing Markdown, wrong stages, foreign candidates and unauthorized plan changes.
+
+`CodexAgent` uses one fresh ephemeral `codex exec` subprocess per invocation with
+explicit model, workspace, sandbox and schema. It reads only the final message,
+not stdout, and bounds its size. Read-only stages return Markdown inside JSON for
+Shipyard to persist. BUILD uses workspace-write. Profile arguments cannot override
+harness controls; only reasoning-effort config pairs are initially supported.
+Timeouts terminate the process group best-effort; temporary files are cleaned.
+Authentication stays in the local Codex environment; no live-provider smoke test
+is claimed by the synthetic process integration suite.
 
 **Invariant:** vendor-specific behavior stays behind `NativeAgent`.
 
@@ -294,6 +311,10 @@ The full Git boundary will own:
 - isolated worktree creation;
 - candidate commit creation;
 - candidate ref management.
+
+`require_clean_revision` provides a read-only pre/post REVIEW assertion for an
+existing checkout at the exact candidate SHA, rejecting tracked, untracked and
+ignored workspace changes. It performs no checkout or candidate creation.
 
 Local uncommitted developer state is ignored.
 
