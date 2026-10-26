@@ -89,20 +89,27 @@ file:./issue.md
 github:owner/repo#42
 ```
 
-Representative commands:
+Intake commands available in Phase 2:
 
 ```text
-shipyard run file:./issue.md
-shipyard run github:owner/repo#42
+shipyard intake file:./issue.md --settings ./operator.yaml
+shipyard intake github:owner/repo#42 --settings ./operator.yaml
+shipyard inspect <run-id>
 ```
 
-Representative options:
+Additional intake options:
 
 ```text
 --repo
 --ref
 --timeout
+--verification-reserve
+--runs-dir
 ```
+
+The CLI prints complete contract JSON and leaves captures in CREATED. Full workflow
+execution and `shipyard run` remain future work. Methodology content is frozen here;
+Phase 3 owns its engine/composition semantics.
 
 GitHub Issue intake uses the developer's local authenticated `gh` environment.
 
@@ -176,8 +183,8 @@ Execution snapshots require actual methodology text with SHA-256 digests, explic
 names/versions, a canonical playbook, unique skill names, an agent profile,
 trusted-local policy and a budget with a verification reserve. They declare future
 execution inputs without implementing the engine, skill composition or execution.
-Intake orchestration now persists these inputs; CLI wiring and the Phase 2
-acceptance audit remain planned. This record alone does not execute a Run.
+Intake orchestration and CLI now persist these inputs; the Phase 2 acceptance
+audit remains planned. This record alone does not execute a Run.
 
 ### `intake`
 
@@ -257,8 +264,7 @@ command strings; all checks are mandatory. Snapshots retain the base SHA and
 source-byte SHA-256 without source text, generated identities, or timestamps.
 
 Missing/invalid configuration or zero checks raises `VerificationConfigError`
-synchronously. Trusted TEST execution and mapping
-failures to Run `CONFIGURATION_ERROR` before agent invocation remain planned.
+synchronously. Trusted TEST execution and mapping failures to Run `CONFIGURATION_ERROR` before agent invocation remain planned.
 
 **Invariant:** model output can never override a failed trusted check.
 

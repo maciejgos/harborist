@@ -2,7 +2,8 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, frozen verification configuration, and a complete in-memory Run contract.
+> **Status:** Phase 2 implementation complete: file/GitHub intake and durable frozen
+> Run contracts. Final acceptance audit pending. Workflow execution remains planned.
 
 ## Development
 
@@ -16,7 +17,8 @@ uv run pyright
 ```
 
 The project pins Python 3.14. uv will download it if needed. Domain contracts are
-available through `shipyard.domain`; the CLI and workflow execution are planned.
+available through `shipyard.domain`; intake and inspection are available through
+the CLI. Workflow execution remains planned.
 The Run lifecycle acceptance contract is in
 [spec/001-run-lifecycle/spec.md](spec/001-run-lifecycle/spec.md), alongside its
 intake intent and implementation plan. VERIFIED is reserved and rejected until
@@ -52,6 +54,32 @@ through Pydantic's `TypeAdapter`. Records do not emit events, establish historic
 ordering, or change domain state; persistence and full cancellation audit metadata
 are planned. See the [domain event specification](spec/005-domain-events/spec.md).
 
+## Capture a Run
+
+The target repository must have a committed root `shipyard.yaml` with its mandatory
+checks. Shipyard includes its own configuration. Choose operator settings with an
+explicit model/profile and local playbook/skill sources; the examples freeze these
+inputs without invoking the selected model.
+
+```bash
+uv run shipyard intake file:examples/intake/issue.md \
+  --repo . --settings examples/intake/settings.yaml
+
+uv run shipyard intake 'github:owner/repo#42' \
+  --repo /path/to/target --settings /path/to/operator.yaml
+
+uv run shipyard inspect RUN_UUID
+```
+
+Intake prints a complete JSON contract and leaves the Run in CREATED. It does not
+execute agents or checks. Inspect validates the saved capture without consulting
+original inputs. Both commands accept `--runs-dir`; intake also accepts `--ref`,
+`--timeout` and `--verification-reserve`. Defaults are HEAD, 1800 seconds overall,
+300 seconds reserved, and `~/.shipyard/runs`. A shorter timeout must still exceed
+the reserve; override both when needed. Expected failures return nonzero status.
+`uv run python -m shipyard --help` provides the same commands. See the
+[CLI specification](spec/017-intake-cli/spec.md).
+
 ## Markdown intake
 
 Capture a local issue file through the Python API:
@@ -72,8 +100,9 @@ Later file edits or deletion do not change the snapshot. Empty content is accept
 actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
 UTF-8 decoding errors with their original causes.
 
-This API returns an in-memory capture and leaves the Run unchanged. Optional YAML front matter is retained as source text rather than interpreted.
-Common source dispatch and GitHub normalization are implemented; CLI intake remains planned. See the
+This API returns an in-memory capture and leaves the Run unchanged. Optional YAML
+front matter is retained as source text rather than interpreted. Common source
+dispatch and GitHub normalization are implemented. See the
 [Markdown intake specification](spec/007-markdown-intake/spec.md).
 
 ## GitHub Issue intake
@@ -132,8 +161,8 @@ branches, index, and working files. Repository-scoped environment overrides are
 cleared in the subprocess while normal Git configuration is retained.
 `GitResolutionError` preserves launch/process/output failures as causes.
 
-Each explicit call resolves afresh. Later Run creation must resolve once and
-persist the SHA; this adapter does not freeze a Run contract, create worktrees,
+Each explicit call resolves afresh. The intake use case resolves once and
+persists the SHA; this adapter does not freeze a Run contract, create worktrees,
 or manage candidate commits/refs. See the
 [Git base resolution specification](spec/009-git-base-resolution/spec.md).
 
@@ -165,17 +194,18 @@ SHA, and a SHA-256 of the original file bytes. Git replacement refs cannot subst
 other content for committed-file reads. YAML source text is not retained.
 
 `VerificationConfigError` reports read/parsing/validation failures with causes.
-Checks are not executed, and Run outcomes are not changed. TEST execution,
-remain planned. See
-the [verification configuration specification](spec/010-verification-config/spec.md).
+Checks are not executed, and Run outcomes are not changed. TEST execution
+remains planned. See the [verification configuration specification](spec/010-verification-config/spec.md).
 
 ## Frozen Run contract
 
 Compose the previously captured inputs without repeating intake or Git resolution:
 
 ```python
+from shipyard.configuration import load_execution_settings
 from shipyard.domain import RunContract
 
+execution = load_execution_settings(path=Path("examples/intake/settings.yaml"))
 contract = RunContract(
     run_id=run.run_id,
     intent=intent,
@@ -199,8 +229,8 @@ only the canonical `bounded-repository-change` playbook is supported. Empty skil
 lists are explicit. The reserve must be positive and smaller than the total.
 
 This domain record performs no I/O or execution and does not grant verification.
-Old partial contracts without execution settings are rejected. Intake orchestration connects these boundaries; CLI wiring and Phase 2 acceptance
-audit remain planned. See the
+Old partial contracts without execution settings are rejected. Intake orchestration
+and the CLI connect these boundaries. The Phase 2 acceptance audit remains planned. See the
 [execution snapshot specification](spec/012-execution-snapshot/spec.md).
 
 ## Complete Run persistence
@@ -253,7 +283,7 @@ INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE
 
 The planned PoC uses Codex through a native-agent abstraction and will provide:
 
-- Markdown and GitHub Issue intake;
+- Markdown and GitHub Issue intake (implemented);
 - isolated Git worktrees;
 - deterministic checks defined in `shipyard.yaml`;
 - independent semantic review;

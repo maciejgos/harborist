@@ -1,0 +1,16 @@
+version: 1
+playbook:
+  name: bounded-repository-change
+  version: '1'
+  path: playbook.md
+skills:
+  - name: engineering
+    version: '1'
+    path: engineering.md
+agent_profile:
+  name: local-codex
+  version: '1'
+  provider: codex
+  model: gpt-6.1-sol
+  arguments: []
+sandbox_policy: trusted-local

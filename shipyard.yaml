@@ -1,0 +1,8 @@
+version: 1
+checks:
+  - id: tests
+    command: uv run pytest
+  - id: lint
+    command: uv run ruff check .
+  - id: types
+    command: uv run pyright
