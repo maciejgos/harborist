@@ -323,6 +323,15 @@ They are declarations, not proof that checks ran or review passed; this engine
 performs no I/O and does not grant VERIFIED. See the
 [routing specification](spec/022-playbook-routing/spec.md).
 
+## Bundled methodology
+
+Shipyard includes version 1 of the canonical playbook and an engineering skill
+scoped to all four agent stages. The standalone files under `examples/intake`
+match the package resources. `shipyard.skills.defaults.load_default_methodology()`
+returns frozen assets independently of the caller's working directory; an explicit
+agent profile is still required when adopting them into an execution snapshot.
+No existing Run is migrated. See [bundled methodology specification](spec/023-bundled-methodology/spec.md).
+
 ## Workflow
 
 ```text

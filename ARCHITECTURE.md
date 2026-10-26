@@ -252,6 +252,11 @@ route to PACKAGE; a failed TEST cannot reach REVIEW. PACKAGE ends routing even o
 failure. History is validated again on JSON reload. This does not prove executor
 success, run checks, enforce elapsed budget or grant a Run outcome.
 
+Version 1 canonical playbook and engineering skill Markdown are packaged resources.
+`load_default_methodology` captures and validates them independently of cwd.
+Operators still explicitly choose their agent profile; default adoption never
+mutates a previously captured Run.
+
 ### `agents`
 
 Defines the `NativeAgent` boundary. Codex is the first adapter.

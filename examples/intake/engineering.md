@@ -1,3 +1,14 @@
+---
+id: engineering
+version: 1
+description: Implement and assess bounded repository changes against frozen acceptance
+  criteria.
+stages:
+- design
+- plan
+- build
+- review
+---
 # Engineering — version 1
 
 Use spec.md as the acceptance contract. Inspect the target repository's operating
