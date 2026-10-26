@@ -75,6 +75,16 @@ class GitRepository:
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitReadError(context) from error
 
+    def require_clean_revision(self, *, commit_sha: GitCommitSha) -> None:
+        """Assert an existing checkout is clean at an exact candidate; never checkout."""
+        if self.resolve_base() != commit_sha:
+            raise GitReadError("Workspace HEAD must match exact candidate SHA")
+        try:
+            if self._run("status", "--porcelain", "--untracked-files=all", "--ignored"):
+                raise GitReadError("REVIEW requires a clean candidate workspace")
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise GitReadError("Cannot inspect candidate workspace") from error
+
     def _run(self, *args: str) -> bytes:
         environment = os.environ.copy()
         for name in _REPOSITORY_OVERRIDES:
