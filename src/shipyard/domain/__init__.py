@@ -37,6 +37,11 @@ from shipyard.domain.stage_result import (
     StageStatus,
     parse_stage_result,
 )
+from shipyard.domain.verification import (
+    VerificationCheck,
+    VerificationConfig,
+    VerificationConfigSnapshot,
+)
 
 __all__ = [
     "AgentStage",
@@ -67,5 +72,8 @@ __all__ = [
     "RunOutcome",
     "StageResult",
     "StageStatus",
+    "VerificationCheck",
+    "VerificationConfig",
+    "VerificationConfigSnapshot",
     "parse_stage_result",
 ]

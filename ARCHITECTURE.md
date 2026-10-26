@@ -140,7 +140,7 @@ src/shipyard/
 ├── skills/         # built-in Markdown skills
 ├── agents/         # NativeAgent boundary and Codex adapter
 ├── git/            # commit resolution; worktrees/candidate operations planned
-├── verification/   # shipyard.yaml and trusted TEST execution
+├── verification/   # frozen shipyard.yaml; trusted TEST execution planned
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
 └── persistence/    # filesystem intent store; RunStore planned
@@ -203,6 +203,12 @@ fetch, reset, commit, or ref update and preserves dirty developer state.
 Each call resolves afresh. Run creation must eventually call once and persist
 the resulting immutable base SHA. Workspace/candidate operations remain planned.
 
+`read_file_at_commit` reads repository-root-relative blob bytes at a validated
+actual commit SHA without consulting mutable refs or checkout files. Git replacement
+handling is disabled for object type/content reads so the requested original
+commit cannot silently supply replacement configuration. Read failures preserve
+their causes in `GitReadError`.
+
 The full Git boundary will own:
 
 - base ref resolution to immutable `base_sha`;
@@ -214,9 +220,15 @@ Local uncommitted developer state is ignored.
 
 ### `verification`
 
-Loads `shipyard.yaml` from `base_sha` and runs every mandatory check.
+The implemented loader reads root `shipyard.yaml` from an exact supplied base SHA,
+parses UTF-8 YAML using safe unique-key mappings, and validates frozen domain
+settings. Version 1 contains only ordered checks with unique IDs and nonblank
+command strings; all checks are mandatory. Snapshots retain the base SHA and
+source-byte SHA-256 without source text, generated identities, or timestamps.
 
-Missing verification configuration or zero checks produces `CONFIGURATION_ERROR` before agent execution.
+Missing/invalid configuration or zero checks raises `VerificationConfigError`
+synchronously. Trusted TEST execution, configuration persistence, and mapping
+failures to Run `CONFIGURATION_ERROR` before agent invocation remain planned.
 
 **Invariant:** model output can never override a failed trusted check.
 

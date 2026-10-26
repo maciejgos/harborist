@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation, local Markdown intake, filesystem intent persistence, and Git base resolution.
+> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, and frozen verification configuration.
 
 ## Development
 
@@ -124,6 +124,38 @@ Each explicit call resolves afresh. Later Run creation must resolve once and
 persist the SHA; this adapter does not freeze a Run contract, create worktrees,
 or manage candidate commits/refs. See the
 [Git base resolution specification](spec/009-git-base-resolution/spec.md).
+
+## Frozen verification configuration
+
+Target repositories commit a narrow `shipyard.yaml`:
+
+```yaml
+version: 1
+checks:
+  - id: tests
+    command: pytest
+```
+
+Every listed check is mandatory. At least one check is required; IDs must be
+unique and commands nonblank. Unknown fields, unsupported versions, duplicate YAML
+keys, and unsafe object tags are rejected. Command strings retain their exact text.
+
+```python
+from shipyard.verification import load_verification_config
+
+base_sha = repository.resolve_base()
+verification = load_verification_config(repository=repository, base_sha=base_sha)
+```
+
+The loader reads the root `shipyard.yaml` from that exact commit, ignoring index
+and working-tree edits. Its immutable snapshot retains validated settings, base
+SHA, and a SHA-256 of the original file bytes. Git replacement refs cannot substitute
+other content for committed-file reads. YAML source text is not retained.
+
+`VerificationConfigError` reports read/parsing/validation failures with causes.
+Checks are not executed, and Run outcomes are not changed. TEST execution,
+configuration persistence, and the full frozen Run contract remain planned. See
+the [verification configuration specification](spec/010-verification-config/spec.md).
 
 ## Workflow
 

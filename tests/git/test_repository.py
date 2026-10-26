@@ -1,5 +1,6 @@
 """Resolve real committed state without changing the repository."""
 
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -7,7 +8,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from shipyard.git import GitRepository, GitResolutionError
+from shipyard.git import GitReadError, GitRepository, GitResolutionError
+from shipyard.verification import (
+    VerificationConfigError,
+    load_verification_config,
+)
 
 
 def git(path: Path, *args: str) -> str:
@@ -278,3 +283,166 @@ def test_subprocess_environment_preserves_configuration_without_repo_overrides(
     assert calls == 1
     assert all(os.environ[name] == "caller-repository-override" for name in overrides)
     assert os.environ["GIT_OPTIONAL_LOCKS"] == "1"
+
+
+def test_read_file_uses_exact_commit_and_root_relative_path(
+    repository_path: Path,
+) -> None:
+    nested = repository_path / "nested"
+    nested.mkdir()
+    repository = GitRepository(path=nested)
+    base = repository.resolve_base(ref="HEAD~1")
+    (repository_path / "tracked.txt").write_bytes(b"Checkout must not be read")
+    assert (
+        repository.read_file_at_commit(commit_sha=base, path="./tracked.txt")
+        == b"First version"
+    )
+
+
+@pytest.mark.parametrize("path", ["missing.yaml", ""])
+def test_read_file_rejects_missing_or_non_blob_path(
+    repository_path: Path, path: str
+) -> None:
+    repository = GitRepository(path=repository_path)
+    with pytest.raises(GitReadError) as caught:
+        repository.read_file_at_commit(commit_sha=repository.resolve_base(), path=path)
+    assert repr(path) in str(caught.value)
+    assert caught.value.__cause__ is not None
+
+
+def test_read_file_rejects_directory_target(repository_path: Path) -> None:
+    directory = repository_path / "config"
+    directory.mkdir()
+    (directory / "file").write_bytes(b"data")
+    git(repository_path, "add", "config")
+    git(repository_path, "commit", "-m", "Directory target")
+    repository = GitRepository(path=repository_path)
+    with pytest.raises(GitReadError):
+        repository.read_file_at_commit(
+            commit_sha=repository.resolve_base(), path="config"
+        )
+
+
+def test_read_file_requires_commit_identity_without_tag_peeling(
+    repository_path: Path,
+) -> None:
+    repository = GitRepository(path=repository_path)
+    with pytest.raises(ValidationError):
+        repository.read_file_at_commit(commit_sha="main", path="tracked.txt")
+    git(repository_path, "tag", "-a", "tag-object", "-m", "Annotated")
+    tag_sha = git(repository_path, "rev-parse", "tag-object")
+    with pytest.raises(GitReadError):
+        repository.read_file_at_commit(commit_sha=tag_sha, path="tracked.txt")
+
+
+@pytest.mark.parametrize("path", ["/tracked.txt", "../tracked.txt"])
+def test_read_file_rejects_paths_outside_repository(
+    repository_path: Path, path: str
+) -> None:
+    repository = GitRepository(path=repository_path)
+    with pytest.raises(GitReadError):
+        repository.read_file_at_commit(commit_sha=repository.resolve_base(), path=path)
+
+
+def test_verification_snapshot_ignores_checkout_and_later_commits(
+    repository_path: Path,
+) -> None:
+    source = b"version: 1\nchecks:\n  - id: tests\n    command: pytest\n"
+    path = repository_path / "shipyard.yaml"
+    path.write_bytes(source)
+    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "commit", "-m", "Committed verification config")
+    repository = GitRepository(path=repository_path)
+    base = repository.resolve_base()
+    snapshot = load_verification_config(repository=repository, base_sha=base)
+    serialized = snapshot.model_dump_json()
+    assert snapshot.base_sha == base
+    assert snapshot.source_sha256 == hashlib.sha256(source).hexdigest()
+    path.write_bytes(b"version: 1\nchecks: [{id: tests, command: staged-command}]\n")
+    git(repository_path, "add", "shipyard.yaml")
+    path.write_bytes(b"Invalid uncommitted configuration")
+    index = repository_path / ".git" / "index"
+    before_index = index.read_bytes()
+    assert (
+        load_verification_config(repository=repository, base_sha=base).model_dump_json()
+        == serialized
+    )
+    assert index.read_bytes() == before_index
+    assert path.read_bytes() == b"Invalid uncommitted configuration"
+    git(repository_path, "commit", "-m", "Change committed command")
+    assert repository.resolve_base() != base
+    assert snapshot.model_dump_json() == serialized
+    assert (
+        load_verification_config(repository=repository, base_sha=base).model_dump_json()
+        == serialized
+    )
+    newer = load_verification_config(
+        repository=repository, base_sha=repository.resolve_base()
+    )
+    assert newer.config.checks[0].command == "staged-command"
+    assert snapshot.config.checks[0].command == "pytest"
+
+
+def test_verification_source_digest_captures_yaml_formatting(
+    repository_path: Path,
+) -> None:
+    path = repository_path / "shipyard.yaml"
+    path.write_bytes(b"version: 1\nchecks: [{id: tests, command: pytest}]\n")
+    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "commit", "-m", "Initial config")
+    repository = GitRepository(path=repository_path)
+    before = load_verification_config(
+        repository=repository, base_sha=repository.resolve_base()
+    )
+    path.write_bytes(path.read_bytes() + b"# formatting provenance\n")
+    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "commit", "-m", "Add config comment")
+    after = load_verification_config(
+        repository=repository, base_sha=repository.resolve_base()
+    )
+    assert after.config == before.config
+    assert after.source_sha256 != before.source_sha256
+    assert after.source_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_verification_reads_original_commit_despite_git_replacement(
+    repository_path: Path,
+) -> None:
+    path = repository_path / "shipyard.yaml"
+    path.write_bytes(b"version: 1\nchecks: [{id: tests, command: original-check}]\n")
+    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "commit", "-m", "Original base")
+    repository = GitRepository(path=repository_path)
+    base = repository.resolve_base()
+    path.write_bytes(b"version: 1\nchecks: [{id: tests, command: replacement-check}]\n")
+    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "commit", "-m", "Replacement commit")
+    replacement = repository.resolve_base()
+    git(repository_path, "replace", base, replacement)
+    snapshot = load_verification_config(repository=repository, base_sha=base)
+    assert snapshot.base_sha == base
+    assert snapshot.config.checks[0].command == "original-check"
+
+
+@pytest.mark.parametrize(
+    "failure", ["missing", "nonexistent-commit", "directory", "invalid-config"]
+)
+def test_configuration_load_failures_include_base_context(
+    repository_path: Path, failure: str
+) -> None:
+    path = repository_path / "shipyard.yaml"
+    if failure == "directory":
+        path.mkdir()
+        (path / "nested").write_bytes(b"not a config file")
+    elif failure == "invalid-config":
+        path.write_bytes(b"version: 2\nchecks: []\n")
+    if path.exists():
+        git(repository_path, "add", "shipyard.yaml")
+        git(repository_path, "commit", "-m", "Invalid config target")
+    repository = GitRepository(path=repository_path)
+    base = "0" * 40 if failure == "nonexistent-commit" else repository.resolve_base()
+    with pytest.raises(VerificationConfigError) as caught:
+        load_verification_config(repository=repository, base_sha=base)
+    assert base in str(caught.value)
+    assert "shipyard.yaml" in str(caught.value)
+    assert caught.value.__cause__ is not None
