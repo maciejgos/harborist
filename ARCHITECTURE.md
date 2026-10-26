@@ -143,7 +143,7 @@ src/shipyard/
 ├── verification/   # frozen shipyard.yaml; trusted TEST execution planned
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
-└── persistence/    # filesystem intent store; RunStore planned
+└── persistence/    # create-only intent and complete Run captures
 ```
 
 ### `domain`
@@ -176,7 +176,7 @@ Execution snapshots require actual methodology text with SHA-256 digests, explic
 names/versions, a canonical playbook, unique skill names, an agent profile,
 trusted-local policy and a budget with a verification reserve. They declare future
 execution inputs without implementing the engine, skill composition or execution.
-Contract persistence and intake orchestration remain planned;
+Intake orchestration remains planned;
 this record alone does not make a Run executable or complete Phase 2.
 
 ### `intake`
@@ -226,7 +226,7 @@ Repository-scoped environment overrides are cleared in a copy, normal configurat
 is preserved, and optional locking is disabled. The adapter performs no checkout,
 fetch, reset, commit, or ref update and preserves dirty developer state.
 
-Each call resolves afresh. Run creation must eventually call once and persist
+Each call resolves afresh. Run creation must call once and persist
 the resulting immutable base SHA. Workspace/candidate operations remain planned.
 
 `read_file_at_commit` reads repository-root-relative blob bytes at a validated
@@ -253,7 +253,7 @@ command strings; all checks are mandatory. Snapshots retain the base SHA and
 source-byte SHA-256 without source text, generated identities, or timestamps.
 
 Missing/invalid configuration or zero checks raises `VerificationConfigError`
-synchronously. Trusted TEST execution, configuration persistence, and mapping
+synchronously. Trusted TEST execution and mapping
 failures to Run `CONFIGURATION_ERROR` before agent invocation remain planned.
 
 **Invariant:** model output can never override a failed trusted check.
@@ -265,6 +265,7 @@ The PoC uses filesystem-only persistence:
 ```text
 ~/.shipyard/runs/<run-id>/
 ├── run.json
+├── contract.json
 ├── events.jsonl
 ├── evidence.json
 ├── intent.md
@@ -290,6 +291,13 @@ on failure and rejected by subsequent load/save operations. This is create-only
 intent persistence, without atomic multi-file publication or power-loss guarantees.
 General RunStore behavior, event persistence, and terminal-directory enforcement
 remain planned.
+
+`FileRunStore` exclusively reserves a fresh Run directory and composes the intent
+store with CREATED run.json and complete contract.json. The contract is written
+last. Loading requires valid records with matching ownership and identical intent.
+Incomplete directories are retained, rejected on load and never overwritten on
+save. This supports durable Phase 2 intake; general Run lifecycle/event persistence
+and terminal-directory enforcement remain future work.
 
 ## Boundaries
 

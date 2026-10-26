@@ -1,9 +1,17 @@
 """Representative frozen execution input shared by acceptance tests."""
 
 import hashlib
+from uuid import UUID
 
 import pytest
 
+from shipyard.domain import (
+    IntentSnapshot,
+    RunContract,
+    VerificationCheck,
+    VerificationConfig,
+    VerificationConfigSnapshot,
+)
 from shipyard.domain.execution import (
     AgentProfile,
     ExecutionBudget,
@@ -32,4 +40,24 @@ def execution() -> ExecutionSnapshot:
         ),
         sandbox_policy="trusted-local",
         budget=ExecutionBudget(total_seconds=1800, verification_reserve_seconds=300),
+    )
+
+
+@pytest.fixture
+def frozen_contract(execution: ExecutionSnapshot) -> RunContract:
+    run_id = UUID("00000000-0000-4000-8000-000000000001")
+    return RunContract(
+        run_id=run_id,
+        intent=IntentSnapshot.create(
+            run_id=run_id, source_ref="file:/issue.md", markdown="# Request\r\n"
+        ),
+        base_sha="a" * 40,
+        verification=VerificationConfigSnapshot(
+            base_sha="a" * 40,
+            source_sha256="b" * 64,
+            config=VerificationConfig(
+                version=1, checks=(VerificationCheck(id="tests", command="pytest"),)
+            ),
+        ),
+        execution=execution,
     )

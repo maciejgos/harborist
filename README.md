@@ -73,8 +73,7 @@ actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
 UTF-8 decoding errors with their original causes.
 
 This API returns an in-memory capture and leaves the Run unchanged. Optional YAML front matter is retained as source text rather than interpreted.
-Common source dispatch and GitHub normalization are implemented; CLI intake and
-contract persistence remain planned. See the
+Common source dispatch and GitHub normalization are implemented; CLI intake remains planned. See the
 [Markdown intake specification](spec/007-markdown-intake/spec.md).
 
 ## GitHub Issue intake
@@ -167,7 +166,7 @@ other content for committed-file reads. YAML source text is not retained.
 
 `VerificationConfigError` reports read/parsing/validation failures with causes.
 Checks are not executed, and Run outcomes are not changed. TEST execution,
-configuration persistence, and the full frozen Run contract remain planned. See
+and intake orchestration remain planned. See
 the [verification configuration specification](spec/010-verification-config/spec.md).
 
 ## Frozen Run contract
@@ -200,9 +199,22 @@ only the canonical `bounded-repository-change` playbook is supported. Empty skil
 lists are explicit. The reserve must be positive and smaller than the total.
 
 This domain record performs no I/O or execution and does not grant verification.
-Old partial contracts without execution settings are rejected. Contract persistence, one-contract-per-Run enforcement and intake orchestration
-remain planned; Phase 2 is not yet complete. See the
+Old partial contracts without execution settings are rejected. Intake orchestration remains planned; Phase 2 is not yet complete. See the
 [execution snapshot specification](spec/012-execution-snapshot/spec.md).
+
+## Complete Run persistence
+
+`FileRunStore(root=Path(".shipyard/runs")).save(contract)` reserves a fresh Run
+directory and stores `run.json` in CREATED, exact `intent.md`, `intent.json` and
+`contract.json`. Contract JSON is written last as the completion marker. `load`
+validates all four records and their agreement without reading original inputs.
+Existing directories, including partial captures, raise `RunAlreadyExistsError`.
+
+Read/write/validation failures raise `RunPersistenceError` with their causes.
+Partial evidence is retained for inspection. To retry, create a new Run identity;
+there is no automatic repair or overwrite and no multi-file atomicity/power-loss
+guarantee. This store supports CREATED captures, not later lifecycle updates.
+See [Run persistence specification](spec/015-run-contract-persistence/spec.md).
 
 ## Operator execution settings
 
