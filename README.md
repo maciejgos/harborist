@@ -309,6 +309,20 @@ Guidance is kept separate from the playbook's control metadata. Prose never
 changes dependencies or executor authority. Provider prompt formatting/invocation
 remains Phase 4. See [stage guidance specification](spec/021-stage-guidance/spec.md).
 
+## Playbook routing
+
+`PlaybookExecution(playbook=definition, attempt=attempt)` starts with INTAKE as its
+next stage. `accept(StageReceipt(...))` returns a new immutable execution only when
+the receipt matches the required stage and Candidate/Attempt identity. Successful
+routing cannot skip TEST; a failed TEST routes to PACKAGE and blocks REVIEW.
+Failures, cancellation and early exits also retain PACKAGE outside budget. PACKAGE
+ends routing even if packaging fails. Validated JSON reloads enforce the same rules.
+
+Receipts must come from trusted orchestration after actual executor validation.
+They are declarations, not proof that checks ran or review passed; this engine
+performs no I/O and does not grant VERIFIED. See the
+[routing specification](spec/022-playbook-routing/spec.md).
+
 ## Workflow
 
 ```text

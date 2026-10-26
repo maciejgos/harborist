@@ -245,6 +245,13 @@ with exact content/provenance. Shipyard-owned stages do not receive composed age
 skills. Guidance cannot add steps, dependencies, executors or hooks; provider prompt
 formatting and execution remain Phase 4.
 
+`PlaybookExecution` is a pure immutable routing engine bound to one Attempt.
+Validated harness receipts advance only the next canonical stage. BUILD binds the
+Candidate; TEST and REVIEW must retain its exact identity. Failures and early exits
+route to PACKAGE; a failed TEST cannot reach REVIEW. PACKAGE ends routing even on
+failure. History is validated again on JSON reload. This does not prove executor
+success, run checks, enforce elapsed budget or grant a Run outcome.
+
 ### `agents`
 
 Defines the `NativeAgent` boundary. Codex is the first adapter.
