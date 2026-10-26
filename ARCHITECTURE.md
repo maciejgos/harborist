@@ -176,7 +176,7 @@ Execution snapshots require actual methodology text with SHA-256 digests, explic
 names/versions, a canonical playbook, unique skill names, an agent profile,
 trusted-local policy and a budget with a verification reserve. They declare future
 execution inputs without implementing the engine, skill composition or execution.
-Contract persistence, settings loading and intake orchestration remain planned;
+Contract persistence and intake orchestration remain planned;
 this record alone does not make a Run executable or complete Phase 2.
 
 ### `intake`
@@ -191,6 +191,15 @@ The snapshot has no live dependency on the source file. The adapter performs no
 writes or Run transitions; the intent store handles persistence separately.
 Semantic normalization, metadata extraction, and the complete frozen Run contract
 are deferred.
+
+### `configuration`
+
+Operator YAML is loaded into a complete immutable execution snapshot. Methodology
+paths resolve beside the settings file and exact UTF-8 content is hashed. Safe
+unique-key YAML parsing is shared with verification configuration. Budget cannot
+be specified in YAML: Shipyard supplies defaults or an explicit application budget.
+No new execution-semantic project settings are supported by this PoC beyond the
+base-revision verification configuration.
 
 ### `application`
 

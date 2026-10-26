@@ -187,10 +187,24 @@ only the canonical `bounded-repository-change` playbook is supported. Empty skil
 lists are explicit. The reserve must be positive and smaller than the total.
 
 This domain record performs no I/O or execution and does not grant verification.
-Old partial contracts without execution settings are rejected. Settings loading,
-contract persistence, one-contract-per-Run enforcement and intake orchestration
+Old partial contracts without execution settings are rejected. Contract persistence, one-contract-per-Run enforcement and intake orchestration
 remain planned; Phase 2 is not yet complete. See the
 [execution snapshot specification](spec/012-execution-snapshot/spec.md).
+
+## Operator execution settings
+
+`load_execution_settings(path=Path("operator.yaml"))` captures a version 1 YAML
+file with `playbook` and `skills` source records (`name`, `version`, `path`), a
+complete `agent_profile` (`name`, `version`, `provider`, `model`, `arguments`) and
+`sandbox_policy: trusted-local`. Asset paths resolve beside the settings file.
+Actual UTF-8 content and SHA-256 digests are frozen, so future file edits have no
+live link to a snapshot. The agent model is an explicit operator choice.
+
+Budget is excluded from YAML. Shipyard defaults to 1800 total seconds with 300
+reserved for verification; callers may pass an explicit `ExecutionBudget` to the
+loader. The target repository cannot set it. Unknown fields, duplicate YAML keys,
+unsupported versions, invalid records and unreadable assets fail with
+`SettingsError`. See [settings specification](spec/013-execution-settings/spec.md).
 
 ## Workflow
 
