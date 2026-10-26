@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation: lifecycle, revision and artifact identity, stage-result contracts, and event records.
+> **Status:** PoC domain foundation and local Markdown intake into immutable in-memory snapshots.
 
 ## Development
 
@@ -50,6 +50,31 @@ timestamps, normalized to UTC. `DomainEvent` supports discriminated JSON validat
 through Pydantic's `TypeAdapter`. Records do not emit events, establish historical
 ordering, or change domain state; persistence and full cancellation audit metadata
 are planned. See the [domain event specification](spec/005-domain-events/spec.md).
+
+## Markdown intake
+
+Capture a local issue file through the Python API:
+
+```python
+from pathlib import Path
+
+from shipyard.domain import Run
+from shipyard.intake import read_markdown_intent
+
+run = Run.create()
+intent = read_markdown_intent(run_id=run.run_id, path=Path("issue.md"))
+```
+
+`IntentSnapshot` preserves exact UTF-8 content, including front matter, BOM, and
+line endings, with a validated artifact digest/size and resolved source reference.
+Later file edits or deletion do not change the snapshot. Empty content is accepted;
+actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
+UTF-8 decoding errors with their original causes.
+
+This API returns an in-memory capture and leaves the Run unchanged. Writing
+`intent.md`, semantic normalization, YAML metadata extraction, GitHub/CLI intake,
+and the full frozen Run contract are planned. See the
+[Markdown intake specification](spec/007-markdown-intake/spec.md).
 
 ## Workflow
 

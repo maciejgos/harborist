@@ -14,6 +14,7 @@ from shipyard.domain.event import (
     RunEvent,
     RunEventType,
 )
+from shipyard.domain.intent import IntentSnapshot
 from shipyard.domain.revision import GitCommitSha
 from shipyard.domain.run import (
     FailureReason,
@@ -53,6 +54,7 @@ __all__ = [
     "DomainEvent",
     "FailureReason",
     "GitCommitSha",
+    "IntentSnapshot",
     "InvalidRunTransition",
     "InvalidStageOutput",
     "PlanStageResult",

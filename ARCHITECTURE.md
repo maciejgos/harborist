@@ -135,6 +135,7 @@ src/shipyard/
 ├── cli/            # CLI entry point and presentation
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
 ├── application/    # Run orchestration and AttemptExecutor
+├── intake/         # Source adapters; local Markdown capture
 ├── playbooks/      # bounded-repository-change
 ├── skills/         # built-in Markdown skills
 ├── agents/         # NativeAgent boundary and Codex adapter
@@ -155,12 +156,25 @@ Attempt
 RunContract
 Candidate
 StageResult
+IntentSnapshot
 RunOutcome
 FailureReason
 ExecutionBudget
 ```
 
 **Invariant:** domain code does not depend on CLI, Codex-specific details, GitHub transport, or filesystem layout.
+
+### `intake`
+
+The Markdown adapter resolves a local path, reads bytes once, strictly decodes
+UTF-8, and returns a validated in-memory `IntentSnapshot`. It preserves the source
+text, including front matter, BOM, and line endings, and records resolved source
+provenance. Filesystem/decoding failures retain their causes in
+`MarkdownIntakeError`.
+
+The snapshot has no live dependency on the source file. Writing `intent.md`,
+semantic normalization, metadata extraction, and the complete frozen Run contract
+are deferred. The adapter performs no writes or Run transitions.
 
 ### `application`
 
