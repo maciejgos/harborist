@@ -14,6 +14,12 @@ from shipyard.domain.event import (
     RunEvent,
     RunEventType,
 )
+from shipyard.domain.execution import (
+    AgentProfile,
+    ExecutionBudget,
+    ExecutionSnapshot,
+    MethodologyAsset,
+)
 from shipyard.domain.intent import IntentSnapshot
 from shipyard.domain.revision import GitCommitSha
 from shipyard.domain.run import (
@@ -45,6 +51,7 @@ from shipyard.domain.verification import (
 )
 
 __all__ = [
+    "AgentProfile",
     "AgentStage",
     "ArtifactKind",
     "ArtifactReference",
@@ -58,11 +65,14 @@ __all__ = [
     "CriterionStatus",
     "DesignStageResult",
     "DomainEvent",
+    "ExecutionBudget",
+    "ExecutionSnapshot",
     "FailureReason",
     "GitCommitSha",
     "IntentSnapshot",
     "InvalidRunTransition",
     "InvalidStageOutput",
+    "MethodologyAsset",
     "PlanStageResult",
     "ReviewStageResult",
     "ReviewSummary",

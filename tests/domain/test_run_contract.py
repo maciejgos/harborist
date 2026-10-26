@@ -13,10 +13,11 @@ from shipyard.domain import (
     VerificationConfig,
     VerificationConfigSnapshot,
 )
+from shipyard.domain.execution import ExecutionSnapshot
 
 
 @pytest.fixture
-def contract() -> RunContract:
+def contract(execution: ExecutionSnapshot) -> RunContract:
     run_id = UUID("00000000-0000-4000-8000-000000000001")
     intent = IntentSnapshot.create(
         run_id=run_id,
@@ -35,7 +36,11 @@ def contract() -> RunContract:
         ),
     )
     return RunContract(
-        run_id=run_id, intent=intent, base_sha="a" * 40, verification=verification
+        run_id=run_id,
+        intent=intent,
+        base_sha="a" * 40,
+        verification=verification,
+        execution=execution,
     )
 
 
@@ -45,6 +50,7 @@ def test_composition_preserves_supplied_snapshots(contract: RunContract) -> None
         intent=contract.intent,
         base_sha=contract.base_sha,
         verification=contract.verification,
+        execution=contract.execution,
     )
     assert composed.intent is contract.intent
     assert composed.verification is contract.verification
@@ -54,6 +60,7 @@ def test_composition_preserves_supplied_snapshots(contract: RunContract) -> None
         "intent",
         "base_sha",
         "verification",
+        "execution",
     }
 
 
@@ -104,3 +111,10 @@ def test_contract_and_nested_snapshot_are_frozen(contract: RunContract) -> None:
 def test_unknown_contract_fields_are_rejected(contract: RunContract) -> None:
     with pytest.raises(ValidationError, match="extra_forbidden"):
         RunContract.model_validate({**contract.model_dump(), "profile": "future"})
+
+
+def test_execution_snapshot_is_required(contract: RunContract) -> None:
+    payload = contract.model_dump()
+    del payload["execution"]
+    with pytest.raises(ValidationError, match="execution"):
+        RunContract.model_validate(payload)

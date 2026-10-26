@@ -1,10 +1,11 @@
-"""A partial frozen execution contract, independent of lifecycle and I/O."""
+"""A frozen execution contract, independent of lifecycle and I/O."""
 
 from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from shipyard.domain.execution import ExecutionSnapshot
 from shipyard.domain.intent import IntentSnapshot
 from shipyard.domain.revision import GitCommitSha
 from shipyard.domain.verification import VerificationConfigSnapshot
@@ -13,7 +14,6 @@ from shipyard.domain.verification import VerificationConfigSnapshot
 class RunContract(BaseModel):
     """Bind existing inputs by Run and base; declared provenance is not proof.
 
-    Methodology, execution profile, budget, and policy fields remain future work.
     Use validated construction/deserialization rather than trusted-data bypasses.
     """
 
@@ -23,6 +23,7 @@ class RunContract(BaseModel):
     intent: IntentSnapshot
     base_sha: GitCommitSha
     verification: VerificationConfigSnapshot
+    execution: ExecutionSnapshot
 
     @model_validator(mode="after")
     def validate_bindings(self) -> Self:

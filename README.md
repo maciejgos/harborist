@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, frozen verification configuration, and a minimal Run contract.
+> **Status:** PoC domain foundation, local intake/persistence, Git base resolution, frozen verification configuration, and a complete in-memory Run contract.
 
 ## Development
 
@@ -157,7 +157,7 @@ Checks are not executed, and Run outcomes are not changed. TEST execution,
 configuration persistence, and the full frozen Run contract remain planned. See
 the [verification configuration specification](spec/010-verification-config/spec.md).
 
-## Minimal frozen Run contract
+## Frozen Run contract
 
 Compose the previously captured inputs without repeating intake or Git resolution:
 
@@ -169,6 +169,7 @@ contract = RunContract(
     intent=intent,
     base_sha=base_sha,
     verification=verification,
+    execution=execution,
 )
 serialized = contract.model_dump_json()
 restored_contract = RunContract.model_validate_json(serialized)
@@ -179,12 +180,17 @@ base SHA. Equivalent validated values, including the same existing identities,
 produce identical compact JSON regardless of input mapping key order. Exact
 Markdown, check order, command text, and provenance survive round-trips.
 
-This is a domain-only, partial execution contract. It performs no I/O, generates
-no identities, and does not change Run lifecycle or grant verification. Provenance
-consistency does not independently prove Git content. Contract persistence and
-one-contract-per-Run enforcement remain planned, alongside playbook/skill versions,
-agent profile, execution budget, and policy fields. Phase 2 is not yet complete.
-See the [Run contract specification](spec/011-run-contract/spec.md).
+The required `ExecutionSnapshot` freezes playbook/skill names, versions, exact
+content and SHA-256 digests, an explicit agent profile, trusted-local policy, and
+an execution budget with a verification reserve. Skill names must be unique;
+only the canonical `bounded-repository-change` playbook is supported. Empty skill
+lists are explicit. The reserve must be positive and smaller than the total.
+
+This domain record performs no I/O or execution and does not grant verification.
+Old partial contracts without execution settings are rejected. Settings loading,
+contract persistence, one-contract-per-Run enforcement and intake orchestration
+remain planned; Phase 2 is not yet complete. See the
+[execution snapshot specification](spec/012-execution-snapshot/spec.md).
 
 ## Workflow
 
