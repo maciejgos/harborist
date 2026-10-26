@@ -15,8 +15,10 @@ from shipyard.persistence import (
     FileRunStore,
     RunAlreadyExistsError,
 )
+from shipyard.playbooks import MethodologyError
 from shipyard.verification import VerificationConfigError
 from tests.git_helpers import git, init_repository
+from tests.methodology_helpers import asset, playbook_asset, skill_asset
 
 
 @pytest.fixture
@@ -195,3 +197,46 @@ def test_explicit_ref_selects_older_committed_settings(
     )
     assert contract.base_sha == original
     assert contract.verification.config.checks[0].command == "pytest"
+
+
+@pytest.mark.parametrize("invalid", ["legacy", "weak-test", "hook"])
+def test_invalid_methodology_publishes_no_run(
+    tmp_path: Path, target: Path, execution: ExecutionSnapshot, invalid: str
+) -> None:
+    playbook = playbook_asset()
+    skills = ()
+    if invalid == "legacy":
+        playbook = asset(
+            name=playbook.name, version=playbook.version, content="# Legacy guidance"
+        )
+    elif invalid == "weak-test":
+        playbook = asset(
+            name=playbook.name,
+            version=playbook.version,
+            content=playbook.content.replace("trusted_test", "native_agent"),
+        )
+    else:
+        skill = skill_asset()
+        skills = (
+            asset(
+                name=skill.name,
+                version=skill.version,
+                content=skill.content.replace(
+                    "description:", "hooks: [execute]\ndescription:"
+                ),
+            ),
+        )
+    snapshot = ExecutionSnapshot.model_validate(
+        {**execution.model_dump(), "playbook": playbook, "skills": skills}
+    )
+    issue = tmp_path / "issue.md"
+    issue.write_text("Request")
+    root = tmp_path / "runs"
+    with pytest.raises(MethodologyError):
+        create_run(
+            source=f"file:{issue}",
+            repository=GitRepository(path=target),
+            store=FileRunStore(root=root),
+            execution=snapshot,
+        )
+    assert not root.exists()

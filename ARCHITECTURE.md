@@ -220,7 +220,9 @@ base-revision verification configuration.
 The implemented `create_run` composes source capture, one base resolution, committed
 verification loading and complete contract storage through explicit parameters. It
 returns a durable CREATED capture without agent/check execution. Non-CREATED
-inputs and capture failures are rejected. The planned `AttemptExecutor` will
+inputs and capture failures are rejected. New intake compiles all frozen
+methodology before external I/O, rejecting legacy plain assets or weakened topology.
+Historical captures remain inspectable without being silently migrated. The planned `AttemptExecutor` will
 execute the canonical playbook and enforce transitions, budgets and outcomes.
 
 ### `playbooks` / `skills`

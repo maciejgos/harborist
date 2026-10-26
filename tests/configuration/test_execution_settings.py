@@ -15,8 +15,11 @@ def test_freezes_content_and_ignores_later_settings_changes(tmp_path: Path) -> N
     path = write_settings(tmp_path)
     snapshot = load_execution_settings(path=path)
     assert snapshot.playbook.name == "bounded-repository-change"
-    assert snapshot.skills[0].content == "# Skill\r\n"
-    assert snapshot.skills[0].sha256 == hashlib.sha256(b"# Skill\r\n").hexdigest()
+    assert snapshot.skills[0].content.encode() == (tmp_path / "skill.md").read_bytes()
+    assert (
+        snapshot.skills[0].sha256
+        == hashlib.sha256((tmp_path / "skill.md").read_bytes()).hexdigest()
+    )
     assert snapshot.budget == ExecutionBudget(
         total_seconds=1800, verification_reserve_seconds=300
     )

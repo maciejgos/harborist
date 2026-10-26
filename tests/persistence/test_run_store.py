@@ -92,3 +92,25 @@ def test_root_io_error_is_wrapped(tmp_path: Path, frozen_contract: RunContract) 
     with pytest.raises(RunPersistenceError) as caught:
         FileRunStore(root=root).save(frozen_contract)
     assert isinstance(caught.value.__cause__, OSError)
+
+
+def test_legacy_capture_remains_readable_without_silent_migration(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.playbooks import MethodologyError
+    from shipyard.skills import compile_methodology
+    from tests.methodology_helpers import asset
+
+    snapshot = frozen_contract.execution.model_dump()
+    snapshot["playbook"] = asset(
+        name="bounded-repository-change", version="1", content="# Legacy plain Markdown"
+    )
+    legacy = RunContract.model_validate(
+        {**frozen_contract.model_dump(), "execution": snapshot}
+    )
+    store = FileRunStore(root=tmp_path)
+    store.save(legacy)
+    restored = store.load(legacy.run_id)
+    assert restored == legacy
+    with pytest.raises(MethodologyError):
+        compile_methodology(restored.execution)

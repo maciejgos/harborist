@@ -2,10 +2,12 @@
 
 from pathlib import Path
 
+from tests.methodology_helpers import playbook_asset, skill_asset
+
 
 def write_settings(root: Path) -> Path:
-    (root / "playbook.md").write_text("# Canonical playbook\n", encoding="utf-8")
-    (root / "skill.md").write_bytes(b"# Skill\r\n")
+    (root / "playbook.md").write_bytes(playbook_asset().content.encode())
+    (root / "skill.md").write_bytes(skill_asset(body="# Skill\r\n").content.encode())
     path = root / "settings.yaml"
     path.write_text(
         "version: 1\n"

@@ -1,6 +1,5 @@
 """Representative frozen execution input shared by acceptance tests."""
 
-import hashlib
 from uuid import UUID
 
 import pytest
@@ -16,20 +15,14 @@ from shipyard.domain.execution import (
     AgentProfile,
     ExecutionBudget,
     ExecutionSnapshot,
-    MethodologyAsset,
 )
+from tests.methodology_helpers import playbook_asset
 
 
 @pytest.fixture
 def execution() -> ExecutionSnapshot:
-    content = "# Playbook\nINTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE\n"
     return ExecutionSnapshot(
-        playbook=MethodologyAsset(
-            name="bounded-repository-change",
-            version="1",
-            content=content,
-            sha256=hashlib.sha256(content.encode()).hexdigest(),
-        ),
+        playbook=playbook_asset(),
         skills=(),
         agent_profile=AgentProfile(
             name="test-agent",

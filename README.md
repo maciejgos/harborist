@@ -267,8 +267,13 @@ unsupported versions, invalid records and unreadable assets fail with
 `shipyard.application.create_run` accepts a source selector, `GitRepository`,
 `FileRunStore`, a complete `ExecutionSnapshot`, and an optional base ref. It creates
 an identity, resolves the base once, loads committed verification settings, captures
-intent and saves the contract in CREATED. An explicitly supplied CREATED `Run` may
+intent and saves the contract in CREATED. It first compiles all frozen methodology,
+rejecting invalid topology or skill metadata before Git/source/storage I/O. An explicitly supplied CREATED `Run` may
 be used instead. Errors propagate through the existing adapter boundaries.
+
+The settings loader captures bytes; the application owns this methodology
+validation gate. Historical captures remain inspectable without migration.
+See [intake methodology validation](spec/024-intake-methodology-validation/spec.md).
 
 The use case performs no agent calls or check execution. Invalid committed
 configuration is rejected before source capture/storage. Later execution failures
