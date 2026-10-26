@@ -2,8 +2,8 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 2 implementation complete: file/GitHub intake and durable frozen
-> Run contracts. Final acceptance audit pending. Workflow execution remains planned.
+> **Status:** Phase 2 complete: file/GitHub intake and durable frozen Run contracts.
+> Ready for Phase 3 (playbook engine and skills). Workflow execution remains planned.
 
 ## Development
 
@@ -230,7 +230,7 @@ lists are explicit. The reserve must be positive and smaller than the total.
 
 This domain record performs no I/O or execution and does not grant verification.
 Old partial contracts without execution settings are rejected. Intake orchestration
-and the CLI connect these boundaries. The Phase 2 acceptance audit remains planned. See the
+and the CLI connect these boundaries. See the
 [execution snapshot specification](spec/012-execution-snapshot/spec.md).
 
 ## Complete Run persistence
@@ -297,3 +297,4 @@ The PoC runs synchronously on the developer's machine. It uses the local environ
 - [Architecture](ARCHITECTURE.md)
 - [Product Requirements Document](docs/Product%20Requirements%20Document%20v1.0.md)
 - [Phase 1 acceptance audit](spec/006-phase1-acceptance-audit/report.md)
+- [Phase 2 acceptance audit](spec/018-phase2-acceptance-audit/report.md)

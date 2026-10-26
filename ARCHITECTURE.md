@@ -2,6 +2,10 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
+Phase 2 intake and frozen Run contracts are complete; see the
+[acceptance audit](spec/018-phase2-acceptance-audit/report.md). Engine and delivery
+execution remain later-phase work.
+
 ## Bird's Eye View
 
 Shipyard is a local, synchronous CLI application. It accepts a Markdown file or GitHub Issue, freezes the Run contract, executes one canonical playbook around a native coding agent, verifies the resulting Git commit, and writes durable evidence to the local filesystem.
@@ -141,8 +145,9 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point and presentation
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
-├── application/    # Run orchestration and AttemptExecutor
-├── intake/         # Source adapters; local Markdown capture
+├── application/    # durable intake; AttemptExecutor planned
+├── intake/         # local Markdown and authenticated gh capture
+├── configuration/  # operator settings and methodology content capture
 ├── playbooks/      # bounded-repository-change
 ├── skills/         # built-in Markdown skills
 ├── agents/         # NativeAgent boundary and Codex adapter
@@ -173,8 +178,8 @@ ExecutionBudget
 
 The implemented `RunContract` is a frozen execution contract, separate from
 Run lifecycle state. It composes existing `run_id`, `IntentSnapshot`, `base_sha`,
-`VerificationConfigSnapshot`, and `ExecutionSnapshot`, rejecting mismatched intent ownership or
-verification base SHA. Construction performs no I/O and generates no identities.
+`VerificationConfigSnapshot`, and `ExecutionSnapshot`, rejecting mismatched intent
+ownership or verification base SHA. Construction performs no I/O and generates no identities.
 Existing Pydantic JSON APIs preserve values and serialize equivalent validated
 inputs deterministically, including their existing identities. Matching provenance
 is a consistency check; committed-content reading remains the loader's job.
@@ -183,8 +188,8 @@ Execution snapshots require actual methodology text with SHA-256 digests, explic
 names/versions, a canonical playbook, unique skill names, an agent profile,
 trusted-local policy and a budget with a verification reserve. They declare future
 execution inputs without implementing the engine, skill composition or execution.
-Intake orchestration and CLI now persist these inputs; the Phase 2 acceptance
-audit remains planned. This record alone does not execute a Run.
+Intake orchestration and CLI persist these inputs, completing the Phase 2 frozen
+contract. This record alone does not execute a Run.
 
 ### `intake`
 
@@ -264,7 +269,8 @@ command strings; all checks are mandatory. Snapshots retain the base SHA and
 source-byte SHA-256 without source text, generated identities, or timestamps.
 
 Missing/invalid configuration or zero checks raises `VerificationConfigError`
-synchronously. Trusted TEST execution and mapping failures to Run `CONFIGURATION_ERROR` before agent invocation remain planned.
+synchronously. Trusted TEST execution and mapping failures to Run
+`CONFIGURATION_ERROR` before agent invocation remain planned.
 
 **Invariant:** model output can never override a failed trusted check.
 
