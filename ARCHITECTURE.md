@@ -189,8 +189,10 @@ provenance. Filesystem/decoding failures retain their causes in
 
 The snapshot has no live dependency on the source file. The adapter performs no
 writes or Run transitions; the intent store handles persistence separately.
-Semantic normalization, metadata extraction, and the complete frozen Run contract
-are deferred.
+Common source dispatch accepts file and GitHub selectors. GitHub captures title,
+body and labels once through authenticated gh, normalizing title/sorted label names
+and preserving body text. Comments are excluded. Optional local front matter stays
+source text; no schema is imposed. Source and target repositories are independent.
 
 ### `configuration`
 

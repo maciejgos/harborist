@@ -72,10 +72,23 @@ Later file edits or deletion do not change the snapshot. Empty content is accept
 actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
 UTF-8 decoding errors with their original causes.
 
-This API returns an in-memory capture and leaves the Run unchanged. Semantic
-normalization, YAML metadata extraction, GitHub/CLI intake, and the complete frozen
-Run contract are planned. See the
+This API returns an in-memory capture and leaves the Run unchanged. Optional YAML front matter is retained as source text rather than interpreted.
+Common source dispatch and GitHub normalization are implemented; CLI intake and
+contract persistence remain planned. See the
 [Markdown intake specification](spec/007-markdown-intake/spec.md).
+
+## GitHub Issue intake
+
+`read_github_intent(run_id=run.run_id, source="github:owner/repo#42")` reads title,
+body and labels once through authenticated local `gh`. Normalized intent contains
+an H1 title, a sorted JSON array of label names, then the exact body. Comments are
+excluded. Extra label transport metadata is ignored. `capture_intent` dispatches
+both supported source forms, independently of the target repository.
+
+Selectors are validated before launching `gh`. A missing executable, rejected
+credentials/process failure, 30-second timeout, or malformed response raises
+`GitHubIntakeError` with its cause. No GitHub write is performed. See the
+[GitHub intake specification](spec/014-github-intake/spec.md).
 
 ## Intent persistence
 
