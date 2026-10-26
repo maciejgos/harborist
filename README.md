@@ -72,3 +72,4 @@ The PoC runs synchronously on the developer's machine. It uses the local environ
 
 - [Architecture](ARCHITECTURE.md)
 - [Product Requirements Document](docs/Product%20Requirements%20Document%20v1.0.md)
+- [Phase 1 acceptance audit](spec/006-phase1-acceptance-audit/report.md)
