@@ -143,7 +143,7 @@ src/shipyard/
 ├── verification/   # shipyard.yaml and trusted TEST execution
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
-└── persistence/    # filesystem RunStore
+└── persistence/    # filesystem intent store; RunStore planned
 ```
 
 ### `domain`
@@ -172,9 +172,10 @@ text, including front matter, BOM, and line endings, and records resolved source
 provenance. Filesystem/decoding failures retain their causes in
 `MarkdownIntakeError`.
 
-The snapshot has no live dependency on the source file. Writing `intent.md`,
-semantic normalization, metadata extraction, and the complete frozen Run contract
-are deferred. The adapter performs no writes or Run transitions.
+The snapshot has no live dependency on the source file. The adapter performs no
+writes or Run transitions; the intent store handles persistence separately.
+Semantic normalization, metadata extraction, and the complete frozen Run contract
+are deferred.
 
 ### `application`
 
@@ -219,6 +220,7 @@ The PoC uses filesystem-only persistence:
 ├── events.jsonl
 ├── evidence.json
 ├── intent.md
+├── intent.json
 ├── spec.md
 ├── plan.md
 ├── review.md
@@ -227,6 +229,19 @@ The PoC uses filesystem-only persistence:
 ```
 
 Terminal Run directories are immutable.
+
+The implemented `FileIntentStore` persists captured intent under an explicit
+Runs root. `intent.md` holds exact UTF-8 bytes; `intent.json` holds only source
+reference and artifact metadata. Loading validates the metadata, content identity,
+and requested Run ownership through the existing domain contracts without reading
+the original issue.
+
+Intent saves create files exclusively and reject either reserved path if present.
+The content file is closed before metadata creation. Partial files are retained
+on failure and rejected by subsequent load/save operations. This is create-only
+intent persistence, without atomic multi-file publication or power-loss guarantees.
+General RunStore behavior, event persistence, and terminal-directory enforcement
+remain planned.
 
 ## Boundaries
 

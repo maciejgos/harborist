@@ -2,7 +2,7 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** PoC domain foundation and local Markdown intake into immutable in-memory snapshots.
+> **Status:** PoC domain foundation, local Markdown intake, and create-only filesystem intent persistence.
 
 ## Development
 
@@ -71,10 +71,35 @@ Later file edits or deletion do not change the snapshot. Empty content is accept
 actionability is a later DESIGN decision. `MarkdownIntakeError` wraps file and
 UTF-8 decoding errors with their original causes.
 
-This API returns an in-memory capture and leaves the Run unchanged. Writing
-`intent.md`, semantic normalization, YAML metadata extraction, GitHub/CLI intake,
-and the full frozen Run contract are planned. See the
+This API returns an in-memory capture and leaves the Run unchanged. Semantic
+normalization, YAML metadata extraction, GitHub/CLI intake, and the full frozen
+Run contract are planned. See the
 [Markdown intake specification](spec/007-markdown-intake/spec.md).
+
+## Intent persistence
+
+Save a snapshot under an explicitly supplied Runs directory:
+
+```python
+from shipyard.persistence import FileIntentStore
+
+store = FileIntentStore(root=Path(".shipyard/runs"))
+store.save(intent)
+restored = store.load(intent.run_id)
+```
+
+Each Run gets `<root>/<run-id>/intent.md` with exact UTF-8 content and `intent.json`
+with source/artifact metadata. Loading validates content digest, size, and Run
+ownership without consulting the original issue. Artifact identities are preserved.
+
+Saves are create-only: any existing intent file causes `IntentAlreadyExistsError`,
+even for identical content. Metadata is written last. Failed writes may leave
+partial files; subsequent loads reject them and saves preserve them for inspection.
+`IntentPersistenceError` wraps I/O and invalid stored-data failures with causes.
+
+This store does not provide full Run persistence, automatic repair, atomic
+multi-file publication, or power-loss durability guarantees. See the
+[intent persistence specification](spec/008-intent-persistence/spec.md).
 
 ## Workflow
 
