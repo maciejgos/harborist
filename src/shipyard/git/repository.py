@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import TypeAdapter
 
-from shipyard.domain import Attempt, GitCommitSha
+from shipyard.domain import Attempt, Candidate, GitCommitSha
 
 _COMMIT_SHA_ADAPTER = TypeAdapter(GitCommitSha)
 _REPOSITORY_OVERRIDES = (
@@ -65,6 +65,8 @@ class GitRepository:
                 raise ValueError("Workspace base must be an actual commit")
             self._run(
                 "--no-replace-objects",
+                "-c",
+                f"core.hooksPath={os.devnull}",
                 "worktree",
                 "add",
                 "--detach",
@@ -110,16 +112,7 @@ class GitRepository:
             raise GitReadError("Cannot inspect candidate workspace") from error
 
     def _run(self, *args: str) -> bytes:
-        environment = os.environ.copy()
-        for name in _REPOSITORY_OVERRIDES:
-            environment.pop(name, None)
-        environment["GIT_OPTIONAL_LOCKS"] = "0"
-        return subprocess.run(
-            ["git", "-C", str(self._path), *args],
-            check=True,
-            capture_output=True,
-            env=environment,
-        ).stdout
+        return _run_git(self._path, *args)
 
 
 class GitWorkspaceError(ValueError):
@@ -132,3 +125,69 @@ class GitWorkspace:
     def __init__(self, *, path: Path, attempt: Attempt) -> None:
         self.path = path
         self.attempt = attempt
+
+    @property
+    def candidate_ref(self) -> str:
+        """Stable Run-owned reachability; publication never replaces it."""
+        return f"refs/shipyard/runs/{self.attempt.run_id}/candidate"
+
+    def publish_candidate(self) -> Candidate:
+        """Commit BUILD changes and publish a create-only candidate ref.
+
+        Caller must stop BUILD before calling; concurrent workspace writers are
+        unsupported. Partial commits are retained when ref publication fails.
+        """
+        repository = GitRepository(path=self.path)
+        try:
+            if repository.resolve_base() != self.attempt.start_sha:
+                raise ValueError("BUILD must leave HEAD at the frozen start SHA")
+            if (
+                _run_git(self.path, "rev-parse", "--abbrev-ref", "HEAD").strip()
+                != b"HEAD"
+            ):
+                raise ValueError("Candidate requires detached HEAD")
+            if _run_git(self.path, "ls-files", "--unmerged"):
+                raise ValueError("Candidate cannot contain unresolved merges")
+            if _run_git(
+                self.path, "ls-files", "--others", "--ignored", "--exclude-standard"
+            ):
+                raise ValueError("Remove ignored BUILD residue before publication")
+            _run_git(self.path, "add", "--all", "--", ".")
+            _run_git(
+                self.path,
+                "-c",
+                "user.name=Shipyard",
+                "-c",
+                "user.email=shipyard@localhost",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "commit",
+                "--allow-empty",
+                "--no-verify",
+                "-m",
+                f"Shipyard candidate for {self.attempt.attempt_id}",
+            )
+            sha = repository.resolve_base()
+            repository.require_clean_revision(commit_sha=sha)
+            _run_git(self.path, "update-ref", self.candidate_ref, sha, "0" * len(sha))
+            return self.attempt.create_candidate(sha)
+        except (OSError, subprocess.CalledProcessError, ValueError) as error:
+            raise GitWorkspaceError(
+                "Cannot publish candidate; workspace retained"
+            ) from error
+
+
+def _run_git(path: Path, *args: str) -> bytes:
+    environment = os.environ.copy()
+    for name in _REPOSITORY_OVERRIDES:
+        environment.pop(name, None)
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    return subprocess.run(
+        ["git", "-C", str(path), *args],
+        check=True,
+        capture_output=True,
+        env=environment,
+    ).stdout
