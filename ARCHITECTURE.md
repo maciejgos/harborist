@@ -2,9 +2,9 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phases 2–5 are complete: frozen intake, methodology/routing and independent
-native-agent execution plus Git workspaces/candidates. See the [Phase 5 audit](spec/033-phase5-acceptance-audit/report.md).
-Trusted-check executors remain later work.
+Phases 2–6 are complete: frozen intake, methodology/routing, independent
+native-agent execution, Git candidates and trusted TEST execution.
+See the [Phase 6 audit](spec/036-phase6-acceptance-audit/report.md).
 
 ## Bird's Eye View
 
@@ -154,7 +154,7 @@ src/shipyard/
 ├── skills/         # stage guidance composition and packaged engineering skill
 ├── agents/         # NativeAgent boundary and Codex adapter
 ├── git/            # commit resolution; isolated worktrees and candidate publication
-├── verification/   # frozen shipyard.yaml; trusted TEST execution planned
+├── verification/   # frozen shipyard.yaml and sequential trusted checks
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
 └── persistence/    # create-only intent and complete Run captures
@@ -337,8 +337,13 @@ command strings; all checks are mandatory. Snapshots retain the base SHA and
 source-byte SHA-256 without source text, generated identities, or timestamps.
 
 Missing/invalid configuration or zero checks raises `VerificationConfigError`
-synchronously. Trusted TEST execution and mapping failures to Run
-`CONFIGURATION_ERROR` before agent invocation remain planned.
+synchronously. `run_checks` executes every frozen command through the local POSIX shell,
+collecting exit status, timeout/launch errors and file logs without fail-fast.
+`application.execute_test` guards exact candidate cleanliness before and after
+execution, persists configuration/results/receipt with a manifest last, and emits
+TEST_FAILED on check failure or post-check workspace changes. It does not reread
+candidate configuration. Callers still own total budget accounting and lifecycle
+mapping, including configuration failures to Run `CONFIGURATION_ERROR`.
 
 **Invariant:** model output can never override a failed trusted check.
 

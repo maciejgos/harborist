@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 6 — Deterministic TEST (2026-10-27)
+
+- Added sequential mandatory checks with complete collection, file output and
+  per-command timeouts with process-group termination.
+- Added create-only exact-candidate TEST captures consuming frozen configuration;
+  check failures and workspace mutations produce TEST_FAILED receipts.
+- Integrated real trusted TEST into the native-stage/Git acceptance chain.
+  Full CLI orchestration, total budget accounting and PACKAGE remain later work.
+
 ## Phase 5 — Git workspaces and candidates (2026-10-26)
 
 - Added detached Attempt workspaces at exact base commits while preserving dirty

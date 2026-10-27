@@ -2,8 +2,8 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 5 complete: independent native stages, isolated Git worktrees,
-> candidate commits and create-only candidate refs. Ready for Phase 6 trusted TEST.
+> **Status:** Phase 6 complete: independent native stages, isolated Git candidates,
+> and trusted TEST with frozen checks and durable results.
 > The full CLI workflow remains planned.
 
 ## Git workspaces and candidates
@@ -463,7 +463,7 @@ REVIEW additionally requires `candidate` and a trusted successful TEST
 workspace must be clean at the exact candidate SHA before and after execution.
 Untracked and ignored files are rejected for REVIEW. TEST receipts are supplied by
 the caller; this API does not prove checks ran or validate the evidence contents.
-Phase 6 supplies trusted checks and Phase 7 validates criterion coverage/evidence.
+Use `execute_test` below to supply trusted checks; Phase 7 validates criterion coverage/evidence.
 No native-agent result grants VERIFIED.
 
 Each successful directory contains `request.json` (frozen input text, guidance,
@@ -494,3 +494,33 @@ The [Phase 4 audit](spec/030-phase4-acceptance-audit/report.md) records acceptan
 evidence. Tests use a fake provider executable with real subprocesses and Git;
 a live authenticated provider call has not been validated. CLI flag references:
 [official Codex commands](https://learn.chatgpt.com/docs/developer-commands#codex-exec).
+
+## Trusted TEST
+
+```python
+from shipyard.application.verification import execute_test
+
+tested = execute_test(
+    contract=contract, attempt=attempt, candidate=candidate,
+    workspace=workspace.path, output_dir=Path("/path/to/test-capture"),
+    check_timeout_seconds=60,
+)
+# Pass tested.receipt and test-capture/manifest.json to REVIEW only on success.
+```
+
+TEST uses the frozen base configuration, even if BUILD changes `shipyard.yaml`.
+Every command runs in order through `/bin/sh -c`; nonzero exits, launch errors
+and timeouts do not skip subsequent checks. Each command has its own explicit
+timeout. Output streams directly to numbered stdout/stderr files; the create-only
+manifest records all results, configuration provenance and exact candidate receipt.
+Evidence must be outside the workspace. Wrong identity or dirty/wrong revision
+is rejected before running; a changed workspace after checks yields TEST_FAILED.
+Checks must leave the workspace clean, including ignored files, for REVIEW.
+Shipyard retains residue for inspection rather than deleting it.
+
+Commands are trusted local code. Logs currently have no size cap; full Run budget
+accounting and bounded PACKAGE logs remain Phase 8 work. Callers own the total
+budget, lifecycle, exclusive workspace use and selection of durable evidence.
+Captures are create-only, with partial failures retained and manifest written last;
+this is not atomic publication or protection against malicious local processes.
+See the [Phase 6 audit](spec/036-phase6-acceptance-audit/report.md).

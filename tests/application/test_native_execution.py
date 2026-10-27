@@ -1,16 +1,16 @@
-"""Native-stage integration: real subprocesses and Git, synthetic provider and TEST."""
+"""Native-stage integration: real subprocesses and Git, synthetic provider."""
 
-import json
 from pathlib import Path
 
 from shipyard.agents.codex import CodexAgent
 from shipyard.application.stages import StageExecution, execute_stage
+from shipyard.application.verification import execute_test
 from shipyard.domain import RunContract
-from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
-from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
+from shipyard.domain.playbook_execution import StepOutcome
 from shipyard.domain.stage_result import AgentStage
 from shipyard.git import GitRepository
+from shipyard.verification.config import load_verification_config
 from tests.agents.test_codex import fake
 from tests.git_helpers import git, init_repository
 
@@ -55,7 +55,20 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
     )
     repository = tmp_path / "repository"
     init_repository(repository)
-    git(repository, "commit", "--allow-empty", "-m", "base")
+    (repository / "shipyard.yaml").write_text(
+        "version: 1\nchecks:\n  - id: test\n    command: test -f implemented.txt\n"
+    )
+    git(repository, "add", ".")
+    git(repository, "commit", "-m", "base")
+    repo = GitRepository(path=repository)
+    base = repo.resolve_base()
+    frozen_contract = RunContract(
+        run_id=frozen_contract.run_id,
+        intent=frozen_contract.intent,
+        base_sha=base,
+        execution=frozen_contract.execution,
+        verification=load_verification_config(repository=repo, base_sha=base),
+    )
     attempt = Attempt.create(
         frozen_contract.run_id, git(repository, "rev-parse", "HEAD")
     )
@@ -91,12 +104,17 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
         git(repository, "rev-parse", isolated.candidate_ref) == candidate.candidate_sha
     )
     assert git(repository, "rev-parse", "HEAD") == attempt.start_sha
-    # Phase 6 trusted TEST execution is still synthetic here.
-    evidence = tmp_path / "test-evidence.json"
-    evidence.write_text(json.dumps({"candidate": candidate.model_dump(mode="json")}))
-    receipt = StageReceipt(
-        stage=ArtifactStage.TEST, outcome=StepOutcome.SUCCEEDED, candidate=candidate
+    test_result = execute_test(
+        contract=frozen_contract,
+        attempt=attempt,
+        candidate=candidate,
+        workspace=workspace,
+        output_dir=tmp_path / "test",
+        check_timeout_seconds=2,
     )
+    evidence = tmp_path / "test" / "manifest.json"
+    receipt = test_result.receipt
+    assert receipt.outcome == StepOutcome.SUCCEEDED
     result = execute_stage(
         contract=RunContract.model_validate_json(frozen_contract.model_dump_json()),
         attempt=attempt,
