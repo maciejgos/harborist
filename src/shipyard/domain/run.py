@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from shipyard.domain.verification_gate import VerificationRecord
+
 
 class RunLifecycle(StrEnum):
     CREATED = "CREATED"
@@ -40,7 +42,7 @@ class InvalidRunTransition(ValueError):
 class Run(BaseModel):
     """An immutable Run snapshot; operations return validated successor states.
 
-    VERIFIED is reserved until revision-bound verification is implemented.
+    VERIFIED requires a validated revision-bound verification record.
     Like other Pydantic contracts, construction and deserialization must use the
     validated APIs, rather than trusted-data escape hatches such as model_construct.
     """
@@ -52,10 +54,17 @@ class Run(BaseModel):
     outcome: RunOutcome | None = None
     failure_reason: FailureReason | None = None
 
+    verification: VerificationRecord | None = None
+
     @model_validator(mode="after")
     def validate_state(self) -> Self:
         if self.outcome == RunOutcome.VERIFIED:
-            raise ValueError("VERIFIED requires revision-bound verification support")
+            if self.verification is None or self.verification.run_id != self.run_id:
+                raise ValueError(
+                    "VERIFIED requires revision-bound verification for this Run"
+                )
+        elif self.verification is not None:
+            raise ValueError("Only VERIFIED completion may carry verification")
         if self.lifecycle == RunLifecycle.COMPLETED:
             if self.outcome is None or self.failure_reason is not None:
                 raise ValueError("COMPLETED requires an outcome and no failure reason")
@@ -75,10 +84,15 @@ class Run(BaseModel):
         self._require_source("start", RunLifecycle.CREATED)
         return type(self)(run_id=self.run_id, lifecycle=RunLifecycle.RUNNING)
 
-    def complete(self, outcome: RunOutcome) -> Self:
+    def complete(
+        self, outcome: RunOutcome, *, verification: VerificationRecord | None = None
+    ) -> Self:
         self._require_source("complete", RunLifecycle.RUNNING)
         return type(self)(
-            run_id=self.run_id, lifecycle=RunLifecycle.COMPLETED, outcome=outcome
+            run_id=self.run_id,
+            lifecycle=RunLifecycle.COMPLETED,
+            outcome=outcome,
+            verification=verification,
         )
 
     def fail(self, reason: FailureReason) -> Self:
