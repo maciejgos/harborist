@@ -9,6 +9,7 @@ from shipyard.agents.base import (
     AgentExecutionError,
     AgentRequest,
     AgentResponse,
+    AgentTimeoutError,
     output_schema,
 )
 from shipyard.domain.stage_result import AgentStage
@@ -111,7 +112,7 @@ class CodexAgent:
                     stderr_truncated=capture.stderr_truncated,
                 )
                 if capture.timed_out:
-                    raise AgentExecutionError(
+                    raise AgentTimeoutError(
                         "Codex invocation timed out", response=diagnostics
                     )
                 if capture.returncode != 0:

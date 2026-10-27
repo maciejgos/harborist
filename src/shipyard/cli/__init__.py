@@ -1,4 +1,4 @@
-"""CLI presentation for capture and inspection; workflow execution comes later."""
+"""CLI presentation for frozen capture, synchronous execution and inspection."""
 
 import json
 from pathlib import Path
@@ -15,7 +15,7 @@ from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology, compose_guidance
 
 app = typer.Typer(
-    no_args_is_help=True, help="Freeze and inspect Shipyard Run contracts."
+    no_args_is_help=True, help="Freeze, execute and inspect Shipyard Runs."
 )
 _DEFAULT_RUNS = Path.home() / ".shipyard" / "runs"
 
@@ -125,3 +125,50 @@ def methodology(
     except ValueError as error:
         _fail(error)
     typer.echo(output)
+
+
+@app.command("run")
+def run_command(
+    run_id: UUID,
+    repo: Annotated[
+        Path, typer.Option(help="Target repository containing the frozen base.")
+    ] = Path("."),
+    runs_dir: Annotated[
+        Path, typer.Option(help="Filesystem Runs root.")
+    ] = _DEFAULT_RUNS,
+    workspace: Annotated[
+        Path | None, typer.Option(help="Fresh isolated workspace path.")
+    ] = None,
+) -> None:
+    """Execute a captured CREATED Run synchronously and write terminal evidence."""
+    from shipyard.agents.codex import CodexAgent
+    from shipyard.application.execution import execute_run
+    from shipyard.domain import RunLifecycle, RunOutcome
+
+    workspace = workspace or runs_dir.parent / "workspaces" / str(run_id)
+    try:
+        evidence = execute_run(
+            store=FileRunStore(root=runs_dir),
+            run_id=run_id,
+            repository=GitRepository(path=repo),
+            workspace=workspace,
+            agent=CodexAgent(),
+        )
+    except (ValueError, OSError) as error:
+        typer.echo(json.dumps({"error": str(error)}), err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(
+        json.dumps(
+            {
+                "run": evidence.run.model_dump(mode="json"),
+                "report": str((runs_dir / str(run_id) / "report.md").resolve()),
+                "evidence": str((runs_dir / str(run_id) / "evidence.json").resolve()),
+            }
+        )
+    )
+    if evidence.run.lifecycle == RunLifecycle.CANCELLED:
+        raise typer.Exit(code=130)
+    if evidence.run.lifecycle == RunLifecycle.FAILED:
+        raise typer.Exit(code=1)
+    if evidence.run.outcome != RunOutcome.VERIFIED:
+        raise typer.Exit(code=2)

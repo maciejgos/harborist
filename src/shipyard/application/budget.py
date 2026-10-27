@@ -38,6 +38,8 @@ class BudgetClock:
         self._utcnow = utcnow
         self.started_at = utcnow()
         self._start = monotonic()
+        if not math.isfinite(self._start):
+            raise ValueError("Monotonic clock must be finite")
         self._last = self._start
 
     def elapsed(self) -> float:
@@ -47,12 +49,12 @@ class BudgetClock:
         self._last = now
         return now - self._start
 
-    def allowance(self, stage: ArtifactStage) -> float:
+    def allowance(self, stage: ArtifactStage, *, admission: bool = True) -> float:
         limit = self.budget.total_seconds
         if stage in (ArtifactStage.DESIGN, ArtifactStage.PLAN, ArtifactStage.BUILD):
             limit -= self.budget.verification_reserve_seconds
         remaining = limit - self.elapsed()
-        if remaining < 1:
+        if remaining < (1 if admission else 0) or remaining <= 0:
             raise BudgetExceeded("Execution allowance exhausted")
         return remaining
 

@@ -95,6 +95,10 @@ class AgentExecutionError(RuntimeError):
         self.response = response
 
 
+class AgentTimeoutError(AgentExecutionError):
+    """The executor consumed its assigned deadline."""
+
+
 def parse_output(raw: str, request: AgentRequest) -> AgentOutput:
     try:
         output = AgentOutput.model_validate_json(raw)
