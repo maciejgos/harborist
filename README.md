@@ -2,8 +2,8 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 6 complete: independent native stages, isolated Git candidates,
-> and trusted TEST with frozen checks and durable results.
+> **Status:** Phase 7 complete: independent REVIEW, complete criterion coverage,
+> and revision-bound VERIFIED completion after trusted TEST.
 > The full CLI workflow remains planned.
 
 ## Git workspaces and candidates
@@ -55,14 +55,14 @@ available through `shipyard.domain`; intake and inspection are available through
 the CLI. Workflow execution remains planned.
 The Run lifecycle acceptance contract is in
 [spec/001-run-lifecycle/spec.md](spec/001-run-lifecycle/spec.md), alongside its
-intake intent and implementation plan. VERIFIED is reserved and rejected until
-revision-bound verification is implemented.
+intake intent and implementation plan. VERIFIED completion now requires a
+revision-bound validation record; see the Phase 7 API below.
 
 `Attempt` identifies one execution within a Run and its starting commit.
 `Candidate` identifies an owning Attempt and an exact resulting commit. Both are
 immutable records; commit hashes accept full lowercase SHA-1 or SHA-256 syntax.
-Commit resolution is available through `GitRepository`; candidate creation and
-workspace operations remain planned. See the
+Commit resolution, isolated workspaces and candidate publication are available
+through `GitRepository` and `GitWorkspace`. See the
 [Attempt and candidate specification](spec/002-attempt-candidate-identity/spec.md)
 for the acceptance contract, with intent and implementation guidance alongside it.
 
@@ -461,10 +461,11 @@ without `manifest.json`; retry with a new directory.
 REVIEW additionally requires `candidate` and a trusted successful TEST
 `StageReceipt` for that exact candidate. Its Attempt must match, and the existing
 workspace must be clean at the exact candidate SHA before and after execution.
-Untracked and ignored files are rejected for REVIEW. TEST receipts are supplied by
-the caller; this API does not prove checks ran or validate the evidence contents.
-Use `execute_test` below to supply trusted checks; Phase 7 validates criterion coverage/evidence.
-No native-agent result grants VERIFIED.
+Untracked and ignored files are rejected for REVIEW. The supplied evidence must be
+a complete `execute_test` manifest matching the frozen configuration, Run, Attempt,
+candidate, ordered commands/results and receipt. Missing or contradictory evidence
+is rejected before invocation. Complete criterion coverage is checked afterward;
+only Shipyard's validated decision can authorize VERIFIED completion.
 
 Each successful directory contains `request.json` (frozen input text, guidance,
 profile and candidate context), `stage-result.json`, its Markdown outputs, and a
@@ -524,3 +525,55 @@ budget, lifecycle, exclusive workspace use and selection of durable evidence.
 Captures are create-only, with partial failures retained and manifest written last;
 this is not atomic publication or protection against malicious local processes.
 See the [Phase 6 audit](spec/036-phase6-acceptance-audit/report.md).
+
+
+## Independent REVIEW and VERIFIED
+
+The PoC requires explicit acceptance declarations in `spec.md`. Every declared
+criterion is required, with a unique ID containing at least three digits:
+
+```markdown
+- AC-001: A concrete observable requirement.
+## AC-002 — Another required behavior
+AC-003: A required failure path.
+```
+
+Fenced examples and inline prose references do not declare criteria. Empty specs,
+empty declarations and duplicate IDs are rejected. The spec reference hashes exact
+UTF-8 content, including line endings. REVIEW returns exactly those IDs once each
+with `pass`, `fail` or `unverified`; omitted or unknown IDs are invalid stage output.
+The reviewer explains assessments and unverified areas in `review.md`.
+
+```python
+from shipyard.application.stages import execute_stage
+from shipyard.domain import AgentStage
+
+reviewed = execute_stage(
+    contract=contract, attempt=attempt, stage=AgentStage.REVIEW,
+    workspace=workspace.path,
+    upstream={"spec.md": spec_path, "test-evidence.json": test_manifest_path},
+    output_dir=Path("/path/to/review-capture"), agent=agent,
+    remaining_seconds=60, candidate=candidate, test_receipt=tested.receipt,
+)
+decision = reviewed.review_decision
+assert decision is not None
+completed = running_run.complete(
+    decision.outcome, verification=decision.verification,
+)
+```
+
+All required criteria must PASS and all mandatory checks must pass for VERIFIED.
+Any FAIL or UNVERIFIED yields CHANGES_REQUIRED. Failed TEST prevents REVIEW.
+The stage manifest includes the decision, spec reference, TEST capture digest and,
+for VERIFIED, a validation record binding Run, Attempt, candidate, frozen check
+configuration/results and complete REVIEW. `Run.complete(VERIFIED)` without that
+record fails; construction and JSON reload enforce the same rules. Records remain
+bound to their recorded SHA, and cannot verify a later revision.
+
+These are trusted local harness attestations, not cryptographic proof of execution.
+Operators must use authentic captures and exclusive workspaces. The harness checks
+consistency but does not authenticate hand-edited local files or automatically
+persist completed Run states. Semantic PASS remains the independent reviewer's
+assessment. Full orchestration, lifecycle persistence, PACKAGE and Run budget
+accounting remain future work. See the
+[Phase 7 audit](spec/040-phase7-acceptance-audit/report.md).

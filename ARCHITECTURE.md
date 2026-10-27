@@ -2,9 +2,9 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phases 2–6 are complete: frozen intake, methodology/routing, independent
-native-agent execution, Git candidates and trusted TEST execution.
-See the [Phase 6 audit](spec/036-phase6-acceptance-audit/report.md).
+Phases 2–7 are complete: frozen intake, methodology/routing, independent
+native-agent execution, Git candidates, trusted TEST and revision-bound REVIEW/VERIFIED.
+See the [Phase 7 audit](spec/040-phase7-acceptance-audit/report.md).
 
 ## Bird's Eye View
 
@@ -228,10 +228,11 @@ methodology before external I/O, rejecting legacy plain assets or weakened topol
 Historical captures remain inspectable without being silently migrated. The
 implemented `execute_stage` invokes one injected NativeAgent using durable
 upstream artifacts and frozen methodology. It writes create-only per-stage
-captures with a manifest last, rejects upstream mutation, and requires a trusted
-successful TEST receipt plus clean exact-candidate workspace for REVIEW. It does
-not grant outcomes or advance routing. The planned `AttemptExecutor` will compose
-these stages with the implemented Git workspace/candidate APIs, trusted TEST, full budget accounting,
+captures with a manifest last, rejects upstream mutation, and requires a complete
+matching trusted TEST capture and successful receipt plus clean exact-candidate
+workspace for REVIEW. It returns a validated REVIEW decision without advancing
+lifecycle or routing. The planned `AttemptExecutor` will compose these stages with
+the implemented Git workspace/candidate APIs, trusted TEST, full budget accounting,
 Run lifecycle/event persistence and PACKAGE.
 
 ### `playbooks` / `skills`
@@ -267,6 +268,28 @@ Version 1 canonical playbook and engineering skill Markdown are packaged resourc
 `load_default_methodology` captures and validates them independently of cwd.
 Operators still explicitly choose their agent profile; default adoption never
 mutates a previously captured Run.
+
+### `review` / verification gate
+
+`extract_criteria` reads explicit `AC-NNN: text` declarations (also Markdown list
+items or headings with an em dash), ignoring fenced examples and prose references.
+Every declared criterion is required. Empty/duplicate declarations fail closed;
+`SpecificationReference` binds unique IDs to exact spec UTF-8 SHA-256.
+
+REVIEW preflight reconciles complete TEST captures with frozen check configuration,
+ordered commands, identities and computed success; receipts alone are insufficient.
+`evaluate_review` requires exact candidate and spec coverage. Any FAIL/UNVERIFIED
+produces CHANGES_REQUIRED; all PASS plus successful TEST produces a domain
+`VerificationRecord`. The stage manifest captures that decision and TEST digest,
+alongside review.md and structured results. Invalid coverage leaves no success
+manifest. Failed TEST blocks invocation.
+
+`Run.complete` accepts VERIFIED only with matching verification. The immutable
+record checks Run/Attempt/candidate ownership, complete passing check evidence and
+exact all-PASS criterion coverage, also on JSON reload. No evidence transfers to a
+new SHA. This is trusted-local consistency validation, not authentication of
+arbitrary files or proof of the reviewer's semantic correctness. Full lifecycle
+persistence and orchestration remain planned.
 
 ### `agents`
 

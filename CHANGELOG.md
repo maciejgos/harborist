@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 7 — REVIEW and VERIFIED (2026-10-27)
+
+- Added explicit required criterion extraction and exact-content spec references.
+- REVIEW validates complete trusted TEST captures and exact criterion coverage,
+  persisting review.md and a harness decision bound to the candidate.
+- VERIFIED Run completion requires validated all-PASS review and mandatory checks,
+  including on JSON reload. FAIL/UNVERIFIED yields CHANGES_REQUIRED.
+- Added real Git/subprocess acceptance coverage and the Phase 7 audit. Full workflow
+  orchestration, PACKAGE and Run budget accounting remain future work.
+
 ## Phase 6 — Deterministic TEST (2026-10-27)
 
 - Added sequential mandatory checks with complete collection, file output and
