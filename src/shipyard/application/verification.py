@@ -33,6 +33,7 @@ def execute_test(
     workspace: Path,
     output_dir: Path,
     check_timeout_seconds: float,
+    total_timeout_seconds: float | None = None,
 ) -> TestExecution:
     """Write manifest last; caller owns total budget and lifecycle transitions.
 
@@ -53,6 +54,7 @@ def execute_test(
         workspace=workspace,
         logs_dir=output_dir / "logs",
         timeout_seconds=check_timeout_seconds,
+        total_timeout_seconds=total_timeout_seconds,
     )
     workspace_error = None
     try:

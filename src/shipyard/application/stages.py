@@ -13,6 +13,7 @@ from shipyard.agents.base import (
     AgentInput,
     AgentOutput,
     AgentRequest,
+    AgentResponse,
     NativeAgent,
     parse_output,
 )
@@ -32,6 +33,7 @@ from shipyard.domain.stage_result import (
     InvalidStageOutput,
     ReviewStageResult,
 )
+from shipyard.domain.usage import Usage
 from shipyard.git.repository import GitRepository
 from shipyard.review.criteria import extract_criteria
 from shipyard.skills.composition import compile_methodology, compose_guidance
@@ -49,6 +51,7 @@ class StageExecution(BaseModel):
     artifacts: tuple[ArtifactReference, ...]
     review_decision: ReviewDecision | None = None
     test_evidence_sha256: str | None = None
+    usage: Usage | None = None
 
 
 def execute_stage(
@@ -144,7 +147,23 @@ def execute_stage(
         )
 
     save("request.json", request.model_dump_json(), ArtifactKind.LOG)
-    response = agent.execute(request)
+
+    def save_diagnostics(response: AgentResponse) -> None:
+        save("stdout.log", response.stdout, ArtifactKind.LOG)
+        save("stderr.log", response.stderr, ArtifactKind.LOG)
+        save(
+            "invocation.json",
+            response.model_dump_json(exclude={"output", "stdout", "stderr"}),
+            ArtifactKind.LOG,
+        )
+
+    try:
+        response = agent.execute(request)
+    except AgentExecutionError as error:
+        if error.response is not None:
+            save_diagnostics(error.response)
+        raise
+    save_diagnostics(response)
     try:
         unchanged = all(
             path.read_bytes() == before[name] for name, path in upstream.items()
@@ -196,6 +215,7 @@ def execute_stage(
         output=output,
         artifacts=tuple(artifacts),
         review_decision=decision,
+        usage=response.usage,
         test_evidence_sha256=hashlib.sha256(before["test-evidence.json"]).hexdigest()
         if stage == AgentStage.REVIEW
         else None,

@@ -1,9 +1,6 @@
 """Codex CLI Adapter. Each execute call owns a fresh process and output file."""
 
 import json
-import os
-import signal
-import subprocess
 import tempfile
 import tomllib
 from pathlib import Path
@@ -15,6 +12,7 @@ from shipyard.agents.base import (
     output_schema,
 )
 from shipyard.domain.stage_result import AgentStage
+from shipyard.execution.process import capture_process
 
 _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 _DUTIES = {
@@ -97,37 +95,42 @@ class CodexAgent:
                 "-",
             ]
             try:
-                with subprocess.Popen(
+                capture = capture_process(
                     command,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                ) as process:
-                    try:
-                        process.communicate(
-                            input=format_prompt(request).encode("utf-8"),
-                            timeout=request.timeout_seconds,
-                        )
-                    except subprocess.TimeoutExpired as error:
-                        # A fresh session gives this invocation its own process group.
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                        process.communicate()
-                        raise AgentExecutionError(
-                            "Codex invocation timed out"
-                        ) from error
-                    if process.returncode != 0:
-                        raise AgentExecutionError(
-                            f"Codex exited with code {process.returncode}"
-                        )
+                    cwd=request.workspace,
+                    timeout=request.timeout_seconds,
+                    limit=65536,
+                    input_bytes=format_prompt(request).encode("utf-8"),
+                )
+                diagnostics = AgentResponse(
+                    returncode=capture.returncode,
+                    output="",
+                    stdout=capture.stdout.decode("utf-8", errors="replace"),
+                    stderr=capture.stderr.decode("utf-8", errors="replace"),
+                    stdout_truncated=capture.stdout_truncated,
+                    stderr_truncated=capture.stderr_truncated,
+                )
+                if capture.timed_out:
+                    raise AgentExecutionError(
+                        "Codex invocation timed out", response=diagnostics
+                    )
+                if capture.returncode != 0:
+                    raise AgentExecutionError(
+                        f"Codex exited with code {capture.returncode}",
+                        response=diagnostics,
+                    )
                 with output.open("rb") as stream:
                     content = stream.read(_MAX_OUTPUT_BYTES + 1)
                 if len(content) > _MAX_OUTPUT_BYTES:
                     raise AgentExecutionError("Codex final message exceeds size limit")
-                return AgentResponse(returncode=0, output=content.decode("utf-8"))
+                return AgentResponse(
+                    returncode=0,
+                    output=content.decode("utf-8"),
+                    stdout=capture.stdout.decode("utf-8", errors="replace"),
+                    stderr=capture.stderr.decode("utf-8", errors="replace"),
+                    stdout_truncated=capture.stdout_truncated,
+                    stderr_truncated=capture.stderr_truncated,
+                )
             except (OSError, UnicodeError) as error:
                 raise AgentExecutionError(
                     "Cannot execute Codex or read final message"

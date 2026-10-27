@@ -17,6 +17,7 @@ from shipyard.domain.stage_result import (
     ReviewStageResult,
     StageResult,
 )
+from shipyard.domain.usage import Usage
 
 REQUIRED_INPUTS: dict[AgentStage, frozenset[str]] = {
     AgentStage.DESIGN: frozenset({"intent.md"}),
@@ -66,6 +67,11 @@ class AgentResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     returncode: int
     output: str
+    usage: Usage | None = None
+    stdout: Annotated[str, Field(max_length=196608)] = ""
+    stderr: Annotated[str, Field(max_length=196608)] = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 class AgentOutput(BaseModel):
@@ -83,6 +89,10 @@ class NativeAgent(Protocol):
 
 class AgentExecutionError(RuntimeError):
     """Provider launch, deadline or process failure; not a software outcome."""
+
+    def __init__(self, message: str, *, response: AgentResponse | None = None) -> None:
+        super().__init__(message)
+        self.response = response
 
 
 def parse_output(raw: str, request: AgentRequest) -> AgentOutput:
