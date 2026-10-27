@@ -1,5 +1,6 @@
 """Execute one independent agent stage and capture validated durable artifacts."""
 
+import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 from uuid import UUID
@@ -15,18 +16,29 @@ from shipyard.agents.base import (
     NativeAgent,
     parse_output,
 )
+from shipyard.application.review import (
+    ReviewDecision,
+    evaluate_review,
+    validate_test_context,
+)
+from shipyard.application.verification import TestExecution
 from shipyard.domain.artifact import ArtifactKind, ArtifactReference, ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
 from shipyard.domain.run_contract import RunContract
-from shipyard.domain.stage_result import AgentStage, InvalidStageOutput
+from shipyard.domain.stage_result import (
+    AgentStage,
+    InvalidStageOutput,
+    ReviewStageResult,
+)
 from shipyard.git.repository import GitRepository
+from shipyard.review.criteria import extract_criteria
 from shipyard.skills.composition import compile_methodology, compose_guidance
 
 
 class StageExecution(BaseModel):
-    """Completed capture, not a lifecycle transition or verification grant."""
+    """Completed capture with a harness decision for validated REVIEW."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     run_id: UUID
@@ -35,6 +47,8 @@ class StageExecution(BaseModel):
     candidate: Candidate | None
     output: AgentOutput
     artifacts: tuple[ArtifactReference, ...]
+    review_decision: ReviewDecision | None = None
+    test_evidence_sha256: str | None = None
 
 
 def execute_stage(
@@ -53,7 +67,8 @@ def execute_stage(
     """Use explicit durable input versions; retain partial directories on failure.
 
     The caller owns workspace isolation, remaining budget calculation and trusted
-    TEST evidence. No candidate commit or software outcome is created here.
+    TEST captures. REVIEW returns a validated decision; the caller owns Run
+    completion and persistence. No candidate commit is created here.
     """
     if attempt.run_id != contract.run_id:
         raise ValueError("Attempt must belong to the frozen Run")
@@ -99,6 +114,12 @@ def execute_stage(
         ):
             raise ValueError("REVIEW requires successful TEST for the exact candidate")
         assert candidate is not None  # AgentRequest enforces this binding.
+        test_capture = TestExecution.model_validate_json(before["test-evidence.json"])
+        if test_capture.receipt != test_receipt or not validate_test_context(
+            contract=contract, attempt=attempt, candidate=candidate, test=test_capture
+        ):
+            raise ValueError("REVIEW requires successful complete TEST evidence")
+        extract_criteria(before["spec.md"].decode("utf-8"))
         GitRepository(path=workspace).require_clean_revision(
             commit_sha=candidate.candidate_sha
         )
@@ -144,6 +165,17 @@ def execute_stage(
             f"Native agent exited with code {response.returncode}"
         )
     output = parse_output(response.output, request)
+    decision = None
+    if isinstance(output.result, ReviewStageResult):
+        assert candidate is not None
+        decision = evaluate_review(
+            contract=contract,
+            attempt=attempt,
+            candidate=candidate,
+            specification=before["spec.md"].decode("utf-8"),
+            review=output.result,
+            test=TestExecution.model_validate_json(before["test-evidence.json"]),
+        )
     save(
         "stage-result.json", output.result.model_dump_json(), ArtifactKind.STAGE_RESULT
     )
@@ -163,6 +195,10 @@ def execute_stage(
         candidate=candidate,
         output=output,
         artifacts=tuple(artifacts),
+        review_decision=decision,
+        test_evidence_sha256=hashlib.sha256(before["test-evidence.json"]).hexdigest()
+        if stage == AgentStage.REVIEW
+        else None,
     )
     with (output_dir / "manifest.json").open("x", encoding="utf-8") as stream:
         stream.write(execution.model_dump_json())

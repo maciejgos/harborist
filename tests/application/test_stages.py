@@ -11,6 +11,7 @@ from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
 from shipyard.domain.stage_result import AgentStage, InvalidStageOutput
+from tests.application.test_review import capture
 from tests.git_helpers import git, init_repository
 
 
@@ -155,9 +156,11 @@ def test_review_requires_successful_exact_test_and_clean_checkout(
     attempt = Attempt.create(frozen_contract.run_id, sha)
     candidate = attempt.create_candidate(sha)
     spec = tmp_path / "spec.md"
-    spec.write_text("# Spec")
+    spec.write_text("AC-001: Required")
     evidence = tmp_path / "test-evidence.json"
-    evidence.write_text("{}")
+    evidence.write_text(
+        capture(frozen_contract, attempt, candidate=candidate).model_dump_json()
+    )
 
     def run(name: str, receipt: StageReceipt) -> None:
         execute_stage(
@@ -198,9 +201,11 @@ def test_review_rejects_workspace_mutation_and_foreign_test(
     attempt = Attempt.create(frozen_contract.run_id, sha)
     candidate = attempt.create_candidate(sha)
     spec = tmp_path / "spec.md"
-    spec.write_text("# Spec")
+    spec.write_text("AC-001: Required")
     evidence = tmp_path / "test-evidence.json"
-    evidence.write_text("{}")
+    evidence.write_text(
+        capture(frozen_contract, attempt, candidate=candidate).model_dump_json()
+    )
 
     def mutate(request: AgentRequest) -> AgentResponse:
         (workspace / "unexpected").write_text("modified")
@@ -239,3 +244,47 @@ def test_review_rejects_workspace_mutation_and_foreign_test(
             candidate=candidate,
             test_receipt=foreign,
         )
+
+
+@pytest.mark.parametrize(
+    "defect", ["empty-evidence", "incomplete-review", "unknown-criterion"]
+)
+def test_invalid_review_has_no_success_capture(
+    tmp_path: Path, frozen_contract: RunContract, defect: str
+) -> None:
+    workspace = tmp_path / "workspace"
+    init_repository(workspace)
+    git(workspace, "commit", "--allow-empty", "-m", "candidate")
+    sha = git(workspace, "rev-parse", "HEAD")
+    attempt = Attempt.create(frozen_contract.run_id, sha)
+    candidate = attempt.create_candidate(sha)
+    spec = tmp_path / "spec.md"
+    spec.write_text("AC-001: Required\nAC-002: Also required")
+    test = capture(frozen_contract, attempt, candidate=candidate)
+    evidence = tmp_path / "test.json"
+    evidence.write_text("{}" if defect == "empty-evidence" else test.model_dump_json())
+
+    def respond(request: AgentRequest) -> AgentResponse:
+        response = FakeAgent().execute(request)
+        if defect == "unknown-criterion":
+            return AgentResponse(
+                returncode=0, output=response.output.replace("AC-001", "AC-999")
+            )
+        return response
+
+    agent = FakeAgent(respond)
+    with pytest.raises(ValueError):
+        execute_stage(
+            contract=frozen_contract,
+            attempt=attempt,
+            candidate=candidate,
+            stage=AgentStage.REVIEW,
+            workspace=workspace,
+            upstream={"spec.md": spec, "test-evidence.json": evidence},
+            output_dir=tmp_path / "review",
+            agent=agent,
+            remaining_seconds=30,
+            test_receipt=test.receipt,
+        )
+    assert not (tmp_path / "review" / "manifest.json").exists()
+    assert len(agent.requests) == (0 if defect == "empty-evidence" else 1)
