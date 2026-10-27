@@ -54,7 +54,11 @@ class FakeAgent:
                 criteria=[
                     {
                         "criterion_id": "AC-001",
-                        "status": "fail" if self.mode == "changes" else "pass",
+                        "status": "fail"
+                        if self.mode == "changes"
+                        else "unverified"
+                        if self.mode == "unverified"
+                        else "pass",
                     }
                 ],
             )
@@ -101,6 +105,7 @@ def capture(
         ("clarify", "NEEDS_CLARIFICATION"),
         ("rescope", "NEEDS_RESCOPING"),
         ("changes", "CHANGES_REQUIRED"),
+        ("unverified", "CHANGES_REQUIRED"),
         ("failure", "EXECUTION_FAILED"),
         ("invalid", "INVALID_STAGE_OUTPUT"),
         ("cancel", "CANCELLED"),
@@ -187,6 +192,9 @@ def test_exhaustion_packages_without_another_executor(
     assert result.run.failure_reason == FailureReason.TIME_BUDGET_EXCEEDED
     assert agent.calls == [AgentStage.DESIGN]
     assert result.timing.remaining_seconds == 0
+    assert result.package_timing.remaining_seconds == 0
+    assert result.package_timing.stage is not None
+    assert result.package_timing.stage.value == "package"
     assert result.stage_timings[0].duration_seconds == 2000
 
 
@@ -278,3 +286,22 @@ def test_package_failure_is_surfaced_after_terminal_persistence(
             agent=FakeAgent("clarify"),
         )
     assert store.load_state(contract.run_id).outcome == RunOutcome.NEEDS_CLARIFICATION
+
+
+def test_terminal_verification_cannot_move_to_another_frozen_contract(
+    tmp_path: Path,
+    frozen_contract: RunContract,
+) -> None:
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=FakeAgent(),
+    )
+    other_store = FileRunStore(root=tmp_path / "other-runs")
+    other_store.save(frozen_contract)
+    other_store.begin(frozen_contract.run_id)
+    with pytest.raises(ValueError, match="frozen contract"):
+        other_store.finish(result.run)

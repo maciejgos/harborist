@@ -1,13 +1,15 @@
 """Drain subprocess pipes continuously, retaining only a bounded prefix."""
 
+import math
 import os
+import selectors
 import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Thread
-from typing import BinaryIO
+from typing import cast
 
 
 @dataclass(frozen=True)
@@ -28,57 +30,73 @@ def capture_process(
     limit: int,
     input_bytes: bytes = b"",
 ) -> ProcessCapture:
-    if limit < 0:
-        raise ValueError("Log limit must be nonnegative")
+    if limit < 0 or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError(
+            "Log limit must be nonnegative and timeout finite and positive"
+        )
     buffers = [bytearray(), bytearray()]
     truncated = [False, False]
-    errors: list[Exception] = []
+    deadline = time.monotonic() + timeout
 
-    def drain(pipe: BinaryIO, index: int) -> None:
+    def terminate(process: subprocess.Popen[bytes]) -> None:
         try:
-            with pipe:
-                while chunk := pipe.read(65536):
-                    available = max(0, limit - len(buffers[index]))
-                    buffers[index].extend(chunk[:available])
-                    truncated[index] |= len(chunk) > available
-        except OSError as error:
-            errors.append(error)
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
     with tempfile.TemporaryFile() as stdin:
         stdin.write(input_bytes)
         stdin.seek(0)
-        with subprocess.Popen(
-            command,
-            cwd=cwd,
-            stdin=stdin,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        ) as process:
+        with (
+            subprocess.Popen(
+                command,
+                cwd=cwd,
+                stdin=stdin,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            ) as process,
+            selectors.DefaultSelector() as selector,
+        ):
             assert process.stdout is not None and process.stderr is not None
-            threads = [
-                Thread(target=drain, args=(pipe, index))
-                for index, pipe in enumerate((process.stdout, process.stderr))
-            ]
-            for thread in threads:
-                thread.start()
+            for index, pipe in enumerate((process.stdout, process.stderr)):
+                os.set_blocking(pipe.fileno(), False)
+                selector.register(pipe, selectors.EVENT_READ, index)
             timed_out = False
             try:
-                try:
-                    process.wait(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    timed_out = True
+                while True:
+                    exited = process.poll() is not None
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 and not exited:
+                        timed_out = True
+                        terminate(process)
+                        process.wait()
+                        exited = True
+                    if exited:
+                        terminate(process)
+                    ready = selector.select(
+                        0 if exited else min(0.05, max(0, remaining))
+                    )
+                    for key, _ in ready:
+                        chunk = os.read(key.fd, 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        index = cast(int, key.data)
+                        available = max(0, limit - len(buffers[index]))
+                        buffers[index].extend(chunk[:available])
+                        truncated[index] |= len(chunk) > available
+                    # Detached descendants may retain pipes after the executor exits.
+                    # Drain available bytes, then close instead of waiting for their EOF.
+                    if exited and (not ready or remaining <= 0):
+                        for key in selector.get_map().values():
+                            truncated[key.data] = True
+                        break
             finally:
-                # Also close pipes inherited by background descendants on normal exit.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                terminate(process)
                 process.wait()
-                for thread in threads:
-                    thread.join()
-            if errors:
-                raise errors[0]
+                process.stdout.close()
+                process.stderr.close()
             return ProcessCapture(
                 process.returncode,
                 timed_out,

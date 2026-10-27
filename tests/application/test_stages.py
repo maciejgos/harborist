@@ -288,3 +288,32 @@ def test_invalid_review_has_no_success_capture(
         )
     assert not (tmp_path / "review" / "manifest.json").exists()
     assert len(agent.requests) == (0 if defect == "empty-evidence" else 1)
+
+
+def test_failed_native_process_retains_bounded_diagnostics(
+    tmp_path: Path,
+    frozen_contract: RunContract,
+) -> None:
+    from shipyard.agents.codex import CodexAgent
+    from tests.agents.test_codex import fake
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    executable = fake(
+        tmp_path, "import sys; sys.stderr.write('x' * 100000); raise SystemExit(7)"
+    )
+    directory = tmp_path / "design"
+    with pytest.raises(AgentExecutionError):
+        execute_stage(
+            contract=frozen_contract,
+            attempt=Attempt.create(frozen_contract.run_id, frozen_contract.base_sha),
+            stage=AgentStage.DESIGN,
+            workspace=workspace,
+            upstream={},
+            output_dir=directory,
+            agent=CodexAgent(executable=str(executable)),
+            remaining_seconds=2,
+        )
+    assert len((directory / "stderr.log").read_bytes()) == 65536
+    assert json.loads((directory / "invocation.json").read_text())["stderr_truncated"]
+    assert not (directory / "manifest.json").exists()

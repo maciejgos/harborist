@@ -2,9 +2,9 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 7 complete: independent REVIEW, complete criterion coverage,
-> and revision-bound VERIFIED completion after trusted TEST.
-> The full CLI workflow remains planned.
+> **Status:** Phase 8 complete: synchronous CLI execution, revision-bound
+> verification, bounded logs, shared budget accounting and terminal reports/evidence.
+> Phase 9 baseline evaluation remains ahead.
 
 ## Git workspaces and candidates
 
@@ -33,7 +33,7 @@ Publication is create-only: an existing ref is never overwritten. A separate
 checkout can use `candidate.candidate_sha` without access to the BUILD workspace.
 Hooks and commit signing are disabled for harness operations. Errors raise
 `GitWorkspaceError` and retain partial worktrees/commits for inspection. There is
-no automatic cleanup, retry/ref replacement, budget enforcement or CLI run loop.
+no automatic cleanup or retry/ref replacement. The Run executor adds shared budget enforcement.
 These synchronous operations assume a quiescent workspace and a local non-bare
 source checkout; they provide isolation of state, not a security boundary.
 
@@ -52,7 +52,7 @@ uv run pyright
 
 The project pins Python 3.14. uv will download it if needed. Domain contracts are
 available through `shipyard.domain`; intake and inspection are available through
-the CLI. Workflow execution remains planned.
+the CLI. Synchronous execution is available with `shipyard run <run-id>`.
 The Run lifecycle acceptance contract is in
 [spec/001-run-lifecycle/spec.md](spec/001-run-lifecycle/spec.md), alongside its
 intake intent and implementation plan. VERIFIED completion now requires a
@@ -78,15 +78,14 @@ VERIFIED. See the
 `ArtifactReference` records an immutable artifact version with Run/optional Attempt
 ownership, kind, producing stage, SHA-256, and byte size. Its factory hashes exact
 in-memory bytes without storing content or accessing files. Origin is declared
-metadata; storage, integrity verification, and lineage are planned. See the
+metadata; PACKAGE indexes stored files by exact byte size and digest. General lineage browsing remains out of scope. See the
 [artifact identity specification](spec/004-artifact-identity/spec.md).
 
 `RunEvent` and `AttemptCreatedEvent` describe lifecycle facts using immutable
 validated snapshots. Factories generate event IDs and require explicit aware
 timestamps, normalized to UTC. `DomainEvent` supports discriminated JSON validation
 through Pydantic's `TypeAdapter`. Records do not emit events, establish historical
-ordering, or change domain state; persistence and full cancellation audit metadata
-are planned. See the [domain event specification](spec/005-domain-events/spec.md).
+ordering, or change domain state; the filesystem Run store validates lifecycle event ordering. Full cancellation audit metadata remains out of scope. See the [domain event specification](spec/005-domain-events/spec.md).
 
 ## Capture a Run
 
@@ -233,8 +232,7 @@ SHA, and a SHA-256 of the original file bytes. Git replacement refs cannot subst
 other content for committed-file reads. YAML source text is not retained.
 
 `VerificationConfigError` reports read/parsing/validation failures with causes.
-Checks are not executed, and Run outcomes are not changed. TEST execution
-remains planned. See the [verification configuration specification](spec/010-verification-config/spec.md).
+This loader does not execute checks or change Run outcomes. `execute_test` performs trusted TEST. See the [verification configuration specification](spec/010-verification-config/spec.md).
 
 ## Frozen Run contract
 
@@ -315,8 +313,7 @@ validation gate. Historical captures remain inspectable without migration.
 See [intake methodology validation](spec/024-intake-methodology-validation/spec.md).
 
 The use case performs no agent calls or check execution. Invalid committed
-configuration is rejected before source capture/storage. Later execution failures
-and their reports remain part of the future workflow implementation. See
+configuration is rejected before source capture/storage. The synchronous executor maps later execution failures and produces terminal reports. See
 [intake orchestration specification](spec/016-intake-orchestration/spec.md).
 
 ## Canonical playbook definition
@@ -487,9 +484,9 @@ minimal/low/medium/high/xhigh. Other arguments are rejected before launch to
 preserve Shipyard's workspace, output and invocation controls. Authentication
 comes from the operator's local Codex installation; no provider secrets are saved.
 The adapter enforces the supplied per-call timeout, kills its process group on
-timeout, bounds final output to 4 MiB and discards raw transcripts. Launch errors,
+timeout, bounds final output to 4 MiB and retains at most 64 KiB per diagnostic stream. Launch errors,
 nonzero exits, missing/invalid final messages and invalid stage contracts fail the
-stage. Run-level failure mapping and PACKAGE remain later work.
+stage. The synchronous Run executor maps failures and invokes PACKAGE.
 
 The [Phase 4 audit](spec/030-phase4-acceptance-audit/report.md) records acceptance
 evidence. Tests use a fake provider executable with real subprocesses and Git;
@@ -512,16 +509,17 @@ tested = execute_test(
 TEST uses the frozen base configuration, even if BUILD changes `shipyard.yaml`.
 Every command runs in order through `/bin/sh -c`; nonzero exits, launch errors
 and timeouts do not skip subsequent checks. Each command has its own explicit
-timeout. Output streams directly to numbered stdout/stderr files; the create-only
+timeout. Output is drained continuously with a 64 KiB retained prefix per stream
+and explicit truncation flags in numbered stdout/stderr files; the create-only
 manifest records all results, configuration provenance and exact candidate receipt.
 Evidence must be outside the workspace. Wrong identity or dirty/wrong revision
 is rejected before running; a changed workspace after checks yields TEST_FAILED.
 Checks must leave the workspace clean, including ignored files, for REVIEW.
 Shipyard retains residue for inspection rather than deleting it.
 
-Commands are trusted local code. Logs currently have no size cap; full Run budget
-accounting and bounded PACKAGE logs remain Phase 8 work. Callers own the total
-budget, lifecycle, exclusive workspace use and selection of durable evidence.
+Commands are trusted local code. Standalone callers own total budget and lifecycle;
+`execute_run` supplies a shared TEST deadline, records unstarted checks as timed out
+after exhaustion, and owns Run accounting/finalization. Exclusive workspace use is required.
 Captures are create-only, with partial failures retained and manifest written last;
 this is not atomic publication or protection against malicious local processes.
 See the [Phase 6 audit](spec/036-phase6-acceptance-audit/report.md).
@@ -572,8 +570,64 @@ bound to their recorded SHA, and cannot verify a later revision.
 
 These are trusted local harness attestations, not cryptographic proof of execution.
 Operators must use authentic captures and exclusive workspaces. The harness checks
-consistency but does not authenticate hand-edited local files or automatically
-persist completed Run states. Semantic PASS remains the independent reviewer's
-assessment. Full orchestration, lifecycle persistence, PACKAGE and Run budget
-accounting remain future work. See the
+consistency but does not authenticate hand-edited local files. Semantic PASS remains
+the independent reviewer's assessment. `execute_run` persists completed states and
+lifecycle events, accounts for the shared budget and packages evidence. See the
 [Phase 7 audit](spec/040-phase7-acceptance-audit/report.md).
+
+
+## Synchronous execution and PACKAGE
+
+Capture a Run with `shipyard intake` as above, then execute its returned ID:
+
+```bash
+uv run shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
+```
+
+`--workspace /fresh/path` overrides the default sibling `workspaces/<run-id>`
+directory. The target repository must contain the frozen base commit. Codex must
+already be installed and authenticated locally. Each native stage starts a fresh
+process. Execution stays local and synchronous; Ctrl-C cancels the active executor
+best-effort and packages a CANCELLED result. Exit codes are 0 for VERIFIED, 2 for
+other completed software outcomes, 1 for execution or packaging failure, and 130
+for cancellation. The command prints terminal Run JSON and absolute report/evidence
+paths. `inspect` continues to return the frozen contract after execution.
+
+The application entry point is `shipyard.application.execution.execute_run`, with
+explicit `FileRunStore`, Run ID, `GitRepository`, fresh workspace and `NativeAgent`
+parameters. Existing individual stage APIs remain available for lower-level use.
+
+The frozen total budget starts at execution admission. DESIGN, PLAN and BUILD
+share the allowance before the verification reserve; TEST and REVIEW share the
+remaining total. Unused time rolls forward. Monotonic time controls deadlines;
+UTC timestamps, measured durations and remaining budget are recorded for the Run
+and stages. Native-agent deadlines use whole seconds, so less than one remaining
+second cannot admit another agent. PACKAGE records its own timing outside that
+allowance and remains available when remaining execution time is zero.
+
+Run directories contain `run.json`, `contract.json`, `intent.*`, `attempt.json`,
+`events.jsonl`, timing records, stage directories, `report.md`, and `evidence.json`.
+DESIGN/PLAN/BUILD/REVIEW hold structured results, artifacts and bounded diagnostics;
+TEST holds its complete check manifest and numbered logs. `invocation.json` records
+log truncation and optional usage, including for provider process failure/timeout.
+Partial captures lack their success manifest. `evidence.json` is published last and
+indexes all prior files, including the report, by relative path, length and SHA-256.
+It does not hash itself. Symlinks are rejected.
+
+Provider-neutral usage supports optional input/output/cached tokens, bounded
+provider metadata, and an actual reported charge with currency. The current Codex
+adapter does not extract billing or token counters; usage/cost remain UNKNOWN.
+There is no pricing table or estimated charge. Reports expose missing TEST/REVIEW
+and unverified criteria rather than upgrading a failed outcome.
+
+Execution and PACKAGE reserve their directories exclusively, preserve partial
+failures and reject retries. Terminal records cannot be changed through the Run
+store or executor. Lifecycle journals are validated on reload; a crash between
+journal and snapshot writes fails closed. This is trusted-local persistence, not
+power-loss atomicity, OS-enforced immutability or protection against manual edits.
+A disk failure can prevent a report: PACKAGE errors are surfaced after terminal
+persistence. Workspaces and candidate refs are retained for inspection; cleanup,
+resume/recovery, SIGTERM handling, background service and concurrent writers are
+out of scope. No live-provider evaluation is claimed.
+
+See the [Phase 8 acceptance audit](spec/045-phase8-acceptance-audit/report.md).

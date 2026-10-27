@@ -1,5 +1,19 @@
 # Changelog
 
+## Phase 8 — PACKAGE and evidence (2026-10-27)
+
+- Added synchronous `shipyard run <run-id>` with exclusive one-attempt execution,
+  lifecycle journal validation and terminal persistence.
+- Added monotonic shared execution budgets, a verification reserve, stage timing
+  and shared TEST deadlines with complete collection after exhaustion.
+- Added bounded continuously drained subprocess diagnostics, truncation flags and
+  optional provider-reported token/actual-charge records; unavailable cost is UNKNOWN.
+- Added create-only terminal reports and content-addressed evidence indexes,
+  including failed/cancelled/exhausted Runs; PACKAGE stays outside the budget.
+- Added real Git/subprocess acceptance coverage, including detached-pipe cleanup
+  and cross-contract verification rejection. See the Phase 8 acceptance audit.
+  Live-provider/baseline evaluation, recovery and background infrastructure remain out of scope.
+
 ## Phase 7 — REVIEW and VERIFIED (2026-10-27)
 
 - Added explicit required criterion extraction and exact-content spec references.

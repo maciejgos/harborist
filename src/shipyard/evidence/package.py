@@ -1,6 +1,8 @@
 """Create-only PACKAGE output; no executor or budget admission is required."""
 
 import hashlib
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,6 +12,7 @@ from shipyard.application.review import evaluate_review, validate_test_context
 from shipyard.application.stages import StageExecution
 from shipyard.application.verification import TestExecution
 from shipyard.domain import Run, RunContract, RunLifecycle, RunOutcome
+from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.stage_result import ReviewStageResult
@@ -31,6 +34,7 @@ class RunEvidence(BaseModel):
     candidate: Candidate | None
     timing: Timing
     stage_timings: tuple[Timing, ...]
+    package_timing: Timing
     stages: tuple[StageExecution, ...]
     test: TestExecution | None
     files: tuple[EvidenceFile, ...]
@@ -80,6 +84,8 @@ def package_run(
     Terminal immutability is enforced by the synchronous executor's exclusive
     reservation, not by OS permissions against other local processes.
     """
+    package_start = time.monotonic()
+    package_started_at = datetime.now(UTC)
     run = Run.model_validate_json(run.model_dump_json())
     contract = RunContract.model_validate_json(contract.model_dump_json())
     if run.lifecycle not in (
@@ -219,7 +225,16 @@ def package_run(
         lines.extend(["", "## Execution error", "", error[:4096]])
     with (directory / "report.md").open("x", encoding="utf-8") as output:
         output.write("\n".join(lines) + "\n")
+    files = _files(directory)
     evidence = RunEvidence(
+        package_timing=Timing(
+            stage=ArtifactStage.PACKAGE,
+            started_at=package_started_at,
+            ended_at=datetime.now(UTC),
+            duration_seconds=time.monotonic() - package_start,
+            original_seconds=timing.original_seconds,
+            remaining_seconds=timing.remaining_seconds,
+        ),
         run=run,
         contract=contract,
         attempt=attempt,
@@ -228,7 +243,7 @@ def package_run(
         stage_timings=stage_timings,
         stages=stages,
         test=test,
-        files=_files(directory),
+        files=files,
         unverified=tuple(missing),
         error=error,
     )

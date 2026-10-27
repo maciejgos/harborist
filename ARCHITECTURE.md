@@ -2,9 +2,10 @@
 
 This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
 
-Phases 2–7 are complete: frozen intake, methodology/routing, independent
-native-agent execution, Git candidates, trusted TEST and revision-bound REVIEW/VERIFIED.
-See the [Phase 7 audit](spec/040-phase7-acceptance-audit/report.md).
+Phases 2–8 are complete: frozen intake, methodology/routing, independent
+native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
+and synchronous Run execution with terminal PACKAGE.
+See the [Phase 8 audit](spec/045-phase8-acceptance-audit/report.md).
 
 ## Bird's Eye View
 
@@ -13,7 +14,7 @@ Shipyard is a local, synchronous CLI application. It accepts a Markdown file or 
 ```mermaid
 flowchart TB
     USER[Engineer] --> CLI[Shipyard CLI]
-    CLI --> RUN[Run / AttemptExecutor]
+    CLI --> RUN[execute_run / one Attempt]
     RUN --> GIT[Isolated Git worktree]
     RUN --> AGENT[NativeAgent / Codex]
     RUN --> TEST[Trusted TEST executor]
@@ -112,8 +113,9 @@ Additional intake options:
 --runs-dir
 ```
 
-The CLI prints complete contract JSON and leaves captures in CREATED. Full workflow
-execution and `shipyard run` remain future work. Methodology content is frozen here;
+Intake prints complete contract JSON and leaves captures in CREATED.
+`shipyard run <run-id> --repo <repository>` executes one captured Run synchronously
+and prints terminal JSON plus report/evidence paths. Methodology content is frozen here;
 Phase 3 compilation and routing validate its topology and skill scope. The
 methodology command previews frozen metadata/guidance without execution or writes.
 
@@ -147,7 +149,7 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point and presentation
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
-├── application/    # durable intake and independent native stages; run loop planned
+├── application/    # durable intake, synchronous Run executor and native stages
 ├── intake/         # local Markdown and authenticated gh capture
 ├── configuration/  # operator settings and methodology content capture
 ├── playbooks/      # frozen document compiler and packaged canonical playbook
@@ -157,7 +159,7 @@ src/shipyard/
 ├── verification/   # frozen shipyard.yaml and sequential trusted checks
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
-└── persistence/    # create-only intent and complete Run captures
+└── persistence/    # frozen captures and exclusive lifecycle journals
 ```
 
 ### `domain`
@@ -231,9 +233,14 @@ upstream artifacts and frozen methodology. It writes create-only per-stage
 captures with a manifest last, rejects upstream mutation, and requires a complete
 matching trusted TEST capture and successful receipt plus clean exact-candidate
 workspace for REVIEW. It returns a validated REVIEW decision without advancing
-lifecycle or routing. The planned `AttemptExecutor` will compose these stages with
-the implemented Git workspace/candidate APIs, trusted TEST, full budget accounting,
-Run lifecycle/event persistence and PACKAGE.
+lifecycle or routing. `execute_run` composes these stages with Git workspaces,
+candidate publication, trusted TEST, shared monotonic budget accounting, validated
+routing, lifecycle/event persistence and PACKAGE. Early software outcomes, failed
+checks, invalid output, provider failures, cancellation and budget exhaustion each
+produce an explicit terminal state. Unexpected executor exceptions produce
+INTERNAL_ERROR. Failed TEST never invokes REVIEW. PACKAGE runs outside admission
+checks. The executor preserves workspaces and rejects any second admission;
+there is no retry/recovery or background service.
 
 ### `playbooks` / `skills`
 
@@ -288,8 +295,8 @@ manifest. Failed TEST blocks invocation.
 record checks Run/Attempt/candidate ownership, complete passing check evidence and
 exact all-PASS criterion coverage, also on JSON reload. No evidence transfers to a
 new SHA. This is trusted-local consistency validation, not authentication of
-arbitrary files or proof of the reviewer's semantic correctness. Full lifecycle
-persistence and orchestration remain planned.
+arbitrary files or proof of the reviewer's semantic correctness. The synchronous executor owns lifecycle
+persistence and orchestration; lower-level stage APIs retain explicit caller ownership.
 
 ### `agents`
 
@@ -305,6 +312,11 @@ not stdout, and bounds its size. Read-only stages return Markdown inside JSON fo
 Shipyard to persist. BUILD uses workspace-write. Profile arguments cannot override
 harness controls; only reasoning-effort config pairs are initially supported.
 Timeouts terminate the process group best-effort; temporary files are cleaned.
+The shared subprocess capture drains pipes while retaining a 64 KiB prefix per
+stream, flags truncation, and closes inherited pipes without waiting for detached
+descendants. Diagnostics survive nonzero exits and deadlines in partial captures.
+Optional validated usage belongs to the NativeAgent response, never the agent
+output envelope; the Codex adapter currently reports no usage/billing counters.
 Authentication stays in the local Codex environment; no live-provider smoke test
 is claimed by the synthetic process integration suite.
 
@@ -366,7 +378,9 @@ collecting exit status, timeout/launch errors and file logs without fail-fast.
 execution, persists configuration/results/receipt with a manifest last, and emits
 TEST_FAILED on check failure or post-check workspace changes. It does not reread
 candidate configuration. Callers still own total budget accounting and lifecycle
-mapping, including configuration failures to Run `CONFIGURATION_ERROR`.
+mapping, including configuration failures to Run `CONFIGURATION_ERROR`. The synchronous executor supplies one shared TEST
+deadline: after exhaustion remaining checks are recorded without invocation.
+Log truncation does not affect check success.
 
 **Invariant:** model output can never override a failed trusted check.
 
@@ -382,11 +396,15 @@ The PoC uses filesystem-only persistence:
 ├── evidence.json
 ├── intent.md
 ├── intent.json
-├── spec.md
-├── plan.md
-├── review.md
-├── report.md
-└── logs/
+├── attempt.json
+├── timing.json
+├── stage-timings.json
+├── design/         # spec.md, structured result, bounded diagnostics, manifest
+├── plan/           # plan.md and stage capture
+├── build/          # optional plan.md update and stage capture
+├── test/           # complete check manifest and bounded numbered logs
+├── review/         # review.md, validated decision and stage capture
+└── report.md
 ```
 
 Terminal Run directories are immutable.
@@ -401,15 +419,28 @@ Intent saves create files exclusively and reject either reserved path if present
 The content file is closed before metadata creation. Partial files are retained
 on failure and rejected by subsequent load/save operations. This is create-only
 intent persistence, without atomic multi-file publication or power-loss guarantees.
-General RunStore behavior, event persistence, and terminal-directory enforcement
-remain planned.
+The Run store separately owns lifecycle journal persistence and exclusive execution admission.
 
 `FileRunStore` exclusively reserves a fresh Run directory and composes the intent
 store with CREATED run.json and complete contract.json. The contract is written
 last. Loading requires valid records with matching ownership and identical intent.
 Incomplete directories are retained, rejected on load and never overwritten on
-save. This supports durable Phase 2 intake; general Run lifecycle/event persistence
-and terminal-directory enforcement remain future work.
+save. `begin` exclusively reserves `.execution`, records CREATED/RUNNING events
+and updates the Run snapshot. `finish` appends one terminal event and replaces
+run.json, requiring matching frozen verification before VERIFIED persistence.
+Reload replays validated lifecycle events and rejects snapshot disagreement.
+Terminal Runs cannot be re-admitted or finalized again. Journal/snapshot updates
+are not transactionally atomic; interrupted writes fail closed and remain
+inspectable. OS permissions do not protect against other local writers.
+
+`package_run` reserves `.package` and writes report.md followed by evidence.json.
+It records frozen provenance, exact candidate, check results, criterion coverage,
+timing, optional provider usage/actual charge and explicit missing evidence.
+The index hashes prior regular files with relative paths and sizes, including the
+report but excluding itself; symlinks are rejected. VERIFIED packaging reconciles
+DESIGN/TEST/REVIEW against the terminal verification record. No model participates
+in packaging and no execution allowance is required. Disk errors are surfaced;
+partial PACKAGE is retained and cannot be silently retried.
 
 ## Boundaries
 
@@ -442,7 +473,12 @@ Infrastructure-specific behavior stays behind these boundaries.
 
 ### Execution budget
 
-A Run has one frozen budget. PACKAGE does not consume it.
+A Run has one frozen budget. `BudgetClock` uses monotonic elapsed time from
+execution admission; DESIGN/PLAN/BUILD cannot consume the verification reserve.
+TEST/REVIEW share the remaining total. Stage timing survives ordinary failures;
+PACKAGE records its timing separately and does not consume execution allowance.
+Remaining subsecond allowance cannot admit a native-agent call. UTC wall-clock
+timestamps describe events; elapsed monotonic time controls deadlines.
 
 ### Stage contracts
 

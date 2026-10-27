@@ -25,7 +25,7 @@ class FileRunStore:
     """Reserve a new directory exclusively; contract.json is published last.
 
     Partial writes remain inspectable. There is no automatic repair, overwrite,
-    automatic recovery, or multi-file/power-loss atomicity guarantee.
+    recovery, or multi-file/power-loss atomicity guarantee.
     """
 
     def __init__(self, *, root: Path) -> None:
@@ -73,6 +73,11 @@ class FileRunStore:
             if contract.run_id != run_id or run.run_id != run_id:
                 raise ValueError("Persisted records must belong to requested Run")
             self.load_state(run_id)
+            if run.verification is not None and (
+                run.verification.verification != contract.verification
+                or run.verification.attempt.start_sha != contract.base_sha
+            ):
+                raise ValueError("Verification must match frozen contract")
             if contract.intent != intent:
                 raise ValueError("Persisted intent must match frozen contract")
             return contract
@@ -153,6 +158,12 @@ class FileRunStore:
         return state.start()
 
     def finish(self, run: Run) -> None:
+        contract = self.load(run.run_id)
+        if run.verification is not None and (
+            run.verification.verification != contract.verification
+            or run.verification.attempt.start_sha != contract.base_sha
+        ):
+            raise RunPersistenceError("Verification must match the frozen contract")
         previous = self.load_state(run.run_id)
         if previous.lifecycle != RunLifecycle.RUNNING:
             raise RunPersistenceError("Only an active execution may finalize")
