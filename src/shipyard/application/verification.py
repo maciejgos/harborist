@@ -1,5 +1,6 @@
 """Capture Shipyard-controlled TEST evidence for one exact candidate."""
 
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -34,11 +35,13 @@ def execute_test(
     output_dir: Path,
     check_timeout_seconds: float,
     total_timeout_seconds: float | None = None,
+    cleanup_workspace: Callable[[], None] | None = None,
 ) -> TestExecution:
     """Write manifest last; caller owns total budget and lifecycle transitions.
 
-    Checks may generate workspace residue; retain it and fail closed instead of
-    cleaning it or transferring verification to a changed revision.
+    The Run executor supplies cleanup for its owned isolated workspace. Lower-level
+    callers default to retaining residue and failing closed. Source changes always
+    fail the exact-revision assertion, independently of check exit status.
     """
     if attempt.run_id != contract.run_id or candidate.attempt_id != attempt.attempt_id:
         raise ValueError("TEST identities must belong to the frozen Run and Attempt")
@@ -58,6 +61,8 @@ def execute_test(
     )
     workspace_error = None
     try:
+        if cleanup_workspace is not None:
+            cleanup_workspace()
         repository.require_clean_revision(commit_sha=candidate.candidate_sha)
     except GitReadError as error:
         workspace_error = str(error)

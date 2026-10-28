@@ -46,6 +46,12 @@ class FakeAgent:
                 result["status"] = "needs_rescoping"
         elif request.stage == AgentStage.BUILD:
             (request.workspace / "requested.txt").write_text("implemented")
+            if self.mode == "caches":
+                (request.workspace / ".gitignore").write_text(
+                    ".venv/\n.pytest_cache/\n"
+                )
+                (request.workspace / ".venv").mkdir()
+                (request.workspace / ".venv" / "build-only").write_text("dependency")
         else:
             artifact = "# Independent review"
             assert request.candidate is not None
@@ -96,6 +102,39 @@ def capture(
     store = FileRunStore(root=tmp_path / "runs")
     store.save(contract)
     return store, repo, contract
+
+
+@pytest.mark.parametrize(
+    "tail,expected",
+    [
+        ("true", RunOutcome.VERIFIED),
+        ("exit 1", RunOutcome.TEST_FAILED),
+        ("echo changed >> requested.txt", RunOutcome.TEST_FAILED),
+        ("touch unexpected.txt", RunOutcome.TEST_FAILED),
+    ],
+)
+def test_disposable_caches_do_not_block_publication_or_verification(
+    tmp_path: Path, frozen_contract: RunContract, tail: str, expected: RunOutcome
+) -> None:
+    # TEST must start without BUILD's environment; its own ignored cache is disposable.
+    check = (
+        "test ! -d .venv || exit 9; "
+        "mkdir .pytest_cache && touch .pytest_cache/check && " + tail
+    )
+    store, repo, contract = capture(tmp_path, frozen_contract, check)
+    agent = FakeAgent("caches")
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=agent,
+    )
+    assert result.run.outcome == expected
+    assert result.candidate is not None
+    assert not (tmp_path / "work" / ".venv").exists()
+    assert not (tmp_path / "work" / ".pytest_cache").exists()
+    assert (AgentStage.REVIEW in agent.calls) == (expected == RunOutcome.VERIFIED)
 
 
 @pytest.mark.parametrize(

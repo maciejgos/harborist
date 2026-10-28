@@ -363,7 +363,9 @@ ignored workspace changes. It performs no checkout or candidate creation.
 Attempt start SHA outside the source checkout. `GitWorkspace.publish_candidate()`
 requires unchanged detached HEAD, stages BUILD changes and creates a commit with
 explicit harness identity, disabled hooks/signing and a clean-revision assertion.
-Ignored residue is rejected rather than removed. The Run-owned candidate ref is
+Ignored disposable files are removed from the owned detached linked worktree
+before publication using system Git clean (ignored files only, without forcing
+nested-repository removal). The source checkout is never cleaned. The Run-owned candidate ref is
 published with atomic create-only update-ref; existing refs cannot be overwritten.
 Failures retain partial state for inspection. Replacement objects are disabled.
 The caller validates ownership and BUILD success; no lifecycle grant is implied.
@@ -384,7 +386,12 @@ synchronously. `run_checks` executes every frozen command through the local POSI
 collecting exit status, timeout/launch errors and file logs without fail-fast.
 `application.execute_test` guards exact candidate cleanliness before and after
 execution, persists configuration/results/receipt with a manifest last, and emits
-TEST_FAILED on check failure or post-check workspace changes. It does not reread
+TEST_FAILED on check failure or post-check workspace changes. The Run executor
+injects its isolated-workspace cleanup function to remove ignored files generated
+by TEST before asserting cleanliness; lower-level callers default to retaining
+all residue. BUILD's ignored environments are removed before publication, so TEST
+cannot depend on those uncommitted inputs. Tracked and nonignored changes still
+fail closed, and REVIEW retains the strict no-residue assertion. It does not reread
 candidate configuration. Callers still own total budget accounting and lifecycle
 mapping, including configuration failures to Run `CONFIGURATION_ERROR`. The synchronous executor supplies one shared TEST
 deadline: after exhaustion remaining checks are recorded without invocation.

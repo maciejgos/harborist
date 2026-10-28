@@ -131,6 +131,23 @@ class GitWorkspace:
         """Stable Run-owned reachability; publication never replaces it."""
         return f"refs/shipyard/runs/{self.attempt.run_id}/candidate"
 
+    def clean_ignored_files(self) -> None:
+        """Remove disposable ignored files only from this owned linked worktree.
+
+        Never force removal of nested repositories or follow directory symlinks.
+        Tracked changes and nonignored untracked files are retained for validation.
+        """
+        if not (self.path / ".git").is_file() or (
+            _run_git(self.path, "rev-parse", "--abbrev-ref", "HEAD").strip() != b"HEAD"
+        ):
+            raise GitReadError("Cleanup requires an isolated detached worktree")
+        try:
+            _run_git(self.path, "clean", "-f", "-d", "-X", "--", ".")
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise GitReadError(
+                "Cannot clean ignored files in isolated workspace"
+            ) from error
+
     def publish_candidate(self) -> Candidate:
         """Commit BUILD changes and publish a create-only candidate ref.
 
@@ -148,10 +165,7 @@ class GitWorkspace:
                 raise ValueError("Candidate requires detached HEAD")
             if _run_git(self.path, "ls-files", "--unmerged"):
                 raise ValueError("Candidate cannot contain unresolved merges")
-            if _run_git(
-                self.path, "ls-files", "--others", "--ignored", "--exclude-standard"
-            ):
-                raise ValueError("Remove ignored BUILD residue before publication")
+            self.clean_ignored_files()
             _run_git(self.path, "add", "--all", "--", ".")
             _run_git(
                 self.path,
@@ -175,7 +189,7 @@ class GitWorkspace:
             return self.attempt.create_candidate(sha)
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitWorkspaceError(
-                "Cannot publish candidate; workspace retained"
+                f"Cannot publish candidate; workspace retained: {error}"
             ) from error
 
 

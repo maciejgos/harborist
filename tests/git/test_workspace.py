@@ -96,18 +96,48 @@ def test_noop_candidate_and_ref_collision(tmp_path: Path) -> None:
     assert git(repo, "rev-parse", workspace.candidate_ref) == first.candidate_sha
 
 
-def test_candidate_rejects_head_drift_and_ignored_residue(tmp_path: Path) -> None:
+def test_candidate_cleans_ignored_residue_only_in_owned_workspace(
+    tmp_path: Path,
+) -> None:
+    repo, attempt = source(tmp_path)
+    (repo / "ignored").write_text("developer environment")
+    workspace = GitRepository(path=repo).create_workspace(
+        attempt=attempt, path=tmp_path / "build"
+    )
+    (workspace.path / "ignored").mkdir()
+    (workspace.path / "ignored" / "cache").write_text("BUILD residue")
+    (workspace.path / "new").write_text("implementation")
+    candidate = workspace.publish_candidate()
+    assert not (workspace.path / "ignored").exists()
+    assert (repo / "ignored").read_text() == "developer environment"
+    assert git(workspace.path, "show", "HEAD:new") == "implementation"
+    GitRepository(path=workspace.path).require_clean_revision(
+        commit_sha=candidate.candidate_sha
+    )
+
+
+def test_candidate_rejects_head_drift(tmp_path: Path) -> None:
     repo, attempt = source(tmp_path)
     workspace = GitRepository(path=repo).create_workspace(
         attempt=attempt, path=tmp_path / "build"
     )
-    (workspace.path / "ignored").write_text("residue")
-    with pytest.raises(ValueError):
-        workspace.publish_candidate()
-    (workspace.path / "ignored").unlink()
     git(workspace.path, "switch", "-c", "unexpected")
     with pytest.raises(ValueError):
         workspace.publish_candidate()
+
+
+def test_ignored_cleanup_does_not_follow_symlinks(tmp_path: Path) -> None:
+    repo, attempt = source(tmp_path)
+    workspace = GitRepository(path=repo).create_workspace(
+        attempt=attempt, path=tmp_path / "build"
+    )
+    external = tmp_path / "external-environment"
+    external.mkdir()
+    (external / "keep").write_text("operator data")
+    (workspace.path / "ignored").symlink_to(external, target_is_directory=True)
+    workspace.publish_candidate()
+    assert not (workspace.path / "ignored").is_symlink()
+    assert (external / "keep").read_text() == "operator data"
 
 
 def test_candidate_rejects_committed_head_drift(tmp_path: Path) -> None:

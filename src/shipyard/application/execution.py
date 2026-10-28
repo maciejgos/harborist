@@ -159,6 +159,7 @@ def execute_run(
                         output_dir=directory / "test",
                         check_timeout_seconds=allowance,
                         total_timeout_seconds=allowance,
+                        cleanup_workspace=isolated.clean_ignored_files,
                     )
                     clock.allowance(ArtifactStage.TEST, admission=False)
                     routing = routing.accept(test.receipt)
