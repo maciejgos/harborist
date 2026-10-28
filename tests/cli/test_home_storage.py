@@ -54,7 +54,15 @@ def test_intake_default_and_historical_inspection(
     monkeypatch.chdir(elsewhere)
     result = CliRunner().invoke(
         app,
-        ["intake", f"file:{issue}", "--settings", str(settings), "--repo", str(target)],
+        [
+            "intake",
+            "--json",
+            f"file:{issue}",
+            "--settings",
+            str(settings),
+            "--repo",
+            str(target),
+        ],
     )
     assert result.exit_code == 0, result.output
     contract = RunContract.model_validate_json(result.stdout)
@@ -132,6 +140,7 @@ def test_projects_share_home_storage_with_distinct_workspaces(
             app,
             [
                 "intake",
+                "--json",
                 f"file:{issue}",
                 "--settings",
                 str(settings),

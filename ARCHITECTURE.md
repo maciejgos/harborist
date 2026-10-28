@@ -110,13 +110,19 @@ Additional intake options:
 --ref
 --timeout
 --verification-reserve
+--json
 --runs-dir
 ```
 
-Intake prints complete contract JSON to stdout and leaves captures in CREATED.
-It saves a create-only `execution-context.json` beside the capture and prints a
-POSIX-shell-quoted `shipyard run <run-id> --context <absolute-file>` command to
-stderr. The locator stores version, Run UUID, resolved checkout root and resolved
+Intake prints a concise human-readable summary to stdout and leaves captures in
+CREATED. The summary includes the Run ID, resolved checkout root, frozen base
+revision, task source reference, status and a copyable execution command.
+`--json` prints the full frozen contract as one JSON document to stdout instead;
+existing scripts consuming the former default JSON must add `--json`. Saved
+contracts and existing captures require no migration.
+It saves a create-only `execution-context.json` beside the capture and includes a
+POSIX-shell-quoted `shipyard run <run-id> --context <absolute-file>` command in the
+summary (on stderr in JSON mode). The locator stores version, Run UUID, resolved checkout root and resolved
 Runs root separately from the frozen domain contract. It works independently of
 cwd. With context, omitted `--repo`/`--runs-dir` come from the locator; explicit
 options must resolve to the same locations. Invalid context never falls back.

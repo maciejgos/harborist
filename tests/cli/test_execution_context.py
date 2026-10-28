@@ -77,8 +77,12 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
         args, env=environment, capture_output=True, text=True, check=False
     )
     assert intake.returncode == 0, intake.stderr
-    contract = RunContract.model_validate_json(intake.stdout)
-    command = intake.stderr.strip()
+    directory = next(runs.iterdir())
+    contract = RunContract.model_validate_json(
+        (directory / "contract.json").read_text()
+    )
+    command = intake.stdout.split("Execute:\n", 1)[1].strip()
+    assert intake.stderr == ""
     assert shlex.split(command) == [
         "shipyard",
         "run",

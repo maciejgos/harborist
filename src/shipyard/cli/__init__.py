@@ -49,11 +49,18 @@ def intake(
     timeout: Annotated[
         int, typer.Option(help="Overall execution budget in seconds.", min=1)
     ] = 1800,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print the full frozen contract as JSON.")
+    ] = False,
     verification_reserve: Annotated[
         int, typer.Option(help="Seconds reserved for verification.", min=1)
     ] = 300,
 ) -> None:
-    """Capture a CREATED Run. Does not execute agents or verification checks."""
+    """Capture a CREATED Run and print a human-readable summary.
+
+    Existing scripts consuming JSON stdout must add --json for the full frozen contract.
+    Does not execute agents or verification checks.
+    """
     try:
         execution = load_execution_settings(
             path=settings,
@@ -77,13 +84,22 @@ def intake(
     except (ValueError, OSError) as error:
         typer.echo(json.dumps({"error": str(error)}), err=True)
         raise typer.Exit(code=1) from error
-    typer.echo(contract.model_dump_json())
-    typer.echo(
-        shlex.join(
-            ["shipyard", "run", str(contract.run_id), "--context", str(context)]
-        ),
-        err=True,
+    command = shlex.join(
+        ["shipyard", "run", str(contract.run_id), "--context", str(context)]
     )
+    if json_output:
+        typer.echo(contract.model_dump_json())
+        typer.echo(command, err=True)
+    else:
+        typer.echo(
+            f"Run captured\n"
+            f"ID:         {contract.run_id}\n"
+            f"Repository: {root}\n"
+            f"Base:       {contract.base_sha}\n"
+            f"Task:       {contract.intent.source_ref}\n"
+            f"Status:     CREATED\n\n"
+            f"Execute:\n  {command}"
+        )
 
 
 @app.command()

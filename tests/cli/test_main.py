@@ -2,7 +2,9 @@
 
 import json
 from pathlib import Path
+from uuid import UUID
 
+import pytest
 from typer.testing import CliRunner
 
 from shipyard.cli import app
@@ -29,6 +31,7 @@ def test_intake_and_inspect_round_trip(tmp_path: Path) -> None:
         app,
         [
             "intake",
+            "--json",
             f"file:{issue}",
             "--repo",
             str(target),
@@ -69,6 +72,7 @@ def test_expected_failures_are_nonzero_without_tracebacks(tmp_path: Path) -> Non
         ],
     )
     assert result.exit_code == 1
+    assert result.stdout == ""
     assert "Cannot resolve Git" in result.stderr
     assert "Traceback" not in result.output
     result = runner.invoke(
@@ -182,6 +186,7 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
         app,
         [
             "intake",
+            "--json",
             f"file:{issue}",
             "--repo",
             str(target),
@@ -208,3 +213,108 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
         "repository": str(target.resolve()),
         "runs_root": str(runs.resolve()),
     }
+
+
+@pytest.mark.parametrize("source_kind", ["file", "github"])
+def test_intake_summary_and_json_preserve_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_kind: str
+) -> None:
+    import shipyard.intake.source as source_adapter
+    from shipyard.domain import IntentSnapshot
+    from shipyard.persistence import FileRunStore
+
+    target = tmp_path / "target"
+    init_repository(target)
+    (target / "shipyard.yaml").write_text(
+        "version: 1\nchecks: [{id: test, command: 'true'}]\n"
+    )
+    git(target, "add", ".")
+    git(target, "commit", "-m", "base")
+    subdir = target / "subdir"
+    subdir.mkdir()
+    issue = tmp_path / "issue.md"
+    body = "Distinctive complete task body must stay in capture"
+    issue.write_text(body)
+    source = f"file:{issue}"
+    if source_kind == "github":
+        source = "github:owner/repo#42"
+        def read_issue(*, run_id: UUID, source: str) -> IntentSnapshot:
+            return IntentSnapshot.create(
+                run_id=run_id, source_ref=source, markdown=body
+            )
+
+        monkeypatch.setattr(source_adapter, "read_github_intent", read_issue)
+    settings = write_settings(tmp_path)
+    runs = tmp_path / "runs"
+    contracts: list[RunContract] = []
+    for options in ([], ["--json"]):
+        result = runner.invoke(
+            app,
+            [
+                "intake",
+                source,
+                "--repo",
+                str(subdir),
+                "--settings",
+                str(settings),
+                "--runs-dir",
+                str(runs),
+                *options,
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        directory = next(
+            p
+            for p in runs.iterdir()
+            if p.name not in {str(c.run_id) for c in contracts}
+        )
+        contract = RunContract.model_validate_json(
+            (directory / "contract.json").read_text()
+        )
+        assert FileRunStore(root=runs).load(contract.run_id) == contract
+        assert (
+            json.loads((directory / "run.json").read_text())["lifecycle"] == "CREATED"
+        )
+        assert {p.name for p in directory.iterdir()} == {
+            "contract.json",
+            "run.json",
+            "intent.json",
+            "intent.md",
+            "execution-context.json",
+        }
+        assert (directory / "intent.md").read_text() == body
+        if options:
+            assert RunContract.model_validate_json(result.stdout) == contract
+            assert "Execute:" not in result.stdout
+        else:
+            assert "Run captured" in result.stdout
+            for value in (
+                str(contract.run_id),
+                str(target.resolve()),
+                contract.base_sha,
+                contract.intent.source_ref,
+                "CREATED",
+                "Execute:",
+            ):
+                assert value in result.stdout
+            for value in (
+                body,
+                contract.execution.playbook.content,
+                '"execution"',
+                '"agent_profile"',
+                "operator-selected-model",
+            ):
+                assert value not in result.stdout
+            assert result.stderr == ""
+        contracts.append(contract)
+    assert contracts[0].base_sha == contracts[1].base_sha
+    assert contracts[0].execution == contracts[1].execution
+    assert contracts[0].intent.source_ref == contracts[1].intent.source_ref
+
+
+def test_intake_help_explains_output_and_script_migration() -> None:
+    result = runner.invoke(app, ["intake", "--help"])
+    assert result.exit_code == 0
+    help_text = " ".join(result.stdout.split())
+    for value in ("summary", "--json", "full frozen contract", "scripts"):
+        assert value in help_text

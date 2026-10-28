@@ -109,8 +109,11 @@ uv run shipyard methodology RUN_UUID
 uv run shipyard methodology RUN_UUID --stage build
 ```
 
-Intake first validates methodology metadata, then prints a complete JSON contract
-and leaves the Run in CREATED. It does not
+Intake first validates methodology metadata, then prints a concise human-readable
+summary with the Run ID, repository, base revision, task reference, CREATED status,
+and a copyable execution command. Use `--json` for the full frozen contract on
+stdout. Existing scripts consuming the former default JSON must add `--json`.
+Saved contracts and existing captures require no migration. Intake does not
 execute agents or checks. Inspect validates the saved capture without consulting
 original inputs. `methodology` previews the frozen playbook and skills as JSON;
 `--stage` selects composed guidance for an agent stage. All commands accept
@@ -596,13 +599,19 @@ order. Routine TDD policy stays in operating guidance; explicitly requested proo
 still requires adequate evidence. Older captures/responses remain readable.
 See the [process-evidence contract](spec/046-build-process-evidence/spec.md).
 
-Capture a Run, then copy the execution command printed to stderr:
+Capture a Run, then copy the execution command from the default summary:
 
 ```bash
 shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository
-# stdout: one frozen-contract JSON document (safe to redirect to a file)
-# stderr: a copyable command such as:
+# stdout: a human-readable summary including a command such as:
 shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json
+```
+
+To capture the full frozen contract as JSON instead (the command hint remains on
+stderr):
+
+```bash
+shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository --json > contract.json
 ```
 
 Use `uv run shipyard` when running from the development checkout, or install the
