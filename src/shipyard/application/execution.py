@@ -83,6 +83,11 @@ def execute_run(
                     else {
                         "spec.md": upstream["spec.md"],
                         "test-evidence.json": directory / "test" / "manifest.json",
+                        **(
+                            {"build-process.json": upstream["build-process.json"]}
+                            if "build-process.json" in upstream
+                            else {}
+                        ),
                     }
                 )
                 execution = execute_stage(
@@ -124,6 +129,10 @@ def execute_run(
                 elif stage == AgentStage.PLAN:
                     upstream["plan.md"] = directory / "plan" / "plan.md"
                 elif stage == AgentStage.BUILD:
+                    if execution.output.process_report is not None:
+                        upstream["build-process.json"] = (
+                            directory / "build" / "build-process.json"
+                        )
                     candidate = isolated.publish_candidate()
                     clock.allowance(artifact_stage, admission=False)
                     if execution.output.plan_update is not None:

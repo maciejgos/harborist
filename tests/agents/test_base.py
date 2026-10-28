@@ -59,6 +59,20 @@ def test_request_rejects_missing_upstream_and_foreign_guidance(tmp_path: Path) -
         AgentRequest.model_validate(data)
 
 
+def test_only_build_may_report_development_checks(tmp_path: Path) -> None:
+    req = request(tmp_path)
+    raw = json.dumps(
+        {
+            "result": {"stage": "design", "status": "ready"},
+            "artifact": "AC-001: Product behavior",
+            "plan_update": None,
+            "process_report": {"checks": [], "limitations": "No tests"},
+        }
+    )
+    with pytest.raises(InvalidStageOutput):
+        parse_output(raw, req)
+
+
 def test_build_revision_and_review_candidate(tmp_path: Path) -> None:
     from shipyard.domain.candidate import Candidate
 

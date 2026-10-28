@@ -25,6 +25,7 @@ from shipyard.application.review import (
 from shipyard.application.verification import TestExecution
 from shipyard.domain.artifact import ArtifactKind, ArtifactReference, ArtifactStage
 from shipyard.domain.attempt import Attempt
+from shipyard.domain.build_process import BuildProcessEvidence
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
 from shipyard.domain.run_contract import RunContract
@@ -51,6 +52,7 @@ class StageExecution(BaseModel):
     artifacts: tuple[ArtifactReference, ...]
     review_decision: ReviewDecision | None = None
     test_evidence_sha256: str | None = None
+    process_evidence_sha256: str | None = None
     usage: Usage | None = None
 
 
@@ -82,7 +84,10 @@ def execute_stage(
     if not workspace.is_dir() or output_dir.is_relative_to(workspace):
         raise ValueError("Output directory must be outside the repository workspace")
     required = REQUIRED_INPUTS[stage] - {"intent.md"}
-    if set(upstream) - REQUIRED_INPUTS[stage] or not required <= set(upstream):
+    allowed = set(REQUIRED_INPUTS[stage])
+    if stage == AgentStage.REVIEW:
+        allowed.add("build-process.json")
+    if set(upstream) - allowed or not required <= set(upstream):
         raise ValueError("Provide exactly the required durable upstream artifacts")
     before = {name: path.read_bytes() for name, path in upstream.items()}
     if "intent.md" in before and before["intent.md"] != contract.intent.markdown.encode(
@@ -90,7 +95,7 @@ def execute_stage(
     ):
         raise ValueError("Upstream intent must match frozen contract")
     inputs = [AgentInput(name="intent.md", content=contract.intent.markdown)]
-    for name in sorted(required):
+    for name in sorted(set(before) - {"intent.md"}):
         # Names were checked against the fixed stage contract above.
         inputs.append(
             AgentInput.model_validate(
@@ -109,6 +114,17 @@ def execute_stage(
         candidate=candidate,
     )
     if stage == AgentStage.REVIEW:
+        if "build-process.json" in before:
+            process = BuildProcessEvidence.model_validate_json(
+                before["build-process.json"]
+            )
+            if (
+                process.run_id != contract.run_id
+                or process.attempt_id != attempt.attempt_id
+            ):
+                raise ValueError(
+                    "BUILD process evidence must belong to the executing Attempt"
+                )
         if (
             test_receipt is None
             or test_receipt.stage != ArtifactStage.TEST
@@ -207,6 +223,13 @@ def execute_stage(
         save(f"{kind.value}.md", output.artifact, kind)
     if output.plan_update is not None:
         save("plan.md", output.plan_update, ArtifactKind.PLAN)
+    if output.process_report is not None:
+        process = BuildProcessEvidence(
+            run_id=contract.run_id,
+            attempt_id=attempt.attempt_id,
+            report=output.process_report,
+        )
+        save("build-process.json", process.model_dump_json(), ArtifactKind.LOG)
     execution = StageExecution(
         run_id=contract.run_id,
         attempt_id=attempt.attempt_id,
@@ -218,6 +241,9 @@ def execute_stage(
         usage=response.usage,
         test_evidence_sha256=hashlib.sha256(before["test-evidence.json"]).hexdigest()
         if stage == AgentStage.REVIEW
+        else None,
+        process_evidence_sha256=hashlib.sha256(before["build-process.json"]).hexdigest()
+        if "build-process.json" in before
         else None,
     )
     with (output_dir / "manifest.json").open("x", encoding="utf-8") as stream:

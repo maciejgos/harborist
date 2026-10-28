@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from shipyard.domain.build_process import BuildProcessReport
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.execution import AgentProfile
 from shipyard.domain.guidance import StageGuidance
@@ -29,7 +30,9 @@ REQUIRED_INPUTS: dict[AgentStage, frozenset[str]] = {
 
 class AgentInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-    name: Literal["intent.md", "spec.md", "plan.md", "test-evidence.json"]
+    name: Literal[
+        "intent.md", "spec.md", "plan.md", "test-evidence.json", "build-process.json"
+    ]
     content: Annotated[str, Field(strict=True, min_length=1)]
 
     @model_validator(mode="after")
@@ -58,6 +61,8 @@ class AgentRequest(BaseModel):
             raise ValueError("Missing or duplicate upstream artifacts")
         if self.guidance.stage != self.stage:
             raise ValueError("Guidance must match requested stage")
+        if "build-process.json" in names and self.stage != AgentStage.REVIEW:
+            raise ValueError("Only REVIEW consumes BUILD process evidence")
         if (self.stage == AgentStage.REVIEW) != (self.candidate is not None):
             raise ValueError("Only REVIEW requires an exact candidate")
         return self
@@ -79,6 +84,7 @@ class AgentOutput(BaseModel):
     result: StageResult
     artifact: str | None
     plan_update: str | None
+    process_report: BuildProcessReport | None = None
 
 
 class NativeAgent(Protocol):
@@ -113,6 +119,8 @@ def parse_output(raw: str, request: AgentRequest) -> AgentOutput:
             raise ValueError("BUILD has no separate Markdown artifact")
         if output.plan_update is not None and not output.plan_update.strip():
             raise ValueError("Plan revision must not be blank")
+        if output.process_report is not None and request.stage != AgentStage.BUILD:
+            raise ValueError("Only BUILD may report development checks")
         if (
             isinstance(output.result, ReviewStageResult)
             and output.result.candidate != request.candidate
@@ -133,6 +141,8 @@ def output_schema(stage: AgentStage) -> dict[str, object]:
     }[stage]
     result = model.model_json_schema()
     definitions = result.pop("$defs", {})
+    process = BuildProcessReport.model_json_schema()
+    definitions.update(process.pop("$defs", {}))
     return {
         "type": "object",
         "additionalProperties": False,
@@ -140,7 +150,10 @@ def output_schema(stage: AgentStage) -> dict[str, object]:
             "result": result,
             "artifact": {"type": ["string", "null"]},
             "plan_update": {"type": ["string", "null"]},
+            "process_report": {"anyOf": [process, {"type": "null"}]}
+            if stage == AgentStage.BUILD
+            else {"type": "null"},
         },
-        "required": ["result", "artifact", "plan_update"],
+        "required": ["result", "artifact", "plan_update", "process_report"],
         "$defs": definitions,
     }

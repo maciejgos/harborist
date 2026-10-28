@@ -5,7 +5,7 @@ playbook:
   path: playbook.md
 skills:
   - name: engineering
-    version: '1'
+    version: '2'
     path: engineering.md
 agent_profile:
   name: local-codex

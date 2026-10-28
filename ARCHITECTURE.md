@@ -137,6 +137,14 @@ flowchart LR
 
 Artifacts, not agent-session continuity, carry state between stages.
 
+BUILD may also return a bounded agent-reported process report. Shipyard stores
+`build/build-process.json` with Run/Attempt attribution and supplies it optionally
+to REVIEW, which validates ownership and records its exact input digest. It is
+separate from truncated diagnostics, trusted TEST, and independent proof of TDD
+chronology. Engineering guidance v2 keeps routine process policy separate from
+product acceptance; explicitly required historical proof remains UNVERIFIED when
+the evidence cannot establish it. Existing frozen methodology is unchanged.
+
 The candidate remains reachable through a Shipyard-owned ref such as:
 
 ```text
@@ -271,7 +279,7 @@ route to PACKAGE; a failed TEST cannot reach REVIEW. PACKAGE ends routing even o
 failure. History is validated again on JSON reload. This does not prove executor
 success, run checks, enforce elapsed budget or grant a Run outcome.
 
-Version 1 canonical playbook and engineering skill Markdown are packaged resources.
+Canonical playbook v1 and engineering skill v2 Markdown are packaged resources.
 `load_default_methodology` captures and validates them independently of cwd.
 Operators still explicitly choose their agent profile; default adoption never
 mutates a previously captured Run.

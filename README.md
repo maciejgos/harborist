@@ -366,8 +366,8 @@ performs no I/O and does not grant VERIFIED. See the
 
 ## Bundled methodology
 
-Shipyard includes version 1 of the canonical playbook and an engineering skill
-scoped to all four agent stages. The standalone files under `examples/intake`
+Shipyard includes canonical playbook v1 and engineering skill v2, scoped to all
+four agent stages. The standalone files under `examples/intake`
 match the package resources. `shipyard.skills.defaults.load_default_methodology()`
 returns frozen assets independently of the caller's working directory; an explicit
 agent profile is still required when adopting them into an execution snapshot.
@@ -577,6 +577,15 @@ lifecycle events, accounts for the shared budget and packages evidence. See the
 
 
 ## Synchronous execution and PACKAGE
+
+New captures using the example settings adopt engineering guidance v2. BUILD can
+return a bounded `process_report` with red/green command records and limitations.
+Shipyard saves it as `build/build-process.json`, supplies it to REVIEW, and indexes
+it in PACKAGE independently of diagnostic truncation. These records are explicitly
+agent-reported: they cannot override trusted TEST or prove historical execution
+order. Routine TDD policy stays in operating guidance; explicitly requested proof
+still requires adequate evidence. Older captures/responses remain readable.
+See the [process-evidence contract](spec/046-build-process-evidence/spec.md).
 
 Capture a Run with `shipyard intake` as above, then execute its returned ID:
 

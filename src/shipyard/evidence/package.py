@@ -200,6 +200,25 @@ def package_run(
                 f"- {c.criterion_id}: {c.status.value.upper()}"
                 for c in stage.output.result.criteria
             )
+    process_reports = [
+        stage.output.process_report
+        for stage in stages
+        if stage.output.process_report is not None
+    ]
+    lines.extend(["", "## Development process", ""])
+    if process_reports:
+        lines.append(
+            "BUILD records are agent-reported, not trusted TEST receipts. "
+            "Historical execution order is not independently verified. "
+            "Details: build/build-process.json."
+        )
+        for process in process_reports:
+            lines.extend(
+                f"- {check.phase}: reported exit={check.returncode}"
+                for check in process.checks
+            )
+    else:
+        lines.append("Unavailable; historical test-first execution is unverified.")
     lines.extend(["", "## Time and usage", ""])
     for item in stage_timings:
         lines.append(

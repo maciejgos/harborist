@@ -317,3 +317,51 @@ def test_failed_native_process_retains_bounded_diagnostics(
     assert len((directory / "stderr.log").read_bytes()) == 65536
     assert json.loads((directory / "invocation.json").read_text())["stderr_truncated"]
     assert not (directory / "manifest.json").exists()
+
+
+def test_review_rejects_foreign_process_report_before_invocation(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from uuid import uuid4
+
+    from shipyard.domain.build_process import BuildProcessEvidence, BuildProcessReport
+
+    workspace = tmp_path / "workspace"
+    init_repository(workspace)
+    git(workspace, "commit", "--allow-empty", "-m", "candidate")
+    sha = git(workspace, "rev-parse", "HEAD")
+    attempt = Attempt.create(frozen_contract.run_id, sha)
+    candidate = attempt.create_candidate(sha)
+    spec = tmp_path / "spec.md"
+    spec.write_text("AC-001: Required")
+    test = capture(frozen_contract, attempt, candidate=candidate)
+    evidence = tmp_path / "test.json"
+    evidence.write_text(test.model_dump_json())
+    process = tmp_path / "build-process.json"
+    process.write_text(
+        BuildProcessEvidence(
+            run_id=frozen_contract.run_id,
+            attempt_id=uuid4(),
+            report=BuildProcessReport(checks=(), limitations="No executions reported"),
+        ).model_dump_json()
+    )
+    agent = FakeAgent()
+    with pytest.raises(ValueError, match="process evidence"):
+        execute_stage(
+            contract=frozen_contract,
+            attempt=attempt,
+            candidate=candidate,
+            stage=AgentStage.REVIEW,
+            workspace=workspace,
+            upstream={
+                "spec.md": spec,
+                "test-evidence.json": evidence,
+                "build-process.json": process,
+            },
+            output_dir=tmp_path / "review",
+            agent=agent,
+            remaining_seconds=30,
+            test_receipt=test.receipt,
+        )
+    assert not agent.requests
+    assert not (tmp_path / "review").exists()
