@@ -442,7 +442,7 @@ result = execute_stage(
 ```
 
 The caller prepares the workspace and calculates remaining budget. This API does
-not start or finish a Run. There is no `shipyard run` command yet.
+not start or finish a Run. Use `shipyard run` for synchronous orchestration.
 
 | Stage | Durable upstream inputs | Captured Markdown |
 |---|---|---|
@@ -596,14 +596,53 @@ order. Routine TDD policy stays in operating guidance; explicitly requested proo
 still requires adequate evidence. Older captures/responses remain readable.
 See the [process-evidence contract](spec/046-build-process-evidence/spec.md).
 
-Capture a Run with `shipyard intake` as above, then execute its returned ID:
+Capture a Run, then copy the execution command printed to stderr:
 
 ```bash
-uv run shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
+shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository
+# stdout: one frozen-contract JSON document (safe to redirect to a file)
+# stderr: a copyable command such as:
+shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json
 ```
 
-`--workspace /fresh/path` overrides the default sibling `workspaces/<run-id>`
-directory. The target repository must contain the frozen base commit. Codex must
+Use `uv run shipyard` when running from the development checkout, or install the
+`shipyard` entry point on PATH to run the emitted command from any directory.
+The locator records absolute resolved repository and Runs-root paths, so the
+command selects the captured context independently of cwd. Custom `--runs-dir`
+values, including paths inside the target checkout, work the same way. Commands
+are quoted for the local POSIX shell, including spaces and shell metacharacters.
+
+Execution allocates a fresh retained container under the system temporary
+directory and creates its absent `workspace` child outside the source checkout.
+If the temporary root is inside the checkout, the container uses the checkout's
+parent instead. Placement is independent of Runs storage. Workspaces remain
+available for inspection; there is no automatic cleanup or retry of terminal Runs.
+Append `--workspace /fresh/path/outside/checkout` to override placement. Existing
+paths (including symlinks), the source checkout itself, and nested paths are
+rejected before the Run leaves CREATED, so a corrected invocation can reuse the
+capture. Symlink aliases are resolved for containment checks.
+
+With `--context`, explicit repository and storage options must match the saved
+locations (resolved aliases and repository subdirectories are accepted):
+
+```bash
+shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json \
+  --repo /path/to/repository --runs-dir /absolute/runs --workspace /fresh/build
+# A different --repo or --runs-dir fails with the expected location.
+```
+
+Missing or invalid supplied context fails explicitly; omit `--context` to use the
+legacy invocation, also supported for captures without a locator:
+
+```bash
+shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
+```
+
+Without context, omitted options still select cwd and `~/.shipyard/runs`.
+Repositories or Runs storage moved after capture may require this explicit legacy
+invocation; locators are not repaired automatically. The locator is an invocation
+hint, separate from `contract.json`, and cannot change the frozen base or settings.
+The target repository must contain the frozen base commit. Codex must
 already be installed and authenticated locally. Each native stage starts a fresh
 process. Execution stays local and synchronous; Ctrl-C cancels the active executor
 best-effort and packages a CANCELLED result. Exit codes are 0 for VERIFIED, 2 for
@@ -612,8 +651,9 @@ for cancellation. The command prints terminal Run JSON and absolute report/evide
 paths. `inspect` continues to return the frozen contract after execution.
 
 The application entry point is `shipyard.application.execution.execute_run`, with
-explicit `FileRunStore`, Run ID, `GitRepository`, fresh workspace and `NativeAgent`
-parameters. Existing individual stage APIs remain available for lower-level use.
+explicit `FileRunStore`, Run ID, `GitRepository` and `NativeAgent` parameters,
+plus an optional fresh workspace path. Existing individual stage APIs remain
+available for lower-level use.
 
 The frozen total budget starts at execution admission. DESIGN, PLAN and BUILD
 share the allowance before the verification reserve; TEST and REVIEW share the
@@ -623,6 +663,7 @@ and stages. Native-agent deadlines use whole seconds, so less than one remaining
 second cannot admit another agent. PACKAGE records its own timing outside that
 allowance and remains available when remaining execution time is zero.
 
+New CLI captures also contain a create-only `execution-context.json` locator.
 Run directories contain `run.json`, `contract.json`, `intent.*`, `attempt.json`,
 `events.jsonl`, timing records, stage directories, `report.md`, and `evidence.json`.
 DESIGN/PLAN/BUILD/REVIEW hold structured results, artifacts and bounded diagnostics;

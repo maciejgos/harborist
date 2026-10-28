@@ -162,3 +162,49 @@ def test_legacy_inspection_still_works_but_compilation_reports_error(
     assert result.exit_code == 1
     assert "Cannot compile playbook" in result.stderr
     assert "Traceback" not in result.output
+
+
+def test_intake_emits_context_command(tmp_path: Path) -> None:
+    import shlex
+
+    target = tmp_path / "target"
+    init_repository(target)
+    (target / "shipyard.yaml").write_text(
+        "version: 1\nchecks: [{id: test, command: 'true'}]\n"
+    )
+    git(target, "add", ".")
+    git(target, "commit", "-m", "base")
+    issue = tmp_path / "issue.md"
+    issue.write_text("Implement")
+    settings = write_settings(tmp_path)
+    runs = target / "runs with 'quotes' and $dollars;"
+    result = runner.invoke(
+        app,
+        [
+            "intake",
+            f"file:{issue}",
+            "--repo",
+            str(target),
+            "--settings",
+            str(settings),
+            "--runs-dir",
+            str(runs),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    contract = RunContract.model_validate_json(result.stdout)
+    tokens = shlex.split(result.stderr.strip())
+    context = runs / str(contract.run_id) / "execution-context.json"
+    assert tokens == [
+        "shipyard",
+        "run",
+        str(contract.run_id),
+        "--context",
+        str(context),
+    ]
+    assert json.loads(context.read_text()) == {
+        "version": 1,
+        "run_id": str(contract.run_id),
+        "repository": str(target.resolve()),
+        "runs_root": str(runs.resolve()),
+    }

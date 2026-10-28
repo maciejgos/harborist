@@ -1,6 +1,7 @@
 """CLI presentation for frozen capture, synchronous execution and inspection."""
 
 import json
+import shlex
 from pathlib import Path
 from typing import Annotated, NoReturn
 from uuid import UUID
@@ -8,6 +9,7 @@ from uuid import UUID
 import typer
 
 from shipyard.application import create_run
+from shipyard.application.context import ExecutionContext, load_context
 from shipyard.configuration import load_execution_settings
 from shipyard.domain import ArtifactStage, ExecutionBudget
 from shipyard.git import GitRepository
@@ -58,16 +60,29 @@ def intake(
                 total_seconds=timeout, verification_reserve_seconds=verification_reserve
             ),
         )
+        repository = GitRepository(path=repo)
+        root = repository.checkout_root()
+        runs_dir = runs_dir.resolve()
         contract = create_run(
             source=source,
-            repository=GitRepository(path=repo),
+            repository=GitRepository(path=root),
             store=FileRunStore(root=runs_dir),
             execution=execution,
             ref=ref,
         )
-    except ValueError as error:
-        _fail(error)
+        context = ExecutionContext(
+            version=1, run_id=contract.run_id, repository=root, runs_root=runs_dir
+        ).save()
+    except (ValueError, OSError) as error:
+        typer.echo(json.dumps({"error": str(error)}), err=True)
+        raise typer.Exit(code=1) from error
     typer.echo(contract.model_dump_json())
+    typer.echo(
+        shlex.join(
+            ["shipyard", "run", str(contract.run_id), "--context", str(context)]
+        ),
+        err=True,
+    )
 
 
 @app.command()
@@ -131,11 +146,12 @@ def methodology(
 def run_command(
     run_id: UUID,
     repo: Annotated[
-        Path, typer.Option(help="Target repository containing the frozen base.")
-    ] = Path("."),
-    runs_dir: Annotated[
-        Path, typer.Option(help="Filesystem Runs root.")
-    ] = _DEFAULT_RUNS,
+        Path | None, typer.Option(help="Target repository containing the frozen base.")
+    ] = None,
+    runs_dir: Annotated[Path | None, typer.Option(help="Filesystem Runs root.")] = None,
+    context: Annotated[
+        Path | None, typer.Option(help="Saved per-Run execution context file.")
+    ] = None,
     workspace: Annotated[
         Path | None, typer.Option(help="Fresh isolated workspace path.")
     ] = None,
@@ -145,8 +161,27 @@ def run_command(
     from shipyard.application.execution import execute_run
     from shipyard.domain import RunLifecycle, RunOutcome
 
-    workspace = workspace or runs_dir.parent / "workspaces" / str(run_id)
     try:
+        if context is not None:
+            locator = load_context(path=context, run_id=run_id)
+            if (
+                repo is not None
+                and GitRepository(path=repo).checkout_root() != locator.repository
+            ):
+                raise ValueError(
+                    f"Conflicting --repo {repo}; expected {locator.repository}. "
+                    "Use the matching repository or omit --repo with --context"
+                )
+            if runs_dir is not None and runs_dir.resolve() != locator.runs_root:
+                raise ValueError(
+                    f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}. "
+                    "Use the matching Runs root or omit --runs-dir with --context"
+                )
+            repo = locator.repository
+            runs_dir = locator.runs_root
+        else:
+            repo = repo if repo is not None else Path(".")
+            runs_dir = (runs_dir if runs_dir is not None else _DEFAULT_RUNS).resolve()
         evidence = execute_run(
             store=FileRunStore(root=runs_dir),
             run_id=run_id,

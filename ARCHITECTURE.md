@@ -113,8 +113,17 @@ Additional intake options:
 --runs-dir
 ```
 
-Intake prints complete contract JSON and leaves captures in CREATED.
-`shipyard run <run-id> --repo <repository>` executes one captured Run synchronously
+Intake prints complete contract JSON to stdout and leaves captures in CREATED.
+It saves a create-only `execution-context.json` beside the capture and prints a
+POSIX-shell-quoted `shipyard run <run-id> --context <absolute-file>` command to
+stderr. The locator stores version, Run UUID, resolved checkout root and resolved
+Runs root separately from the frozen domain contract. It works independently of
+cwd. With context, omitted `--repo`/`--runs-dir` come from the locator; explicit
+options must resolve to the same locations. Invalid context never falls back.
+Legacy `shipyard run <run-id> --repo <repository> --runs-dir <runs-root>` remains
+supported without a locator (omitted options retain cwd and `~/.shipyard/runs`).
+Moving captures or repositories may require explicit legacy invocation.
+`shipyard run` executes one captured Run synchronously
 and prints terminal JSON plus report/evidence paths. Methodology content is frozen here;
 Phase 3 compilation and routing validate its topology and skill scope. The
 methodology command previews frozen metadata/guidance without execution or writes.
@@ -249,6 +258,14 @@ produce an explicit terminal state. Unexpected executor exceptions produce
 INTERNAL_ERROR. Failed TEST never invokes REVIEW. PACKAGE runs outside admission
 checks. The executor preserves workspaces and rejects any second admission;
 there is no retry/recovery or background service.
+Before lifecycle admission it checks repository availability, the exact frozen
+commit, and fresh workspace placement outside the resolved checkout. Invalid
+paths leave the capture CREATED. Default workspaces use an absent child of a
+unique retained system-temporary container, independently of Runs storage; if the
+temporary root is inside the checkout, the container uses the checkout parent.
+`--workspace` supplies an independent fresh external path. Creation rechecks
+preflight constraints through Git; later filesystem failures retain existing
+terminal failure semantics.
 
 ### `playbooks` / `skills`
 
@@ -407,6 +424,7 @@ The PoC uses filesystem-only persistence:
 ~/.shipyard/runs/<run-id>/
 ├── run.json
 ├── contract.json
+├── execution-context.json  # new CLI captures only; invocation locator
 ├── events.jsonl
 ├── evidence.json
 ├── intent.md

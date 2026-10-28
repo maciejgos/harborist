@@ -344,3 +344,72 @@ def test_terminal_verification_cannot_move_to_another_frozen_contract(
     other_store.begin(frozen_contract.run_id)
     with pytest.raises(ValueError, match="frozen contract"):
         other_store.finish(result.run)
+
+
+@pytest.mark.parametrize(
+    "kind", ["nested", "existing", "alias", "repository", "commit"]
+)
+def test_preflight_preserves_created_capture(
+    tmp_path: Path, frozen_contract: RunContract, kind: str
+) -> None:
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    source = tmp_path / "repository"
+    workspace = tmp_path / "work"
+    if kind == "nested":
+        workspace = source / "nested"
+    elif kind == "existing":
+        workspace.touch()
+    elif kind == "alias":
+        alias = tmp_path / "alias"
+        alias.symlink_to(source, target_is_directory=True)
+        workspace = alias / "nested"
+    elif kind == "repository":
+        repo = GitRepository(path=tmp_path / "missing")
+    else:
+        other = tmp_path / "other"
+        init_repository(other)
+        repo = GitRepository(path=other)
+    directory = store.directory(contract.run_id)
+    before = {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
+    agent = FakeAgent("clarify")
+    with pytest.raises(ValueError):
+        execute_run(
+            store=store,
+            run_id=contract.run_id,
+            repository=repo,
+            workspace=workspace,
+            agent=agent,
+        )
+    assert agent.calls == []
+    assert before == {
+        p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()
+    }
+    assert not (directory / ".execution").exists()
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=GitRepository(path=source),
+        workspace=tmp_path / "corrected",
+        agent=agent,
+    )
+    assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
+
+
+def test_default_workspace_avoids_temporary_root_inside_source(
+    tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shipyard.application import execution
+
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    source = tmp_path / "repository"
+    temporary = source / "temporary"
+    temporary.mkdir()
+    monkeypatch.setattr(execution.tempfile, "gettempdir", lambda: str(temporary))
+    result = execute_run(
+        store=store, run_id=contract.run_id, repository=repo, agent=FakeAgent("clarify")
+    )
+    assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
+    workspaces = list(tmp_path.glob("shipyard-*/workspace"))
+    assert len(workspaces) == 1
+    assert git(workspaces[0], "rev-parse", "HEAD") == contract.base_sha
+    assert not workspaces[0].resolve().is_relative_to(source.resolve())

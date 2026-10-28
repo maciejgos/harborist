@@ -1,6 +1,7 @@
 """One synchronous attempt: explicit canonical flow and terminal PACKAGE."""
 
 import math
+import tempfile
 from pathlib import Path
 from uuid import UUID
 
@@ -30,7 +31,7 @@ def execute_run(
     store: FileRunStore,
     run_id: UUID,
     repository: GitRepository,
-    workspace: Path,
+    workspace: Path | None = None,
     agent: NativeAgent,
     clock: BudgetClock | None = None,
 ) -> RunEvidence:
@@ -42,6 +43,14 @@ def execute_run(
     contract = store.load(run_id)
     if clock is not None and clock.budget != contract.execution.budget:
         raise ValueError("Clock must use the frozen execution budget")
+    if workspace is None:
+        root = repository.checkout_root()
+        temporary = Path(tempfile.gettempdir()).resolve()
+        parent = root.parent if temporary.is_relative_to(root) else temporary
+        workspace = Path(tempfile.mkdtemp(prefix="shipyard-", dir=parent)) / "workspace"
+    workspace = repository.preflight_workspace(
+        base_sha=contract.base_sha, path=workspace
+    )
     run = store.begin(run_id)
     clock = clock or BudgetClock(contract.execution.budget)
     directory = store.directory(run_id)

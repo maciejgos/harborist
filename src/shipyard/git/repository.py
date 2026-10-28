@@ -51,18 +51,47 @@ class GitRepository:
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitResolutionError(context) from error
 
-    def create_workspace(self, *, attempt: Attempt, path: Path) -> GitWorkspace:
-        """Create a fresh detached checkout without touching developer files."""
-        path = path.absolute()
+    def checkout_root(self) -> Path:
+        """Resolve the actual source checkout through Git, including path aliases."""
         try:
-            root = Path(self._run("rev-parse", "--show-toplevel").decode().strip())
-            if path.resolve().is_relative_to(root.resolve()) or path.exists():
-                raise ValueError("Workspace must be fresh and outside source checkout")
+            return Path(
+                self._run("rev-parse", "--show-toplevel").decode().removesuffix("\n")
+            ).resolve()
+        except (OSError, subprocess.CalledProcessError, ValueError) as error:
+            raise GitWorkspaceError(
+                f"Cannot resolve Git repository {self._path}; supply --repo with an available checkout"
+            ) from error
+
+    def preflight_workspace(self, *, base_sha: GitCommitSha, path: Path) -> Path:
+        """Read-only validation before lifecycle admission; creation rechecks races."""
+        root = self.checkout_root()
+        try:
+            base_sha = _COMMIT_SHA_ADAPTER.validate_python(base_sha)
             if (
-                self._run("--no-replace-objects", "cat-file", "-t", attempt.start_sha)
+                self._run("--no-replace-objects", "cat-file", "-t", base_sha)
                 != b"commit\n"
             ):
-                raise ValueError("Workspace base must be an actual commit")
+                raise ValueError("Expected an actual commit")
+        except (OSError, subprocess.CalledProcessError, ValueError) as error:
+            raise GitWorkspaceError(
+                f"Frozen base commit {base_sha} is unavailable in repository {root}; "
+                "restore the frozen commit or supply the original --repo checkout"
+            ) from error
+        try:
+            normalized = path.resolve()
+            if path.exists() or path.is_symlink() or normalized.is_relative_to(root):
+                raise ValueError("Existing or contained path")
+        except (OSError, ValueError, RuntimeError) as error:
+            raise GitWorkspaceError(
+                f"Invalid workspace {path}; supply --workspace with a fresh path "
+                f"outside source checkout {root}"
+            ) from error
+        return normalized
+
+    def create_workspace(self, *, attempt: Attempt, path: Path) -> GitWorkspace:
+        """Create a fresh detached checkout without touching developer files."""
+        path = self.preflight_workspace(base_sha=attempt.start_sha, path=path)
+        try:
             self._run(
                 "--no-replace-objects",
                 "-c",
@@ -74,7 +103,9 @@ class GitRepository:
                 attempt.start_sha,
             )
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
-            raise GitWorkspaceError("Cannot create isolated workspace") from error
+            raise GitWorkspaceError(
+                f"Cannot create isolated workspace {path}: {error}"
+            ) from error
         return GitWorkspace(path=path, attempt=attempt)
 
     def read_file_at_commit(self, *, commit_sha: GitCommitSha, path: str) -> bytes:

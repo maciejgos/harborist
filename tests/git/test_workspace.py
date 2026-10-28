@@ -162,3 +162,19 @@ def test_candidate_does_not_run_repository_hooks(tmp_path: Path) -> None:
         attempt=attempt, path=tmp_path / "build"
     )
     assert workspace.publish_candidate().candidate_sha
+
+
+def test_preflight_rejects_dangling_symlink_without_overwriting(tmp_path: Path) -> None:
+    repo, attempt = source(tmp_path)
+    destination = tmp_path / "dangling"
+    destination.symlink_to(tmp_path / "missing")
+    with pytest.raises(ValueError, match="fresh path outside"):
+        GitRepository(path=repo).create_workspace(attempt=attempt, path=destination)
+    assert destination.is_symlink()
+
+
+def test_checkout_root_preserves_trailing_spaces(tmp_path: Path) -> None:
+    repo = tmp_path / "source with spaces "
+    init_repository(repo)
+    git(repo, "commit", "--allow-empty", "-m", "base")
+    assert GitRepository(path=repo).checkout_root() == repo.resolve()
