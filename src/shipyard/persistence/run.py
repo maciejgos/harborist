@@ -38,7 +38,8 @@ class FileRunStore:
             self._root.mkdir(parents=True, exist_ok=True)
         except OSError as error:
             raise RunPersistenceError(
-                f"Cannot create Runs root {self._root}"
+                f"Cannot create Runs root {self._root}: {error}; "
+                "check directory access and obstructing files or choose --runs-dir"
             ) from error
         try:
             directory.mkdir()
@@ -48,7 +49,8 @@ class FileRunStore:
             ) from error
         except OSError as error:
             raise RunPersistenceError(
-                f"Cannot reserve Run directory {directory}"
+                f"Cannot reserve Run directory {directory}: {error}; "
+                "check directory access or choose --runs-dir"
             ) from error
         try:
             with (directory / "run.json").open("xb") as output:
@@ -59,7 +61,10 @@ class FileRunStore:
             with (directory / "contract.json").open("xb") as output:
                 output.write(contract.model_dump_json().encode("utf-8"))
         except (OSError, IntentPersistenceError) as error:
-            raise RunPersistenceError(f"Cannot save Run capture {directory}") from error
+            raise RunPersistenceError(
+                f"Cannot save Run capture {directory}: {error}; check directory access "
+                "or choose --runs-dir; partial capture is retained"
+            ) from error
 
     def load(self, run_id: UUID) -> RunContract:
         run_id = _RUN_ID.validate_python(run_id)
@@ -82,7 +87,10 @@ class FileRunStore:
                 raise ValueError("Persisted intent must match frozen contract")
             return contract
         except (OSError, ValueError) as error:
-            raise RunPersistenceError(f"Cannot load Run capture {directory}") from error
+            raise RunPersistenceError(
+                f"Cannot load Run capture {directory}: {error}; "
+                "check the Run ID, --runs-dir and directory access"
+            ) from error
 
     def directory(self, run_id: UUID) -> Path:
         return self._root / str(_RUN_ID.validate_python(run_id))
@@ -132,7 +140,10 @@ class FileRunStore:
                 raise ValueError("Non-CREATED state requires lifecycle journal")
             return run
         except (OSError, ValueError) as error:
-            raise RunPersistenceError("Cannot load Run lifecycle") from error
+            raise RunPersistenceError(
+                f"Cannot load Run lifecycle {directory}: {error}; "
+                "check the Run ID, --runs-dir and directory access"
+            ) from error
 
     def begin(self, run_id: UUID) -> Run:
         """Exclusively admit one synchronous attempt; partial admissions block retry."""
@@ -154,7 +165,10 @@ class FileRunStore:
                 )
             self._write_transition(state.start(), RunEventType.RUN_STARTED)
         except OSError as error:
-            raise RunPersistenceError("Cannot reserve Run execution") from error
+            raise RunPersistenceError(
+                f"Cannot reserve Run execution {directory}: {error}; "
+                "check directory access and retained execution records"
+            ) from error
         return state.start()
 
     def finish(self, run: Run) -> None:

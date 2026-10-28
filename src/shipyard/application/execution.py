@@ -1,7 +1,6 @@
 """One synchronous attempt: explicit canonical flow and terminal PACKAGE."""
 
 import math
-import tempfile
 from pathlib import Path
 from uuid import UUID
 
@@ -22,6 +21,7 @@ from shipyard.domain.stage_result import AgentStage, InvalidStageOutput, StageSt
 from shipyard.evidence.package import RunEvidence, package_run
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitReadError, GitWorkspaceError
+from shipyard.paths import run_workspace
 from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology
 
@@ -44,13 +44,17 @@ def execute_run(
     if clock is not None and clock.budget != contract.execution.budget:
         raise ValueError("Clock must use the frozen execution budget")
     if workspace is None:
-        root = repository.checkout_root()
-        temporary = Path(tempfile.gettempdir()).resolve()
-        parent = root.parent if temporary.is_relative_to(root) else temporary
-        workspace = Path(tempfile.mkdtemp(prefix="shipyard-", dir=parent)) / "workspace"
+        workspace = run_workspace(run_id)
     workspace = repository.preflight_workspace(
         base_sha=contract.base_sha, path=workspace
     )
+    try:
+        workspace.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise GitWorkspaceError(
+            f"Cannot prepare workspace {workspace} parent {workspace.parent}: {error}; "
+            "check directory access or supply --workspace with a fresh external path"
+        ) from error
     run = store.begin(run_id)
     clock = clock or BudgetClock(contract.execution.budget)
     directory = store.directory(run_id)

@@ -166,7 +166,7 @@ Save a snapshot under an explicitly supplied Runs directory:
 ```python
 from shipyard.persistence import FileIntentStore
 
-store = FileIntentStore(root=Path(".shipyard/runs"))
+store = FileIntentStore(root=Path.home() / ".shipyard" / "runs")
 store.save(intent)
 restored = store.load(intent.run_id)
 ```
@@ -275,7 +275,7 @@ and the CLI connect these boundaries. See the
 
 ## Complete Run persistence
 
-`FileRunStore(root=Path(".shipyard/runs")).save(contract)` reserves a fresh Run
+`FileRunStore(root=Path.home() / ".shipyard" / "runs").save(contract)` reserves a fresh Run
 directory and stores `run.json` in CREATED, exact `intent.md`, `intent.json` and
 `contract.json`. Contract JSON is written last as the completion marker. `load`
 validates all four records and their agreement without reading original inputs.
@@ -612,15 +612,37 @@ command selects the captured context independently of cwd. Custom `--runs-dir`
 values, including paths inside the target checkout, work the same way. Commands
 are quoted for the local POSIX shell, including spaces and shell metacharacters.
 
-Execution allocates a fresh retained container under the system temporary
-directory and creates its absent `workspace` child outside the source checkout.
-If the temporary root is inside the checkout, the container uses the checkout's
-parent instead. Placement is independent of Runs storage. Workspaces remain
-available for inspection; there is no automatic cleanup or retry of terminal Runs.
-Append `--workspace /fresh/path/outside/checkout` to override placement. Existing
-paths (including symlinks), the source checkout itself, and nested paths are
-rejected before the Run leaves CREATED, so a corrected invocation can reuse the
-capture. Symlink aliases are resolved for containment checks.
+Shipyard resolves its data root from the current user's home directory at command
+execution, independently of cwd and the target repository:
+
+```text
+~/.shipyard/
+  runs/<run-id>/        # frozen inputs, context, lifecycle, stage outputs,
+                       # diagnostics, logs, timing, reports and evidence
+  workspaces/<run-id>/  # retained isolated Git worktree
+```
+
+Intake creates missing Runs parents on demand; execution creates missing workspace
+parents before admitting the Run. Read-only `inspect` and `methodology` never
+create missing storage: errors identify the Run and location and advise checking
+the Run ID and `--runs-dir`. Different projects share this root with unique Run
+IDs. Source checkouts stay in their original locations. Git worktree metadata and
+candidate refs may remain in the source repository's Git directory.
+
+`--runs-dir /path/to/runs` changes capture and evidence storage only. Without an
+explicit workspace, execution still uses `~/.shipyard/workspaces/<run-id>/`, even
+with custom Runs storage. Append `--workspace /fresh/path/outside/checkout` to
+choose a workspace independently; this does not relocate captures or evidence.
+Workspaces remain available for inspection; there is no automatic cleanup or
+retry of terminal Runs.
+
+Existing destinations (including symlinks) and paths overlapping the resolved
+source checkout in either direction fail before the Run leaves CREATED. If the
+source contains the default workspace location, supply a fresh external
+`--workspace` and retry the captured Run. There is no fallback location. Symlink
+aliases are resolved for overlap checks. Directory obstructions and access errors
+identify the affected path; correct directory access or choose a valid override.
+Shipyard does not overwrite obstructing files or require elevated privileges.
 
 With `--context`, explicit repository and storage options must match the saved
 locations (resolved aliases and repository subdirectories are accepted):
@@ -638,7 +660,15 @@ legacy invocation, also supported for captures without a locator:
 shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
 ```
 
-Without context, omitted options still select cwd and `~/.shipyard/runs`.
+Existing captures under `~/.shipyard/runs` remain accessible with
+`shipyard inspect <run-id>` and `shipyard methodology <run-id>`. For captures in
+other locations, add `--runs-dir /path/to/runs` to either command; execute them
+with the explicit legacy command above when saved context is unavailable.
+Shipyard does not migrate, recapture or backfill context into historical captures,
+and terminal Runs remain immutable.
+
+Without context, omitted repository and Runs options still select cwd and
+`~/.shipyard/runs`; the default workspace remains under the home data root.
 Repositories or Runs storage moved after capture may require this explicit legacy
 invocation; locators are not repaired automatically. The locator is an invocation
 hint, separate from `contract.json`, and cannot change the frozen base or settings.

@@ -395,21 +395,72 @@ def test_preflight_preserves_created_capture(
     assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
 
 
-def test_default_workspace_avoids_temporary_root_inside_source(
+def test_default_workspace_uses_home_with_custom_runs_root(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application import execution
-
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
     store, repo, contract = capture(tmp_path, frozen_contract)
-    source = tmp_path / "repository"
-    temporary = source / "temporary"
-    temporary.mkdir()
-    monkeypatch.setattr(execution.tempfile, "gettempdir", lambda: str(temporary))
     result = execute_run(
-        store=store, run_id=contract.run_id, repository=repo, agent=FakeAgent("clarify")
+        store=store, run_id=contract.run_id, repository=repo, agent=FakeAgent()
+    )
+    assert result.run.outcome == RunOutcome.VERIFIED
+    workspace = home / ".shipyard" / "workspaces" / str(contract.run_id)
+    assert result.candidate is not None
+    assert git(workspace, "rev-parse", "HEAD") == result.candidate.candidate_sha
+    assert (store.directory(contract.run_id) / "evidence.json").is_file()
+    assert not (tmp_path / "repository" / ".shipyard").exists()
+
+
+@pytest.mark.parametrize("kind", ["overlap", "alias", "existing", "file", "permission"])
+def test_default_workspace_errors_leave_run_created(
+    tmp_path: Path,
+    frozen_contract: RunContract,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    home = tmp_path / "home"
+    if kind == "overlap":
+        home = tmp_path / "repository" / "home"
+    elif kind == "alias":
+        home.symlink_to(tmp_path / "repository", target_is_directory=True)
+    monkeypatch.setenv("HOME", str(home))
+    workspace = home / ".shipyard" / "workspaces" / str(contract.run_id)
+    if kind == "existing":
+        workspace.mkdir(parents=True)
+    elif kind == "file":
+        home.mkdir()
+        (home / ".shipyard").write_text("preserve")
+    elif kind == "permission":
+        original = Path.mkdir
+
+        def denied(
+            self: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+        ) -> None:
+            if self == workspace.parent:
+                raise PermissionError("access denied")
+            original(self, mode=mode, parents=parents, exist_ok=exist_ok)
+
+        monkeypatch.setattr(Path, "mkdir", denied)
+    agent = FakeAgent()
+    with pytest.raises(ValueError) as caught:
+        execute_run(store=store, run_id=contract.run_id, repository=repo, agent=agent)
+    assert str(workspace) in str(caught.value)
+    assert "--workspace" in str(caught.value)
+    assert agent.calls == []
+    assert store.load_state(contract.run_id).lifecycle.value == "CREATED"
+    assert not (store.directory(contract.run_id) / ".execution").exists()
+    if kind in {"overlap", "alias"}:
+        assert not (tmp_path / "repository" / ".shipyard").exists()
+        assert not (tmp_path / "repository" / "home").exists()
+    if kind == "file":
+        assert (home / ".shipyard").read_text() == "preserve"
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "recovery",
+        agent=FakeAgent("clarify"),
     )
     assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
-    workspaces = list(tmp_path.glob("shipyard-*/workspace"))
-    assert len(workspaces) == 1
-    assert git(workspaces[0], "rev-parse", "HEAD") == contract.base_sha
-    assert not workspaces[0].resolve().is_relative_to(source.resolve())

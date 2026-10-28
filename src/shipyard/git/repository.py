@@ -1,6 +1,7 @@
 """Resolve exact commit identities through the system Git executable."""
 
 import os
+import stat
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -79,11 +80,32 @@ class GitRepository:
             ) from error
         try:
             normalized = path.resolve()
-            if path.exists() or path.is_symlink() or normalized.is_relative_to(root):
-                raise ValueError("Existing or contained path")
+            if (
+                path.exists()
+                or path.is_symlink()
+                or normalized.is_relative_to(root)
+                or root.is_relative_to(normalized)
+            ):
+                raise ValueError("Existing destination or overlap with source checkout")
+            parent = normalized.parent
+            while True:
+                try:
+                    metadata = parent.stat()
+                except FileNotFoundError:
+                    parent = parent.parent
+                    continue
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise ValueError(
+                        f"Required directory {parent} is obstructed by a file"
+                    )
+                if not os.access(parent, os.W_OK | os.X_OK):
+                    raise PermissionError(
+                        f"Access denied to required directory {parent}"
+                    )
+                break
         except (OSError, ValueError, RuntimeError) as error:
             raise GitWorkspaceError(
-                f"Invalid workspace {path}; supply --workspace with a fresh path "
+                f"Invalid workspace {path}: {error}; supply --workspace with a fresh path "
                 f"outside source checkout {root}"
             ) from error
         return normalized

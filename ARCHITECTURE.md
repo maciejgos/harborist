@@ -260,10 +260,16 @@ checks. The executor preserves workspaces and rejects any second admission;
 there is no retry/recovery or background service.
 Before lifecycle admission it checks repository availability, the exact frozen
 commit, and fresh workspace placement outside the resolved checkout. Invalid
-paths leave the capture CREATED. Default workspaces use an absent child of a
-unique retained system-temporary container, independently of Runs storage; if the
-temporary root is inside the checkout, the container uses the checkout parent.
-`--workspace` supplies an independent fresh external path. Creation rechecks
+paths leave the capture CREATED. Default workspaces use the fresh destination
+`~/.shipyard/workspaces/<run-id>`, independently of Runs storage and cwd. Shared
+path-policy functions resolve the current user's home at invocation time. Runs
+remain under `~/.shipyard/runs` by default; required parent directories are created
+on demand, while read-only inspection never creates storage. Workspace overlap
+(in either direction, including resolved aliases), obstructing files and access
+failures are rejected before admission. No invalid default falls back elsewhere.
+`--runs-dir` changes only capture/evidence storage; `--workspace` supplies an
+independent fresh external path. Existing captures are never migrated or
+backfilled with context. Creation rechecks
 preflight constraints through Git; later filesystem failures retain existing
 terminal failure semantics.
 

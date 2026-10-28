@@ -106,6 +106,7 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
     records = git(target, "worktree", "list", "--porcelain").split("\n\n")
     linked = next(record for record in records if "detached" in record)
     workspace = Path(linked.splitlines()[0].removeprefix("worktree "))
+    assert workspace == home / ".shipyard" / "workspaces" / str(contract.run_id)
     assert workspace.is_dir()
     assert not workspace.resolve().is_relative_to(target.resolve())
     assert git(workspace, "rev-parse", "HEAD") == frozen == contract.base_sha

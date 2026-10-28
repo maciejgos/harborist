@@ -13,13 +13,13 @@ from shipyard.application.context import ExecutionContext, load_context
 from shipyard.configuration import load_execution_settings
 from shipyard.domain import ArtifactStage, ExecutionBudget
 from shipyard.git import GitRepository
+from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology, compose_guidance
 
 app = typer.Typer(
     no_args_is_help=True, help="Freeze, execute and inspect Shipyard Runs."
 )
-_DEFAULT_RUNS = Path.home() / ".shipyard" / "runs"
 
 
 def _fail(error: ValueError) -> NoReturn:
@@ -43,8 +43,9 @@ def intake(
     ] = Path("."),
     ref: Annotated[str, typer.Option(help="Base commit-ish, resolved once.")] = "HEAD",
     runs_dir: Annotated[
-        Path, typer.Option(help="Filesystem Runs root.")
-    ] = _DEFAULT_RUNS,
+        Path | None,
+        typer.Option(help="Filesystem Runs root (default: ~/.shipyard/runs)."),
+    ] = None,
     timeout: Annotated[
         int, typer.Option(help="Overall execution budget in seconds.", min=1)
     ] = 1800,
@@ -62,7 +63,7 @@ def intake(
         )
         repository = GitRepository(path=repo)
         root = repository.checkout_root()
-        runs_dir = runs_dir.resolve()
+        runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
         contract = create_run(
             source=source,
             repository=GitRepository(path=root),
@@ -89,12 +90,15 @@ def intake(
 def inspect(
     run_id: UUID,
     runs_dir: Annotated[
-        Path, typer.Option(help="Filesystem Runs root.")
-    ] = _DEFAULT_RUNS,
+        Path | None,
+        typer.Option(help="Filesystem Runs root (default: ~/.shipyard/runs)."),
+    ] = None,
 ) -> None:
     """Validate and print a saved contract without reading its original inputs."""
     try:
-        contract = FileRunStore(root=runs_dir).load(run_id)
+        contract = FileRunStore(
+            root=runs_dir if runs_dir is not None else runs_root()
+        ).load(run_id)
     except ValueError as error:
         _fail(error)
     typer.echo(contract.model_dump_json())
@@ -104,8 +108,9 @@ def inspect(
 def methodology(
     run_id: UUID,
     runs_dir: Annotated[
-        Path, typer.Option(help="Filesystem Runs root.")
-    ] = _DEFAULT_RUNS,
+        Path | None,
+        typer.Option(help="Filesystem Runs root (default: ~/.shipyard/runs)."),
+    ] = None,
     stage: Annotated[
         ArtifactStage | None,
         typer.Option(help="Preview guidance for one native-agent stage."),
@@ -113,7 +118,9 @@ def methodology(
 ) -> None:
     """Preview saved methodology; does not execute or modify the Run."""
     try:
-        contract = FileRunStore(root=runs_dir).load(run_id)
+        contract = FileRunStore(
+            root=runs_dir if runs_dir is not None else runs_root()
+        ).load(run_id)
         compiled = compile_methodology(contract.execution)
         if stage is not None:
             output = compose_guidance(compiled, stage=stage).model_dump_json()
@@ -181,7 +188,7 @@ def run_command(
             runs_dir = locator.runs_root
         else:
             repo = repo if repo is not None else Path(".")
-            runs_dir = (runs_dir if runs_dir is not None else _DEFAULT_RUNS).resolve()
+            runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
         evidence = execute_run(
             store=FileRunStore(root=runs_dir),
             run_id=run_id,
