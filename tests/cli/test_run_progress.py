@@ -39,6 +39,7 @@ def test_cli_streams_and_preserves_terminal_json(
         app,
         [
             "run",
+            "--json",
             str(contract.run_id),
             "--repo",
             str(tmp_path / "repository"),
@@ -51,6 +52,11 @@ def test_cli_streams_and_preserves_terminal_json(
     assert result.exit_code == status, result.output
     payload = json.loads(result.stdout)
     assert set(payload) == {"run", "report", "evidence", "workspace"}
+    if reason == "VERIFIED":
+        assert payload["run"]["verification"] is not None
+        assert (
+            payload["run"] == json.loads(Path(payload["evidence"]).read_text())["run"]
+        )
     assert payload["workspace"] == str((tmp_path / "work").resolve())
     assert f"Workspace: {payload['workspace']}" in result.stderr
     assert Path(payload["report"]).is_absolute() and Path(payload["report"]).is_file()

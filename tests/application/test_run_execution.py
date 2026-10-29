@@ -252,6 +252,7 @@ def test_cli_runs_capture_and_returns_report_paths(
         app,
         [
             "run",
+            "--json",
             str(contract.run_id),
             "--repo",
             str(tmp_path / "repository"),

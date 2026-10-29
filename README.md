@@ -762,8 +762,24 @@ already be installed and authenticated locally. Each native stage starts a fresh
 process. Execution stays local and synchronous; Ctrl-C cancels the active executor
 best-effort and packages a CANCELLED result. Exit codes are 0 for VERIFIED, 2 for
 other completed software outcomes, 1 for execution or packaging failure, and 130
-for cancellation. The command prints terminal Run JSON and absolute report/evidence
-paths. `inspect` continues to return the frozen contract after execution.
+for cancellation (an interruption during packaging exits 1). By default the command
+prints a concise human-readable summary: Run ID, lifecycle, software outcome or
+failure reason, exact candidate SHA, mandatory-check and acceptance-review counts,
+and absolute report/evidence paths. Unavailable work is identified explicitly.
+Verification does not apply the candidate to the target branch.
+
+```bash
+shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json
+shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json --json
+```
+
+Scripts consuming the previous default JSON stdout must add `--json`. This option
+prints one complete JSON document with the existing four fields: `run` (including
+nested verification when present), `workspace` (absolute string or null), `report`,
+and `evidence` (absolute artifact paths). Both modes execute the same workflow,
+persist the same evidence, and use the same exit codes. Full check and criterion
+records remain in saved artifacts. `inspect` continues to return the frozen
+contract after execution.
 
 The application entry point is `shipyard.application.execution.execute_run`, with
 explicit `FileRunStore`, Run ID, `GitRepository` and `NativeAgent` parameters,
@@ -815,10 +831,11 @@ only that execution is awaiting completion; they do not establish semantic
 progress or agent/tool health. Durations use a monotonic clock.
 
 After packaging, stderr shows the terminal result and absolute report/evidence
-paths. Stdout remains a single terminal JSON document for scripts. Plain lines
+paths. Stdout contains the terminal summary by default; scripts select `--json`
+for a single JSON document. Progress stays on stderr in either mode. Plain lines
 are flushed immediately and remain readable in redirected logs, for example:
 
 ```bash
-shipyard run <run-id> --context /absolute/execution-context.json \
+shipyard run <run-id> --context /absolute/execution-context.json --json \
   >result.json 2>progress.log
 ```

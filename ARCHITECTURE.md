@@ -130,7 +130,10 @@ Legacy `shipyard run <run-id> --repo <repository> --runs-dir <runs-root>` remain
 supported without a locator (omitted options retain cwd and `~/.shipyard/runs`).
 Moving captures or repositories may require explicit legacy invocation.
 `shipyard run` executes one captured Run synchronously
-and prints terminal JSON plus report/evidence paths. Methodology content is frozen here;
+and prints a human-readable terminal summary plus report/evidence paths by default.
+`--json` preserves the full terminal result for scripts; existing JSON consumers
+must select it explicitly. Verification does not apply the candidate.
+Methodology content is frozen here;
 Phase 3 compilation and routing validate its topology and skill scope. The
 methodology command previews frozen metadata/guidance without execution or writes.
 

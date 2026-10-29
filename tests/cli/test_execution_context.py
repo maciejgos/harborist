@@ -91,6 +91,8 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
         "--context",
         str(runs / str(contract.run_id) / "execution-context.json"),
     ]
+    if layout != "external":
+        command += " --json"
     # Advancing HEAD must never change the base used by the emitted command.
     git(target, "commit", "--allow-empty", "-m", "after intake")
     elsewhere = tmp_path / "elsewhere"
@@ -127,9 +129,15 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
             check=False,
         )
     assert executed.returncode == 2, executed.stderr
-    payload = json.loads(executed.stdout)
-    assert payload["run"]["outcome"] == "NEEDS_CLARIFICATION"
-    assert Path(payload["report"]) == runs / str(contract.run_id) / "report.md"
+    if layout == "external":
+        assert "Status: COMPLETED" in executed.stdout
+        assert "Result: NEEDS_CLARIFICATION" in executed.stdout
+        assert f"Report: {directory.resolve() / 'report.md'}" in executed.stdout
+        assert f"Evidence: {directory.resolve() / 'evidence.json'}" in executed.stdout
+    else:
+        payload = json.loads(executed.stdout)
+        assert payload["run"]["outcome"] == "NEEDS_CLARIFICATION"
+        assert Path(payload["report"]) == runs / str(contract.run_id) / "report.md"
     # Use Git's own worktree records to check the retained destination and SHA.
     records = git(target, "worktree", "list", "--porcelain").split("\n\n")
     linked = next(record for record in records if "detached" in record)

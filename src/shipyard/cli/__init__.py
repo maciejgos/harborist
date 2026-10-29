@@ -1,6 +1,7 @@
 """CLI presentation for frozen capture, synchronous execution and inspection."""
 
 import json
+import os
 import shlex
 from pathlib import Path
 from typing import Annotated, NoReturn
@@ -176,14 +177,22 @@ def run_command(
     context: Annotated[
         Path | None, typer.Option(help="Saved per-Run execution context file.")
     ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print the full Run result as JSON.")
+    ] = False,
     workspace: Annotated[
         Path | None, typer.Option(help="Fresh isolated workspace path.")
     ] = None,
 ) -> None:
-    """Execute a captured CREATED Run synchronously and write terminal evidence."""
+    """Execute synchronously and print a human-readable terminal summary.
+
+    Scripts consuming the previous JSON default must add --json.
+    Writes terminal evidence; verification does not apply the candidate.
+    """
     from shipyard.agents.codex import CodexAgent
     from shipyard.application.execution import execute_run
     from shipyard.cli.progress import ProgressReporter
+    from shipyard.cli.run_summary import artifact_paths, render_summary, single_line
     from shipyard.domain import RunLifecycle, RunOutcome
 
     with ProgressReporter() as reporter:
@@ -218,7 +227,7 @@ def run_command(
             else:
                 repo = repo if repo is not None else Path(".")
                 runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
-            phase = "Execution or finalization"
+            phase = "Execution preflight"
             evidence = execute_run(
                 store=FileRunStore(root=runs_dir),
                 run_id=run_id,
@@ -228,8 +237,18 @@ def run_command(
                 progress=reporter.update,
             )
         except KeyboardInterrupt as error:
+            interrupted_phase = phase
+            if reporter.last is not None:
+                interrupted_phase = (
+                    "Finalization"
+                    if reporter.last.stage.value == "package"
+                    and reporter.last.state == "skipped"
+                    else reporter.last.stage.value.upper()
+                )
             reporter.line(
-                "Execution cancelled by operator; terminal artifacts unavailable"
+                single_line(
+                    f"{interrupted_phase} cancelled by operator; terminal artifacts unavailable"
+                )
             )
             if reporter.last is None:
                 reporter.line(
@@ -244,12 +263,19 @@ def run_command(
                 phase = (
                     "PACKAGE" if reporter.last.state != "skipped" else "Finalization"
                 )
-            detail = (
-                f": {error}"
-                if reporter.last is None and isinstance(error, GitWorkspaceError)
-                else ""
+            elif reporter.last is not None:
+                phase = reporter.last.stage.value.upper()
+            if reporter.last is None and isinstance(error, GitWorkspaceError):
+                detail = str(error)
+            elif isinstance(error, OSError) and error.errno is not None:
+                detail = f"{type(error).__name__}: {os.strerror(error.errno)}; check Runs storage access and capacity"
+            else:
+                detail = f"{type(error).__name__}; inspect retained Run records and execution settings"
+            reporter.line(
+                single_line(
+                    f"{phase} failed; terminal artifacts unavailable: {detail}"
+                )[:1024]
             )
-            reporter.line(f"{phase} failed; terminal artifacts unavailable{detail}")
             if reporter.last is None:
                 reporter.line(
                     "DESIGN, PLAN, BUILD, TEST, REVIEW, PACKAGE skipped (execution could not begin)"
@@ -258,21 +284,27 @@ def run_command(
         reporter.line(
             f"Result: {evidence.run.outcome or evidence.run.failure_reason or evidence.run.lifecycle}"
         )
-        reporter.line(f"Workspace: {evidence.workspace or 'unknown'}")
-        reporter.line(f"Report: {(runs_dir / str(run_id) / 'report.md').resolve()}")
-        reporter.line(
-            f"Evidence: {(runs_dir / str(run_id) / 'evidence.json').resolve()}"
+        reporter.line(single_line(f"Workspace: {evidence.workspace or 'unknown'}"))
+        directory = runs_dir / str(run_id)
+        for label, path in artifact_paths(directory).items():
+            reporter.line(single_line(f"{label}: {path}"))
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": evidence.run.model_dump(mode="json"),
+                    "workspace": str(evidence.workspace)
+                    if evidence.workspace
+                    else None,
+                    "report": str((runs_dir / str(run_id) / "report.md").resolve()),
+                    "evidence": str(
+                        (runs_dir / str(run_id) / "evidence.json").resolve()
+                    ),
+                }
+            )
         )
-    typer.echo(
-        json.dumps(
-            {
-                "run": evidence.run.model_dump(mode="json"),
-                "workspace": str(evidence.workspace) if evidence.workspace else None,
-                "report": str((runs_dir / str(run_id) / "report.md").resolve()),
-                "evidence": str((runs_dir / str(run_id) / "evidence.json").resolve()),
-            }
-        )
-    )
+    else:
+        typer.echo(render_summary(evidence, directory))
     if evidence.run.lifecycle == RunLifecycle.CANCELLED:
         raise typer.Exit(code=130)
     if evidence.run.lifecycle == RunLifecycle.FAILED:
