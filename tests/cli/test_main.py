@@ -204,8 +204,8 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
         "shipyard",
         "run",
         str(contract.run_id),
-        "--context",
-        str(context),
+        "--runs-dir",
+        str(runs.resolve()),
     ]
     assert json.loads(context.read_text()) == {
         "version": 1,
@@ -238,6 +238,7 @@ def test_intake_summary_and_json_preserve_capture(
     source = f"file:{issue}"
     if source_kind == "github":
         source = "github:owner/repo#42"
+
         def read_issue(*, run_id: UUID, source: str) -> IntentSnapshot:
             return IntentSnapshot.create(
                 run_id=run_id, source_ref=source, markdown=body

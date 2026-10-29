@@ -61,6 +61,7 @@ def intake(
     """Capture a CREATED Run and print a human-readable summary.
 
     Existing scripts consuming JSON stdout must add --json for the full frozen contract.
+    Prints shipyard run <run-id>; custom storage adds only --runs-dir.
     Does not execute agents or verification checks.
     """
     try:
@@ -80,15 +81,16 @@ def intake(
             execution=execution,
             ref=ref,
         )
-        context = ExecutionContext(
+        ExecutionContext(
             version=1, run_id=contract.run_id, repository=root, runs_root=runs_dir
         ).save()
     except (ValueError, OSError) as error:
         typer.echo(json.dumps({"error": str(error)}), err=True)
         raise typer.Exit(code=1) from error
-    command = shlex.join(
-        ["shipyard", "run", str(contract.run_id), "--context", str(context)]
-    )
+    arguments = ["shipyard", "run", str(contract.run_id)]
+    if runs_dir != runs_root().resolve():
+        arguments += ["--runs-dir", str(runs_dir)]
+    command = shlex.join(arguments)
     if json_output:
         typer.echo(contract.model_dump_json())
         typer.echo(command, err=True)
@@ -171,11 +173,22 @@ def methodology(
 def run_command(
     run_id: UUID,
     repo: Annotated[
-        Path | None, typer.Option(help="Target repository containing the frozen base.")
+        Path | None,
+        typer.Option(
+            help="Repository constraint; must match saved context when present."
+        ),
     ] = None,
-    runs_dir: Annotated[Path | None, typer.Option(help="Filesystem Runs root.")] = None,
+    runs_dir: Annotated[
+        Path | None,
+        typer.Option(
+            help="Runs root for automatic context lookup (default: ~/.shipyard/runs); must match context."
+        ),
+    ] = None,
     context: Annotated[
-        Path | None, typer.Option(help="Saved per-Run execution context file.")
+        Path | None,
+        typer.Option(
+            help="Explicit context locator; takes precedence over automatic lookup."
+        ),
     ] = None,
     json_output: Annotated[
         bool, typer.Option("--json", help="Print the full Run result as JSON.")
@@ -185,6 +198,13 @@ def run_command(
     ] = None,
 ) -> None:
     """Execute synchronously and print a human-readable terminal summary.
+
+    Automatically loads <runs-root>/<run-id>/execution-context.json, independently
+    of cwd. Custom storage requires --runs-dir; no global discovery is performed.
+    Explicit --context takes precedence; --repo and --runs-dir must match it.
+    Only absent automatic context permits legacy --repo/cwd and storage defaults;
+    invalid existing context fails closed without repair. From a development
+    checkout use uv run shipyard run <run-id>.
 
     Scripts consuming the previous JSON default must add --json.
     Writes terminal evidence; verification does not apply the candidate.
@@ -197,30 +217,43 @@ def run_command(
 
     with ProgressReporter() as reporter:
         reporter.line(f"Run: {run_id}")
-        phase = (
-            f"Execution context validation for --context {context}; use a matching locator or explicit --repo and --runs-dir"
-            if context is not None
-            else "Execution preflight"
-        )
+        phase = "Execution context resolution"
         try:
-            if context is not None:
-                locator = load_context(path=context, run_id=run_id)
-                if (
-                    repo is not None
-                    and GitRepository(path=repo).checkout_root() != locator.repository
-                ):
-                    phase = "Conflicting --repo; expected the repository in --context"
+            selected_context = context
+            if selected_context is None:
+                selected_root = (
+                    runs_dir if runs_dir is not None else runs_root()
+                ).resolve()
+                automatic = selected_root / str(run_id) / "execution-context.json"
+                try:
+                    automatic.lstat()
+                except FileNotFoundError:
+                    pass  # Only an absent automatic locator permits historical fallback.
+                except OSError as error:
                     raise ValueError(
-                        f"Conflicting --repo {repo}; expected {locator.repository}. "
-                        "Use the matching repository or omit --repo with --context"
-                    )
+                        f"Invalid execution context {automatic}: {error}"
+                    ) from error
+                else:
+                    selected_context = automatic
+            if selected_context is not None:
+                locator = load_context(path=selected_context, run_id=run_id)
+                if repo is not None:
+                    try:
+                        matching_repo = (
+                            GitRepository(path=repo).checkout_root()
+                            == locator.repository
+                        )
+                    except ValueError as error:
+                        raise ValueError(
+                            f"Conflicting --repo {repo}; expected {locator.repository}: {error}"
+                        ) from error
+                    if not matching_repo:
+                        raise ValueError(
+                            f"Conflicting --repo {repo}; expected {locator.repository}"
+                        )
                 if runs_dir is not None and runs_dir.resolve() != locator.runs_root:
-                    phase = (
-                        "Conflicting --runs-dir; expected the Runs root in --context"
-                    )
                     raise ValueError(
-                        f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}. "
-                        "Use the matching Runs root or omit --runs-dir with --context"
+                        f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}"
                     )
                 repo = locator.repository
                 runs_dir = locator.runs_root
@@ -265,7 +298,13 @@ def run_command(
                 )
             elif reporter.last is not None:
                 phase = reporter.last.stage.value.upper()
-            if reporter.last is None and isinstance(error, GitWorkspaceError):
+            if reporter.last is None and (
+                isinstance(error, GitWorkspaceError)
+                or (
+                    phase == "Execution context resolution"
+                    and isinstance(error, ValueError)
+                )
+            ):
                 detail = str(error)
             elif isinstance(error, OSError) and error.errno is not None:
                 detail = f"{type(error).__name__}: {os.strerror(error.errno)}; check Runs storage access and capacity"

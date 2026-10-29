@@ -633,7 +633,7 @@ Capture a Run, then copy the execution command from the default summary:
 ```bash
 shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository
 # stdout: a human-readable summary including a command such as:
-shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json
+shipyard run <run-id>
 ```
 
 To capture the full frozen contract as JSON instead (the command hint remains on
@@ -643,12 +643,21 @@ stderr):
 shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository --json > contract.json
 ```
 
-Use `uv run shipyard` when running from the development checkout, or install the
+Use `uv run shipyard run <run-id>` when running from the development checkout, or install the
 `shipyard` entry point on PATH to run the emitted command from any directory.
 The locator records absolute resolved repository and Runs-root paths, so the
-command selects the captured context independently of cwd. Custom `--runs-dir`
-values, including paths inside the target checkout, work the same way. Commands
-are quoted for the local POSIX shell, including spaces and shell metacharacters.
+short command automatically loads `~/.shipyard/runs/<run-id>/execution-context.json`
+and selects the captured repository independently of cwd. For custom storage the
+emitted command adds only the resolved storage locator, for example:
+
+```bash
+shipyard run <run-id> --runs-dir '/absolute/custom runs'
+```
+
+Custom storage requires `--runs-dir`: there is no global registry, recursive search,
+or discovery across repositories. Commands are quoted for the local POSIX shell,
+including spaces and shell metacharacters. Storage inside the target checkout
+still requires an external workspace override as described below.
 
 Shipyard resolves its data root from the current user's home directory at command
 execution, independently of cwd and the target repository:
@@ -729,8 +738,11 @@ aliases are resolved for overlap checks. Directory obstructions and access error
 identify the affected path; correct directory access or choose a valid override.
 Shipyard does not overwrite obstructing files or require elevated privileges.
 
-With `--context`, explicit repository and storage options must match the saved
-locations (resolved aliases and repository subdirectories are accepted):
+Explicit `--context` takes precedence over automatic lookup and selects its own
+repository and storage root when those options are omitted. For both explicit and
+automatic contexts, `--repo` and `--runs-dir` constrain the saved locations;
+conflicts fail with the expected location. Resolved aliases and repository
+subdirectories are accepted:
 
 ```bash
 shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json \
@@ -738,8 +750,11 @@ shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json \
 # A different --repo or --runs-dir fails with the expected location.
 ```
 
-Missing or invalid supplied context fails explicitly; omit `--context` to use the
-legacy invocation, also supported for captures without a locator:
+A missing or invalid explicit context fails without trying another locator.
+An existing invalid or unreadable automatic context also fails before admission,
+including directories and dangling symlinks; omitting `--context` cannot bypass it.
+Only an absent automatic locator permits the legacy invocation for historical
+captures. From elsewhere, supply the repository and any nondefault storage root:
 
 ```bash
 shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
@@ -752,10 +767,11 @@ with the explicit legacy command above when saved context is unavailable.
 Shipyard does not migrate, recapture or backfill context into historical captures,
 and terminal Shipyard records remain immutable.
 
-Without context, omitted repository and Runs options still select cwd and
+When the automatic context is absent, omitted repository and Runs options select cwd and
 `~/.shipyard/runs`; workspace selection follows the capture layout described above.
-Repositories or Runs storage moved after capture may require this explicit legacy
-invocation; locators are not repaired automatically. The locator is an invocation
+Moving repositories or Runs storage does not repair locators or permit bypassing
+an existing invalid locator. Historical captures without locators use the explicit
+legacy invocation; no frozen artifacts are rewritten. The locator is an invocation
 hint, separate from `contract.json`, and cannot change the frozen base or settings.
 The target repository must contain the frozen base commit. Codex must
 already be installed and authenticated locally. Each native stage starts a fresh
@@ -769,8 +785,8 @@ and absolute report/evidence paths. Unavailable work is identified explicitly.
 Verification does not apply the candidate to the target branch.
 
 ```bash
-shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json
-shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json --json
+shipyard run <run-id>
+shipyard run <run-id> --json
 ```
 
 Scripts consuming the previous default JSON stdout must add `--json`. This option

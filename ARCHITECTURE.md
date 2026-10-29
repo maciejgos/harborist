@@ -120,15 +120,29 @@ revision, task source reference, status and a copyable execution command.
 `--json` prints the full frozen contract as one JSON document to stdout instead;
 existing scripts consuming the former default JSON must add `--json`. Saved
 contracts and existing captures require no migration.
-It saves a create-only `execution-context.json` beside the capture and includes a
-POSIX-shell-quoted `shipyard run <run-id> --context <absolute-file>` command in the
-summary (on stderr in JSON mode). The locator stores version, Run UUID, resolved checkout root and resolved
-Runs root separately from the frozen domain contract. It works independently of
-cwd. With context, omitted `--repo`/`--runs-dir` come from the locator; explicit
-options must resolve to the same locations. Invalid context never falls back.
-Legacy `shipyard run <run-id> --repo <repository> --runs-dir <runs-root>` remains
-supported without a locator (omitted options retain cwd and `~/.shipyard/runs`).
-Moving captures or repositories may require explicit legacy invocation.
+It saves a create-only `execution-context.json` beside the capture. With default
+storage, both hint modes emit `shipyard run <run-id>` (use
+`uv run shipyard run <run-id>` from a development checkout). Custom storage adds
+only `--runs-dir <resolved-path>`, POSIX-shell-quoted. Custom storage requires that
+locator option; there is no global registry, recursive or cross-repository search.
+The locator stores version, Run UUID, resolved checkout root and resolved Runs root
+separately from the frozen domain contract.
+
+Run execution selects explicit `--context` first. Otherwise it looks only at
+`<selected-runs-root>/<run-id>/execution-context.json`, using explicit `--runs-dir`
+or `~/.shipyard/runs`. A valid context supplies the repository and storage
+independently of cwd. Explicit `--repo` and `--runs-dir` must resolve to those same
+locations; conflicts identify the option and expected location. Missing or invalid
+explicit context never falls back. Existing invalid or unreadable automatic
+context (including an obstructing directory or dangling symlink) fails closed
+before admission, without repair or frozen-base refresh.
+
+Only absent automatic context permits historical fallback:
+`shipyard run <run-id> --repo <repository> --runs-dir <runs-root>`. Omitted options
+retain cwd and `~/.shipyard/runs`; invocation from elsewhere needs the repository
+and any nondefault storage root. Fallback never backfills context, layout metadata,
+or frozen inputs/contracts. Existing locators cannot be bypassed by omitting
+`--context`, and captures are not migrated or recaptured.
 `shipyard run` executes one captured Run synchronously
 and prints a human-readable terminal summary plus report/evidence paths by default.
 `--json` preserves the full terminal result for scripts; existing JSON consumers

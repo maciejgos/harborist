@@ -20,9 +20,7 @@ class ExecutionContext(BaseModel):
     @classmethod
     def supported_version(cls, value: int) -> int:
         if value != 1:
-            raise ValueError(
-                "Unsupported execution context version; use legacy explicit invocation"
-            )
+            raise ValueError("Unsupported execution context version")
         return value
 
     @field_validator("repository", "runs_root")
@@ -51,7 +49,7 @@ class ExecutionContext(BaseModel):
 
 
 def load_context(*, path: Path, run_id: UUID) -> ExecutionContext:
-    """Fail closed for an explicitly supplied locator; never discover or repair."""
+    """Validate a selected explicit or automatic locator; never repair."""
     try:
         context = ExecutionContext.model_validate_json(path.read_bytes())
         if context.run_id != run_id:
@@ -60,7 +58,4 @@ def load_context(*, path: Path, run_id: UUID) -> ExecutionContext:
             raise ValueError(f"Context location must match {context.path}")
         return context
     except (OSError, ValueError, RuntimeError) as error:
-        raise ValueError(
-            f"Invalid --context {path}: {error}. Supply the original context file "
-            "or omit --context and use explicit --repo and --runs-dir"
-        ) from error
+        raise ValueError(f"Invalid execution context {path}: {error}") from error
