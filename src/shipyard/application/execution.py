@@ -6,6 +6,7 @@ from uuid import UUID
 
 from shipyard.agents.base import AgentExecutionError, AgentTimeoutError, NativeAgent
 from shipyard.application.budget import BudgetClock, BudgetExceeded, Timing
+from shipyard.application.candidate_message import candidate_message
 from shipyard.application.stages import StageExecution, execute_stage
 from shipyard.application.verification import TestExecution, execute_test
 from shipyard.domain import FailureReason, RunOutcome
@@ -146,7 +147,11 @@ def execute_run(
                         upstream["build-process.json"] = (
                             directory / "build" / "build-process.json"
                         )
-                    candidate = isolated.publish_candidate()
+                    candidate = isolated.publish_candidate(
+                        message=candidate_message(
+                            intent=contract.intent, attempt=attempt
+                        )
+                    )
                     clock.allowance(artifact_stage, admission=False)
                     if execution.output.plan_update is not None:
                         upstream["plan.md"] = directory / "build" / "plan.md"

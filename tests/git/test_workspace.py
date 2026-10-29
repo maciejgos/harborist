@@ -68,7 +68,12 @@ def test_candidate_is_reachable_and_independently_checkoutable(tmp_path: Path) -
     )
     (workspace.path / "tracked").unlink()
     (workspace.path / "new").write_text("candidate")
-    candidate = workspace.publish_candidate()
+    candidate = workspace.publish_candidate(
+        message="Shipyard candidate\n\nExplicit caller message"
+    )
+    assert git(repo, "show", "-s", "--format=%B", candidate.candidate_sha) == (
+        "Shipyard candidate\n\nExplicit caller message"
+    )
     assert candidate.attempt_id == attempt.attempt_id
     assert git(repo, "rev-parse", workspace.candidate_ref) == candidate.candidate_sha
     assert git(repo, "rev-parse", "HEAD") == attempt.start_sha
@@ -87,12 +92,16 @@ def test_noop_candidate_and_ref_collision(tmp_path: Path) -> None:
     workspace = GitRepository(path=repo).create_workspace(
         attempt=attempt, path=tmp_path / "one"
     )
-    first = workspace.publish_candidate()
+    first = workspace.publish_candidate(
+        message="Shipyard candidate\n\nExplicit caller message"
+    )
     second = GitRepository(path=repo).create_workspace(
         attempt=attempt, path=tmp_path / "two"
     )
     with pytest.raises(ValueError):
-        second.publish_candidate()
+        second.publish_candidate(
+            message="Shipyard candidate\n\nExplicit caller message"
+        )
     assert git(repo, "rev-parse", workspace.candidate_ref) == first.candidate_sha
 
 
@@ -107,7 +116,9 @@ def test_candidate_cleans_ignored_residue_only_in_owned_workspace(
     (workspace.path / "ignored").mkdir()
     (workspace.path / "ignored" / "cache").write_text("BUILD residue")
     (workspace.path / "new").write_text("implementation")
-    candidate = workspace.publish_candidate()
+    candidate = workspace.publish_candidate(
+        message="Shipyard candidate\n\nExplicit caller message"
+    )
     assert not (workspace.path / "ignored").exists()
     assert (repo / "ignored").read_text() == "developer environment"
     assert git(workspace.path, "show", "HEAD:new") == "implementation"
@@ -123,7 +134,9 @@ def test_candidate_rejects_head_drift(tmp_path: Path) -> None:
     )
     git(workspace.path, "switch", "-c", "unexpected")
     with pytest.raises(ValueError):
-        workspace.publish_candidate()
+        workspace.publish_candidate(
+            message="Shipyard candidate\n\nExplicit caller message"
+        )
 
 
 def test_ignored_cleanup_does_not_follow_symlinks(tmp_path: Path) -> None:
@@ -135,7 +148,7 @@ def test_ignored_cleanup_does_not_follow_symlinks(tmp_path: Path) -> None:
     external.mkdir()
     (external / "keep").write_text("operator data")
     (workspace.path / "ignored").symlink_to(external, target_is_directory=True)
-    workspace.publish_candidate()
+    workspace.publish_candidate(message="Shipyard candidate\n\nExplicit caller message")
     assert not (workspace.path / "ignored").is_symlink()
     assert (external / "keep").read_text() == "operator data"
 
@@ -147,7 +160,9 @@ def test_candidate_rejects_committed_head_drift(tmp_path: Path) -> None:
     )
     git(workspace.path, "commit", "--allow-empty", "-m", "agent commit")
     with pytest.raises(ValueError):
-        workspace.publish_candidate()
+        workspace.publish_candidate(
+            message="Shipyard candidate\n\nExplicit caller message"
+        )
     assert git(repo, "for-each-ref", workspace.candidate_ref) == ""
 
 
@@ -161,7 +176,9 @@ def test_candidate_does_not_run_repository_hooks(tmp_path: Path) -> None:
     workspace = GitRepository(path=repo).create_workspace(
         attempt=attempt, path=tmp_path / "build"
     )
-    assert workspace.publish_candidate().candidate_sha
+    assert workspace.publish_candidate(
+        message="Shipyard candidate\n\nExplicit caller message"
+    ).candidate_sha
 
 
 def test_preflight_rejects_dangling_symlink_without_overwriting(tmp_path: Path) -> None:

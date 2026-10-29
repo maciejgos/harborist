@@ -389,8 +389,10 @@ existing checkout at the exact candidate SHA, rejecting tracked, untracked and
 ignored workspace changes. It performs no checkout or candidate creation.
 
 `create_workspace(attempt, path)` creates a fresh detached worktree at the exact
-Attempt start SHA outside the source checkout. `GitWorkspace.publish_candidate()`
-requires unchanged detached HEAD, stages BUILD changes and creates a commit with
+Attempt start SHA outside the source checkout. `GitWorkspace.publish_candidate(message=...)`
+accepts the final message composed by the application from frozen intake provenance
+and Run/Attempt identities. The Git adapter does not interpret source selectors.
+Publication requires unchanged detached HEAD, stages BUILD changes and creates a commit with
 explicit harness identity, disabled hooks/signing and a clean-revision assertion.
 Ignored disposable files are removed from the owned detached linked worktree
 before publication using system Git clean (ignored files only, without forcing

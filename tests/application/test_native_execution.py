@@ -116,7 +116,9 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
             upstream["spec.md"] = directory / "spec.md"
         if stage == AgentStage.PLAN:
             upstream["plan.md"] = directory / "plan.md"
-    candidate = isolated.publish_candidate()
+    candidate = isolated.publish_candidate(
+        message="Shipyard candidate\n\nExplicit caller message"
+    )
     assert (
         git(repository, "rev-parse", isolated.candidate_ref) == candidate.candidate_sha
     )

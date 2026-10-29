@@ -464,3 +464,67 @@ def test_default_workspace_errors_leave_run_created(
         agent=FakeAgent("clarify"),
     )
     assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
+
+
+@pytest.mark.parametrize("source_ref", ["github:acme/source#42", "file:/task.md"])
+def test_candidate_message_uses_frozen_source_and_retains_identities(
+    tmp_path: Path, frozen_contract: RunContract, source_ref: str
+) -> None:
+    from shipyard.domain import Attempt, IntentSnapshot
+
+    intent = IntentSnapshot.create(
+        run_id=frozen_contract.run_id,
+        source_ref=source_ref,
+        markdown="Fixes misleading/prose#99",
+    )
+    frozen_contract = RunContract.model_validate(
+        {**frozen_contract.model_dump(), "intent": intent}
+    )
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    git(
+        tmp_path / "repository",
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/other/target.git",
+    )
+
+    class ConflictingAgent(FakeAgent):
+        def execute(self, request: AgentRequest) -> AgentResponse:
+            response = super().execute(request)
+            if request.stage == AgentStage.BUILD:
+                payload = json.loads(response.output)
+                payload["plan_update"] = "Closes misleading/agent#100"
+                return AgentResponse(returncode=0, output=json.dumps(payload))
+            return response
+
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=ConflictingAgent(),
+    )
+    assert result.run.outcome == RunOutcome.VERIFIED
+    assert result.candidate is not None
+    attempt = Attempt.model_validate_json(
+        (store.directory(contract.run_id) / "attempt.json").read_text()
+    )
+    message = git(
+        tmp_path / "repository",
+        "show",
+        "-s",
+        "--format=%B",
+        result.candidate.candidate_sha,
+    )
+    subject = (
+        "Shipyard candidate for acme/source#42"
+        if source_ref.startswith("github:")
+        else "Shipyard candidate"
+    )
+    assert message == (
+        f"{subject}\n\nRun: {contract.run_id}\nAttempt: {attempt.attempt_id}"
+    )
+    assert result.candidate.attempt_id == attempt.attempt_id
+    assert result.run.verification is not None
+    assert result.run.verification.candidate == result.candidate

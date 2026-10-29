@@ -201,7 +201,7 @@ class GitWorkspace:
                 "Cannot clean ignored files in isolated workspace"
             ) from error
 
-    def publish_candidate(self) -> Candidate:
+    def publish_candidate(self, *, message: str) -> Candidate:
         """Commit BUILD changes and publish a create-only candidate ref.
 
         Caller must stop BUILD before calling; concurrent workspace writers are
@@ -234,7 +234,7 @@ class GitWorkspace:
                 "--allow-empty",
                 "--no-verify",
                 "-m",
-                f"Shipyard candidate for {self.attempt.attempt_id}",
+                message,
             )
             sha = repository.resolve_base()
             repository.require_clean_revision(commit_sha=sha)

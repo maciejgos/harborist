@@ -10,6 +10,7 @@ Shipyard is a local, evidence-driven delivery harness for native coding agents. 
 
 ```python
 from pathlib import Path
+from shipyard.application.candidate_message import candidate_message
 from shipyard.domain import Attempt
 from shipyard.git import GitRepository
 
@@ -17,7 +18,10 @@ repository = GitRepository(path=Path("/path/to/repository"))
 attempt = Attempt.create(run_id, repository.resolve_base())
 workspace = repository.create_workspace(attempt=attempt, path=Path("/path/to/build"))
 # Pass workspace.path to execute_stage for BUILD; leave HEAD at start_sha.
-candidate = workspace.publish_candidate()
+# intent is the frozen Run contract's IntentSnapshot.
+candidate = workspace.publish_candidate(
+    message=candidate_message(intent=intent, attempt=attempt)
+)
 ```
 
 Use the frozen contract base SHA when creating an actual Run's Attempt. The caller
@@ -30,6 +34,31 @@ removes ignored disposable files (including local environments and tool caches)
 from the owned isolated worktree before committing. Keep durable implementation
 files tracked or nonignored; ignored files are not candidate inputs. The source
 checkout is never cleaned.
+
+The application composes the message from the frozen intake source before the
+initial candidate commit. For a GitHub source `github:acme/source#42`:
+
+```text
+Shipyard candidate for acme/source#42
+
+Run: cd736d82-fa33-42a2-9e50-fb9e561aa015
+Attempt: 9518caf4-4d86-41ba-8641-0ea452a587c1
+```
+
+The source issue may belong to a different repository from the target checkout.
+The reference is informational; candidate publication does not close the issue.
+File sources use the same complete identity fields without an issue reference:
+
+```text
+Shipyard candidate
+
+Run: cd736d82-fa33-42a2-9e50-fb9e561aa015
+Attempt: 9518caf4-4d86-41ba-8641-0ea452a587c1
+```
+
+The Git boundary accepts the finished message through the required `message`
+argument. It does not interpret source selectors or fetch issue metadata. TEST and
+REVIEW evaluate the original message-bearing candidate SHA without rewriting it.
 
 The candidate remains reachable at `refs/shipyard/runs/<run-id>/candidate`.
 Publication is create-only: an existing ref is never overwritten. A separate
