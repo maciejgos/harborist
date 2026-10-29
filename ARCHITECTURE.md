@@ -548,3 +548,11 @@ CHANGES_REQUIRED
 ```
 
 Execution failures remain distinct from software outcomes.
+
+Run progress uses an optional application callback carrying stage lifecycle and
+validated outcome/reason values. It has no routing or persistence authority.
+The CLI renders flushed plain stderr lines and owns one transient timer thread
+for 15-second elapsed updates during blocking synchronous calls. That thread
+uses a separate monotonic presentation clock, never the execution budget, and
+is stopped and joined on return or exception. Presentation write errors disable
+reporting without changing workflow results.

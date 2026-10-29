@@ -182,39 +182,80 @@ def run_command(
     """Execute a captured CREATED Run synchronously and write terminal evidence."""
     from shipyard.agents.codex import CodexAgent
     from shipyard.application.execution import execute_run
+    from shipyard.cli.progress import ProgressReporter
     from shipyard.domain import RunLifecycle, RunOutcome
 
-    try:
-        if context is not None:
-            locator = load_context(path=context, run_id=run_id)
-            if (
-                repo is not None
-                and GitRepository(path=repo).checkout_root() != locator.repository
-            ):
-                raise ValueError(
-                    f"Conflicting --repo {repo}; expected {locator.repository}. "
-                    "Use the matching repository or omit --repo with --context"
-                )
-            if runs_dir is not None and runs_dir.resolve() != locator.runs_root:
-                raise ValueError(
-                    f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}. "
-                    "Use the matching Runs root or omit --runs-dir with --context"
-                )
-            repo = locator.repository
-            runs_dir = locator.runs_root
-        else:
-            repo = repo if repo is not None else Path(".")
-            runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
-        evidence = execute_run(
-            store=FileRunStore(root=runs_dir),
-            run_id=run_id,
-            repository=GitRepository(path=repo),
-            workspace=workspace,
-            agent=CodexAgent(),
+    with ProgressReporter() as reporter:
+        reporter.line(f"Run: {run_id}")
+        phase = (
+            f"Execution context validation for --context {context}; use a matching locator or explicit --repo and --runs-dir"
+            if context is not None
+            else "Execution preflight"
         )
-    except (ValueError, OSError) as error:
-        typer.echo(json.dumps({"error": str(error)}), err=True)
-        raise typer.Exit(code=1) from error
+        try:
+            if context is not None:
+                locator = load_context(path=context, run_id=run_id)
+                if (
+                    repo is not None
+                    and GitRepository(path=repo).checkout_root() != locator.repository
+                ):
+                    phase = "Conflicting --repo; expected the repository in --context"
+                    raise ValueError(
+                        f"Conflicting --repo {repo}; expected {locator.repository}. "
+                        "Use the matching repository or omit --repo with --context"
+                    )
+                if runs_dir is not None and runs_dir.resolve() != locator.runs_root:
+                    phase = (
+                        "Conflicting --runs-dir; expected the Runs root in --context"
+                    )
+                    raise ValueError(
+                        f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}. "
+                        "Use the matching Runs root or omit --runs-dir with --context"
+                    )
+                repo = locator.repository
+                runs_dir = locator.runs_root
+            else:
+                repo = repo if repo is not None else Path(".")
+                runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
+            phase = "Execution or finalization"
+            evidence = execute_run(
+                store=FileRunStore(root=runs_dir),
+                run_id=run_id,
+                repository=GitRepository(path=repo),
+                workspace=workspace,
+                agent=CodexAgent(),
+                progress=reporter.update,
+            )
+        except KeyboardInterrupt as error:
+            reporter.line(
+                "Execution cancelled by operator; terminal artifacts unavailable"
+            )
+            if reporter.last is None:
+                reporter.line(
+                    "DESIGN, PLAN, BUILD, TEST, REVIEW, PACKAGE skipped (cancelled before execution)"
+                )
+            package_interrupted = (
+                reporter.last is not None and reporter.last.stage.value == "package"
+            )
+            raise typer.Exit(code=1 if package_interrupted else 130) from error
+        except Exception as error:
+            if reporter.last is not None and reporter.last.stage.value == "package":
+                phase = (
+                    "PACKAGE" if reporter.last.state != "skipped" else "Finalization"
+                )
+            reporter.line(f"{phase} failed; terminal artifacts unavailable")
+            if reporter.last is None:
+                reporter.line(
+                    "DESIGN, PLAN, BUILD, TEST, REVIEW, PACKAGE skipped (execution could not begin)"
+                )
+            raise typer.Exit(code=1) from error
+        reporter.line(
+            f"Result: {evidence.run.outcome or evidence.run.failure_reason or evidence.run.lifecycle}"
+        )
+        reporter.line(f"Report: {(runs_dir / str(run_id) / 'report.md').resolve()}")
+        reporter.line(
+            f"Evidence: {(runs_dir / str(run_id) / 'evidence.json').resolve()}"
+        )
     typer.echo(
         json.dumps(
             {

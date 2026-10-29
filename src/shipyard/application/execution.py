@@ -7,6 +7,7 @@ from uuid import UUID
 from shipyard.agents.base import AgentExecutionError, AgentTimeoutError, NativeAgent
 from shipyard.application.budget import BudgetClock, BudgetExceeded, Timing
 from shipyard.application.candidate_message import candidate_message
+from shipyard.application.progress import ExecutionProgress, ProgressCallback
 from shipyard.application.stages import StageExecution, execute_stage
 from shipyard.application.verification import TestExecution, execute_test
 from shipyard.domain import FailureReason, RunOutcome
@@ -35,12 +36,14 @@ def execute_run(
     workspace: Path | None = None,
     agent: NativeAgent,
     clock: BudgetClock | None = None,
+    progress: ProgressCallback | None = None,
 ) -> RunEvidence:
     """Execute once, preserving partial work and terminal evidence.
 
     Retry/recovery and concurrent local writers are unsupported. PACKAGE failures
     propagate to the caller after terminal state has been persisted.
     """
+    updates = ExecutionProgress(progress)
     contract = store.load(run_id)
     if clock is not None and clock.budget != contract.execution.budget:
         raise ValueError("Clock must use the frozen execution budget")
@@ -104,6 +107,7 @@ def execute_run(
                         ),
                     }
                 )
+                updates.emit(artifact_stage, "started")
                 execution = execute_stage(
                     contract=contract,
                     attempt=attempt,
@@ -127,6 +131,11 @@ def execute_run(
                         execution.review_decision.outcome,
                         verification=execution.review_decision.verification,
                     )
+                    updates.emit(
+                        artifact_stage,
+                        "completed",
+                        execution.review_decision.outcome.value,
+                    )
                     break
                 status = execution.output.result.status
                 if status != StageStatus.READY:
@@ -137,6 +146,7 @@ def execute_run(
                         )
                     )
                     run = run.complete(outcome)
+                    updates.emit(artifact_stage, "completed", outcome.value)
                     break
                 if stage == AgentStage.DESIGN:
                     upstream["spec.md"] = directory / "design" / "spec.md"
@@ -162,6 +172,7 @@ def execute_run(
                         candidate=candidate if stage == AgentStage.BUILD else None,
                     )
                 )
+                updates.emit(artifact_stage, "completed")
             finally:
                 timings.append(clock.timing(artifact_stage, mark))
             if stage == AgentStage.BUILD:
@@ -169,6 +180,7 @@ def execute_run(
                 mark = clock.mark()
                 try:
                     allowance = clock.allowance(ArtifactStage.TEST)
+                    updates.emit(ArtifactStage.TEST, "started")
                     test = execute_test(
                         contract=contract,
                         attempt=attempt,
@@ -183,7 +195,9 @@ def execute_run(
                     routing = routing.accept(test.receipt)
                     if test.receipt.outcome == StepOutcome.TEST_FAILED:
                         run = run.complete(RunOutcome.TEST_FAILED)
+                        updates.emit(ArtifactStage.TEST, "failed", "TEST_FAILED")
                         break
+                    updates.emit(ArtifactStage.TEST, "completed")
                 finally:
                     timings.append(clock.timing(ArtifactStage.TEST, mark))
     except KeyboardInterrupt:
@@ -202,21 +216,42 @@ def execute_run(
         if run.failure_reason is None:
             run = run.fail(FailureReason.INTERNAL_ERROR)
         error_text = f"{type(error).__name__}: {error}"[:4096]
-    timing = clock.timing(None)
-    store.finish(run)
-    with (directory / "timing.json").open("x", encoding="utf-8") as output:
-        output.write(timing.model_dump_json())
-    with (directory / "stage-timings.json").open("x", encoding="utf-8") as output:
-        output.write("[" + ",".join(item.model_dump_json() for item in timings) + "]")
-    return package_run(
-        directory=directory,
-        contract=contract,
-        run=run,
-        attempt=attempt,
-        candidate=candidate,
-        stages=tuple(stages),
-        test=test,
-        timing=timing,
-        stage_timings=tuple(timings),
-        error=error_text,
+    updates.terminal(
+        str(run.failure_reason or run.outcome or run.lifecycle),
+        cancelled=run.lifecycle.value == "CANCELLED",
     )
+    timing = clock.timing(None)
+    try:
+        store.finish(run)
+        with (directory / "timing.json").open("x", encoding="utf-8") as output:
+            output.write(timing.model_dump_json())
+        with (directory / "stage-timings.json").open("x", encoding="utf-8") as output:
+            output.write(
+                "[" + ",".join(item.model_dump_json() for item in timings) + "]"
+            )
+    except BaseException:
+        updates.emit(ArtifactStage.PACKAGE, "skipped", "FINALIZATION_FAILED")
+        raise
+    updates.emit(ArtifactStage.PACKAGE, "started")
+    try:
+        evidence = package_run(
+            directory=directory,
+            contract=contract,
+            run=run,
+            attempt=attempt,
+            candidate=candidate,
+            stages=tuple(stages),
+            test=test,
+            timing=timing,
+            stage_timings=tuple(timings),
+            error=error_text,
+        )
+    except BaseException as error:
+        updates.emit(
+            ArtifactStage.PACKAGE,
+            "cancelled" if isinstance(error, KeyboardInterrupt) else "failed",
+            "PACKAGE_FAILED",
+        )
+        raise
+    updates.emit(ArtifactStage.PACKAGE, "completed")
+    return evidence

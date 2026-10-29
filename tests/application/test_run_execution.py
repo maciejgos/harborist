@@ -262,7 +262,7 @@ def test_cli_runs_capture_and_returns_report_paths(
         ],
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    payload = json.loads(result.stdout)
     assert Path(payload["report"]).is_file()
     assert store.load_state(contract.run_id).outcome == RunOutcome.VERIFIED
 

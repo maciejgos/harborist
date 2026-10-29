@@ -758,3 +758,19 @@ resume/recovery, SIGTERM handling, background service and concurrent writers are
 out of scope. No live-provider evaluation is claimed.
 
 See the [Phase 8 acceptance audit](spec/045-phase8-acceptance-audit/report.md).
+
+During `shipyard run`, progress appears automatically on stderr: the requested
+Run ID, stage starts, measured completion durations, failures, cancellations and
+skipped stages. Active stages print an elapsed-time line every 15 seconds,
+including while agent calls, trusted checks or packaging block. These lines mean
+only that execution is awaiting completion; they do not establish semantic
+progress or agent/tool health. Durations use a monotonic clock.
+
+After packaging, stderr shows the terminal result and absolute report/evidence
+paths. Stdout remains a single terminal JSON document for scripts. Plain lines
+are flushed immediately and remain readable in redirected logs, for example:
+
+```bash
+shipyard run <run-id> --context /absolute/execution-context.json \
+  >result.json 2>progress.log
+```
