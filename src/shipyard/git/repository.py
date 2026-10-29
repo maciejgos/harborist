@@ -79,6 +79,11 @@ class GitRepository:
                 "restore the frozen commit or supply the original --repo checkout"
             ) from error
         try:
+            # Inspect lexical ancestors before resolve: a dangling intermediate
+            # symlink must not be mistaken for an ordinary missing directory.
+            for component in (path, *path.parents):
+                if component.is_symlink():
+                    component.resolve(strict=True)
             normalized = path.resolve()
             if (
                 path.exists()

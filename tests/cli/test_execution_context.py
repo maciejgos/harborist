@@ -15,6 +15,7 @@ from shipyard.agents import codex
 from shipyard.application.context import ExecutionContext
 from shipyard.cli import app
 from shipyard.domain import RunContract
+from shipyard.persistence import FileRunStore
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
@@ -102,6 +103,29 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
         text=True,
         check=False,
     )
+    expected_workspace = runs / str(contract.run_id) / "workspace"
+    if layout == "inside":
+        assert executed.returncode == 1, executed.stderr
+        assert str(expected_workspace) in executed.stderr
+        assert "--workspace" in executed.stderr
+        assert (
+            FileRunStore(root=runs).load_state(contract.run_id).lifecycle.value
+            == "CREATED"
+        )
+        assert not (directory / ".execution").exists()
+        expected_workspace = tmp_path / "fresh external checkout"
+        executed = subprocess.run(
+            [
+                "/bin/sh",
+                "-c",
+                command + " --workspace " + shlex.quote(str(expected_workspace)),
+            ],
+            cwd=elsewhere,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
     assert executed.returncode == 2, executed.stderr
     payload = json.loads(executed.stdout)
     assert payload["run"]["outcome"] == "NEEDS_CLARIFICATION"
@@ -110,7 +134,7 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
     records = git(target, "worktree", "list", "--porcelain").split("\n\n")
     linked = next(record for record in records if "detached" in record)
     workspace = Path(linked.splitlines()[0].removeprefix("worktree "))
-    assert workspace == home / ".shipyard" / "workspaces" / str(contract.run_id)
+    assert workspace == expected_workspace
     assert workspace.is_dir()
     assert not workspace.resolve().is_relative_to(target.resolve())
     assert git(workspace, "rev-parse", "HEAD") == frozen == contract.base_sha

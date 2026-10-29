@@ -10,6 +10,7 @@ from shipyard.application.candidate_message import candidate_message
 from shipyard.application.progress import ExecutionProgress, ProgressCallback
 from shipyard.application.stages import StageExecution, execute_stage
 from shipyard.application.verification import TestExecution, execute_test
+from shipyard.application.workspace import validate_workspace_placement
 from shipyard.domain import FailureReason, RunOutcome
 from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
@@ -23,8 +24,13 @@ from shipyard.domain.stage_result import AgentStage, InvalidStageOutput, StageSt
 from shipyard.evidence.package import RunEvidence, package_run
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitReadError, GitWorkspaceError
-from shipyard.paths import run_workspace
+from shipyard.paths import legacy_run_workspace
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.workspace import (
+    WorkspaceSelection,
+    load_layout,
+    load_selection,
+)
 from shipyard.skills import compile_methodology
 
 
@@ -47,8 +53,16 @@ def execute_run(
     contract = store.load(run_id)
     if clock is not None and clock.budget != contract.execution.budget:
         raise ValueError("Clock must use the frozen execution budget")
+    directory = store.directory(run_id)
+    selection = load_selection(directory, run_id)
     if workspace is None:
-        workspace = run_workspace(run_id)
+        if selection is not None:
+            workspace = selection.path
+        elif load_layout(directory, run_id) is not None:
+            workspace = directory / "workspace"
+        else:
+            workspace = legacy_run_workspace(run_id)
+    validate_workspace_placement(path=workspace, run_directory=directory)
     workspace = repository.preflight_workspace(
         base_sha=contract.base_sha, path=workspace
     )
@@ -59,6 +73,12 @@ def execute_run(
             f"Cannot prepare workspace {workspace} parent {workspace.parent}: {error}; "
             "check directory access or supply --workspace with a fresh external path"
         ) from error
+    admitted_path = directory / "execution-workspace.json"
+    if admitted_path.exists() or admitted_path.is_symlink():
+        raise GitWorkspaceError(
+            f"Invalid workspace {workspace}: retained execution association {admitted_path}; "
+            "inspect retained data; use a separate intake for a new Run, not --workspace to retry"
+        )
     run = store.begin(run_id)
     clock = clock or BudgetClock(contract.execution.budget)
     directory = store.directory(run_id)
@@ -72,6 +92,12 @@ def execute_run(
     try:
         with (directory / "attempt.json").open("x", encoding="utf-8") as output:
             output.write(attempt.model_dump_json())
+        with admitted_path.open("x", encoding="utf-8") as output:
+            output.write(
+                WorkspaceSelection(
+                    run_id=run_id, attempt_id=attempt.attempt_id, path=workspace
+                ).model_dump_json()
+            )
         try:
             methodology = compile_methodology(contract.execution)
         except ValueError:
@@ -83,6 +109,7 @@ def execute_run(
         routing = routing.accept(
             StageReceipt(stage=ArtifactStage.INTAKE, outcome=StepOutcome.SUCCEEDED)
         )
+        validate_workspace_placement(path=workspace, run_directory=directory)
         isolated = repository.create_workspace(attempt=attempt, path=workspace)
         for stage in (
             AgentStage.DESIGN,
@@ -245,6 +272,7 @@ def execute_run(
             timing=timing,
             stage_timings=tuple(timings),
             error=error_text,
+            workspace=workspace,
         )
     except BaseException as error:
         updates.emit(

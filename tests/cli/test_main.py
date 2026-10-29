@@ -281,6 +281,7 @@ def test_intake_summary_and_json_preserve_capture(
             "intent.json",
             "intent.md",
             "execution-context.json",
+            "workspace-layout.json",
         }
         assert (directory / "intent.md").read_text() == body
         if options:

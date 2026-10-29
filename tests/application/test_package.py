@@ -78,3 +78,61 @@ def test_package_rejects_nonterminal_and_symlinks(
             run=Run(run_id=frozen_contract.run_id).cancel(),
             timing=clock.timing(None),
         )
+
+
+def test_package_prunes_only_validated_workspace_and_retains_evidence_validation(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.persistence.workspace import WorkspaceLayout
+
+    (tmp_path / "workspace-layout.json").write_text(
+        WorkspaceLayout(run_id=frozen_contract.run_id).model_dump_json()
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "file").write_text("mutable checkout")
+    (workspace / "link").symlink_to("missing")
+    clock = BudgetClock(frozen_contract.execution.budget)
+    # Evidence outside the checkout remains strictly validated before PACKAGE.
+    outside = tmp_path / "unsafe"
+    outside.symlink_to(workspace / "file")
+    with pytest.raises(ValueError, match="symlink"):
+        package_run(
+            directory=tmp_path,
+            contract=frozen_contract,
+            run=Run(run_id=frozen_contract.run_id).cancel(),
+            timing=clock.timing(None),
+            workspace=workspace,
+        )
+    assert not (tmp_path / ".package").exists()
+    outside.unlink()
+    evidence = package_run(
+        directory=tmp_path,
+        contract=frozen_contract,
+        run=Run(run_id=frozen_contract.run_id).cancel(),
+        timing=clock.timing(None),
+        workspace=workspace,
+    )
+    assert evidence.workspace == workspace.resolve()
+    assert not any(f.path.startswith("workspace/") for f in evidence.files)
+
+
+def test_package_rejects_workspace_root_symlink(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.persistence.workspace import WorkspaceLayout
+
+    (tmp_path / "workspace-layout.json").write_text(
+        WorkspaceLayout(run_id=frozen_contract.run_id).model_dump_json()
+    )
+    workspace = tmp_path / "workspace"
+    workspace.symlink_to(tmp_path.parent, target_is_directory=True)
+    with pytest.raises(ValueError):
+        package_run(
+            directory=tmp_path,
+            contract=frozen_contract,
+            run=Run(run_id=frozen_contract.run_id).cancel(),
+            timing=BudgetClock(frozen_contract.execution.budget).timing(None),
+            workspace=workspace,
+        )
+    assert not (tmp_path / ".package").exists()

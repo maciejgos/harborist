@@ -13,6 +13,7 @@ from shipyard.application.context import ExecutionContext, load_context
 from shipyard.configuration import load_execution_settings
 from shipyard.domain import ArtifactStage, ExecutionBudget
 from shipyard.git import GitRepository
+from shipyard.git.repository import GitWorkspaceError
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology, compose_guidance
@@ -243,7 +244,12 @@ def run_command(
                 phase = (
                     "PACKAGE" if reporter.last.state != "skipped" else "Finalization"
                 )
-            reporter.line(f"{phase} failed; terminal artifacts unavailable")
+            detail = (
+                f": {error}"
+                if reporter.last is None and isinstance(error, GitWorkspaceError)
+                else ""
+            )
+            reporter.line(f"{phase} failed; terminal artifacts unavailable{detail}")
             if reporter.last is None:
                 reporter.line(
                     "DESIGN, PLAN, BUILD, TEST, REVIEW, PACKAGE skipped (execution could not begin)"
@@ -252,6 +258,7 @@ def run_command(
         reporter.line(
             f"Result: {evidence.run.outcome or evidence.run.failure_reason or evidence.run.lifecycle}"
         )
+        reporter.line(f"Workspace: {evidence.workspace or 'unknown'}")
         reporter.line(f"Report: {(runs_dir / str(run_id) / 'report.md').resolve()}")
         reporter.line(
             f"Evidence: {(runs_dir / str(run_id) / 'evidence.json').resolve()}"
@@ -260,6 +267,7 @@ def run_command(
         json.dumps(
             {
                 "run": evidence.run.model_dump(mode="json"),
+                "workspace": str(evidence.workspace) if evidence.workspace else None,
                 "report": str((runs_dir / str(run_id) / "report.md").resolve()),
                 "evidence": str((runs_dir / str(run_id) / "evidence.json").resolve()),
             }

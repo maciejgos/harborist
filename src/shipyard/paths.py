@@ -12,5 +12,5 @@ def runs_root() -> Path:
     return data_root() / "runs"
 
 
-def run_workspace(run_id: UUID) -> Path:
+def legacy_run_workspace(run_id: UUID) -> Path:
     return data_root() / "workspaces" / str(run_id)

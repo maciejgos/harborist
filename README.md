@@ -654,11 +654,33 @@ Shipyard resolves its data root from the current user's home directory at comman
 execution, independently of cwd and the target repository:
 
 ```text
-~/.shipyard/
-  runs/<run-id>/        # frozen inputs, context, lifecycle, stage outputs,
-                       # diagnostics, logs, timing, reports and evidence
-  workspaces/<run-id>/  # retained isolated Git worktree
+~/.shipyard/runs/<run-id>/
+  contract.json
+  intent.md
+  intent.json
+  execution-context.json   # CLI invocation locator
+  workspace-layout.json    # durable non-contract layout version and Run ID
+  execution-workspace.json           # admitted Run/Attempt and resolved workspace path
+  run.json
+  attempt.json
+  events.jsonl
+  timing.json
+  stage-timings.json
+  design/
+  plan/
+  build/
+  test/
+  review/
+  report.md
+  evidence.json
+  workspace/               # retained isolated linked Git worktree
 ```
+
+This changes the separate `runs/<run-id>` and `workspaces/<run-id>` layout
+introduced in #5. Each explicit intake creates a distinct Run, even for the same
+issue and identical intent digest. Two captures are independent Runs, not the
+artifact and workspace halves of one Run. Executing a capture uses its frozen
+identity and inputs without recapturing the issue.
 
 Intake creates missing Runs parents on demand; execution creates missing workspace
 parents before admitting the Run. Read-only `inspect` and `methodology` never
@@ -667,12 +689,37 @@ the Run ID and `--runs-dir`. Different projects share this root with unique Run
 IDs. Source checkouts stay in their original locations. Git worktree metadata and
 candidate refs may remain in the source repository's Git directory.
 
-`--runs-dir /path/to/runs` changes capture and evidence storage only. Without an
-explicit workspace, execution still uses `~/.shipyard/workspaces/<run-id>/`, even
-with custom Runs storage. Append `--workspace /fresh/path/outside/checkout` to
-choose a workspace independently; this does not relocate captures or evidence.
+`--workspace /fresh/path/outside/checkout` takes precedence over the saved
+workspace selection and layout default; it never relocates a capture or changes
+its frozen contract. `--runs-dir /path/to/runs` selects capture/evidence storage
+and therefore the new default `<runs-root>/<run-id>/workspace`. Context consistency
+checks still apply. Only the dedicated workspace child may be placed beneath
+Runs storage; stage directories, sibling Runs and ancestors containing records
+are rejected. The application executor enforces the same policy as the CLI.
+If custom Runs storage lies inside the source checkout, the resulting default
+workspace is rejected before admission: supply a fresh external `--workspace`.
+There is no silent fallback.
+
+New captures persist `workspace-layout.json` before publishing the frozen
+contract. A missing marker identifies a legacy capture; malformed or foreign
+markers fail closed. Without an explicit override, recorded workspace selections
+remain authoritative (`execution-workspace.json`, or a retained `workspace.json`
+selection when present). Admission writes its own create-only execution association
+without rewriting a historical selection. Legacy CREATED captures without a
+recorded selection use
+`~/.shipyard/workspaces/<run-id>` regardless of `--runs-dir`. Existing destinations
+remain retained and fail freshness checks, rather than being reused or deleted.
+No migration, deduplication, deletion, or ordinary filesystem move of linked
+worktrees occurs. Historical evidence without a workspace path stays readable
+with its path unknown. No source candidate application is performed here.
+
 Workspaces remain available for inspection; there is no automatic cleanup or
-retry of terminal Runs.
+retry of terminal Runs. Terminal Shipyard records and evidence are immutable;
+the retained checkout remains mutable. PACKAGE prunes the validated workspace
+child before traversal, excluding its `.git` link, repository files and symlinks
+from artifact hashing. Evidence outside the workspace keeps strict validation.
+CLI JSON, stderr summaries, terminal reports and machine-readable evidence expose
+the actual admitted resolved workspace, including overrides and legacy layouts.
 
 Existing destinations (including symlinks) and paths overlapping the resolved
 source checkout in either direction fail before the Run leaves CREATED. If the
@@ -703,10 +750,10 @@ Existing captures under `~/.shipyard/runs` remain accessible with
 other locations, add `--runs-dir /path/to/runs` to either command; execute them
 with the explicit legacy command above when saved context is unavailable.
 Shipyard does not migrate, recapture or backfill context into historical captures,
-and terminal Runs remain immutable.
+and terminal Shipyard records remain immutable.
 
 Without context, omitted repository and Runs options still select cwd and
-`~/.shipyard/runs`; the default workspace remains under the home data root.
+`~/.shipyard/runs`; workspace selection follows the capture layout described above.
 Repositories or Runs storage moved after capture may require this explicit legacy
 invocation; locators are not repaired automatically. The locator is an invocation
 hint, separate from `contract.json`, and cannot change the frozen base or settings.
@@ -739,7 +786,8 @@ TEST holds its complete check manifest and numbered logs. `invocation.json` reco
 log truncation and optional usage, including for provider process failure/timeout.
 Partial captures lack their success manifest. `evidence.json` is published last and
 indexes all prior files, including the report, by relative path, length and SHA-256.
-It does not hash itself. Symlinks are rejected.
+It does not hash itself or the retained workspace subtree. Symlinks outside the
+workspace, including a replaced workspace root, are rejected.
 
 Provider-neutral usage supports optional input/output/cached tokens, bounded
 provider metadata, and an actual reported charge with currency. The current Codex

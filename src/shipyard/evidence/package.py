@@ -11,11 +11,13 @@ from shipyard.application.budget import Timing
 from shipyard.application.review import evaluate_review, validate_test_context
 from shipyard.application.stages import StageExecution
 from shipyard.application.verification import TestExecution
+from shipyard.application.workspace import validate_workspace_placement
 from shipyard.domain import Run, RunContract, RunLifecycle, RunOutcome
 from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.stage_result import ReviewStageResult
+from shipyard.persistence.workspace import load_layout, load_selection
 
 
 class EvidenceFile(BaseModel):
@@ -28,6 +30,7 @@ class EvidenceFile(BaseModel):
 class RunEvidence(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     version: int = 1
+    workspace: Path | None = None
     run: Run
     contract: RunContract
     attempt: Attempt | None
@@ -42,26 +45,36 @@ class RunEvidence(BaseModel):
     error: str | None
 
 
-def _files(directory: Path) -> tuple[EvidenceFile, ...]:
+def _files(directory: Path, excluded: Path | None = None) -> tuple[EvidenceFile, ...]:
     files: list[EvidenceFile] = []
-    for path in sorted(directory.rglob("*")):
-        if path.is_symlink():
-            raise ValueError("Evidence may not contain symlinks")
-        if path.is_file():
-            digest = hashlib.sha256()
-            size = 0
-            with path.open("rb") as stream:
-                while chunk := stream.read(65536):
-                    size += len(chunk)
-                    digest.update(chunk)
-            files.append(
-                EvidenceFile(
-                    path=path.relative_to(directory).as_posix(),
-                    size_bytes=size,
-                    sha256=digest.hexdigest(),
+
+    def visit(parent: Path) -> None:
+        for path in sorted(parent.iterdir()):
+            if path == excluded:
+                if path.is_symlink():
+                    raise ValueError("Workspace root must not be a symlink")
+                continue
+            if path.is_symlink():
+                raise ValueError("Evidence may not contain symlinks")
+            if path.is_dir():
+                visit(path)
+            elif path.is_file():
+                digest = hashlib.sha256()
+                size = 0
+                with path.open("rb") as stream:
+                    while chunk := stream.read(65536):
+                        size += len(chunk)
+                        digest.update(chunk)
+                files.append(
+                    EvidenceFile(
+                        path=path.relative_to(directory).as_posix(),
+                        size_bytes=size,
+                        sha256=digest.hexdigest(),
+                    )
                 )
-            )
-    return tuple(files)
+
+    visit(directory)
+    return tuple(sorted(files, key=lambda item: item.path))
 
 
 def package_run(
@@ -76,6 +89,7 @@ def package_run(
     test: TestExecution | None = None,
     stage_timings: tuple[Timing, ...] = (),
     error: str | None = None,
+    workspace: Path | None = None,
 ) -> RunEvidence:
     """Publish report first and evidence index last; preserve partial failures.
 
@@ -148,8 +162,24 @@ def package_run(
         missing.append(
             "Provider usage unavailable for some or all invocations; cost UNKNOWN"
         )
+    # Only the validated dedicated child can be excluded from evidence. Never
+    # traverse checkout contents, including repository symlinks and .git links.
+    excluded: Path | None = None
+    if workspace is not None:
+        workspace = validate_workspace_placement(
+            path=workspace, run_directory=directory
+        )
+        selection = load_selection(directory, run.run_id)
+        if selection is not None and selection.path != workspace:
+            raise ValueError("Workspace differs from admitted execution selection")
+        if workspace == directory.resolve() / "workspace":
+            if load_layout(directory, run.run_id) is None and selection is None:
+                raise ValueError(
+                    "Workspace exclusion requires durable layout or selection"
+                )
+            excluded = directory / "workspace"
     # Inspect before creating any outputs and refuse foreign persisted records.
-    _files(directory)
+    _files(directory, excluded)
     for name, expected in (("run.json", run), ("contract.json", contract)):
         path = directory / name
         if (
@@ -166,6 +196,7 @@ def package_run(
         f"Lifecycle: {run.lifecycle}",
         f"Result: {status}",
         f"Base: `{contract.base_sha}`",
+        f"Workspace: `{workspace}`" if workspace else "Workspace: unknown",
         f"Candidate: `{candidate.candidate_sha}`"
         if candidate
         else "Candidate: unavailable",
@@ -244,8 +275,9 @@ def package_run(
         lines.extend(["", "## Execution error", "", error[:4096]])
     with (directory / "report.md").open("x", encoding="utf-8") as output:
         output.write("\n".join(lines) + "\n")
-    files = _files(directory)
+    files = _files(directory, excluded)
     evidence = RunEvidence(
+        workspace=workspace,
         package_timing=Timing(
             stage=ArtifactStage.PACKAGE,
             started_at=package_started_at,

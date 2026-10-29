@@ -50,7 +50,9 @@ def test_cli_streams_and_preserves_terminal_json(
     )
     assert result.exit_code == status, result.output
     payload = json.loads(result.stdout)
-    assert set(payload) == {"run", "report", "evidence"}
+    assert set(payload) == {"run", "report", "evidence", "workspace"}
+    assert payload["workspace"] == str((tmp_path / "work").resolve())
+    assert f"Workspace: {payload['workspace']}" in result.stderr
     assert Path(payload["report"]).is_absolute() and Path(payload["report"]).is_file()
     assert (
         Path(payload["evidence"]).is_absolute() and Path(payload["evidence"]).is_file()

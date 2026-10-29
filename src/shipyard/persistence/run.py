@@ -9,6 +9,7 @@ from pydantic import TypeAdapter
 from shipyard.domain import Run, RunContract, RunLifecycle
 from shipyard.domain.event import RunEvent, RunEventType
 from shipyard.persistence.intent import FileIntentStore, IntentPersistenceError
+from shipyard.persistence.workspace import WorkspaceLayout, load_layout
 
 _RUN_ID = TypeAdapter(UUID)
 
@@ -58,6 +59,12 @@ class FileRunStore:
                     Run(run_id=contract.run_id).model_dump_json().encode("utf-8")
                 )
             FileIntentStore(root=self._root).save(contract.intent)
+            with (directory / "workspace-layout.json").open("xb") as output:
+                output.write(
+                    WorkspaceLayout(run_id=contract.run_id)
+                    .model_dump_json()
+                    .encode("utf-8")
+                )
             with (directory / "contract.json").open("xb") as output:
                 output.write(contract.model_dump_json().encode("utf-8"))
         except (OSError, IntentPersistenceError) as error:
@@ -77,6 +84,7 @@ class FileRunStore:
             intent = FileIntentStore(root=self._root).load(run_id)
             if contract.run_id != run_id or run.run_id != run_id:
                 raise ValueError("Persisted records must belong to requested Run")
+            load_layout(directory, run_id)
             self.load_state(run_id)
             if run.verification is not None and (
                 run.verification.verification != contract.verification

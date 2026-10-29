@@ -58,7 +58,7 @@ No web framework, database, background worker system, or cloud infrastructure is
 13. `shipyard.yaml` is read from the frozen base revision; BUILD cannot change how its candidate is judged.
 14. The PoC is trusted-local. Git worktrees isolate workspace state but are not a security boundary.
 15. Every terminal result produces `report.md` and machine-readable evidence.
-16. Terminal Run directories are immutable.
+16. Terminal Shipyard records and evidence are immutable; retained checkout data is separate.
 
 ## Execution Flow
 
@@ -266,18 +266,41 @@ checks. The executor preserves workspaces and rejects any second admission;
 there is no retry/recovery or background service.
 Before lifecycle admission it checks repository availability, the exact frozen
 commit, and fresh workspace placement outside the resolved checkout. Invalid
-paths leave the capture CREATED. Default workspaces use the fresh destination
-`~/.shipyard/workspaces/<run-id>`, independently of Runs storage and cwd. Shared
-path-policy functions resolve the current user's home at invocation time. Runs
-remain under `~/.shipyard/runs` by default; required parent directories are created
-on demand, while read-only inspection never creates storage. Workspace overlap
-(in either direction, including resolved aliases), obstructing files and access
-failures are rejected before admission. No invalid default falls back elsewhere.
-`--runs-dir` changes only capture/evidence storage; `--workspace` supplies an
-independent fresh external path. Existing captures are never migrated or
-backfilled with context. Creation rechecks
-preflight constraints through Git; later filesystem failures retain existing
-terminal failure semantics.
+paths leave the capture CREATED. New captures select
+`<effective-runs-root>/<run-id>/workspace`, changing the separate workspace tree
+introduced in #5. `FileRunStore.save` writes versioned, Run-bound
+`workspace-layout.json` before publishing the contract; this non-contract policy
+also covers application captures. Missing layout information means legacy;
+invalid or foreign layout records fail closed, without backfilling old captures.
+An explicit `--workspace` has precedence, followed by a recorded selection
+(`execution-workspace.json` or retained `workspace.json`), then the capture's
+default. Legacy CREATED Runs without a recorded selection
+retain `~/.shipyard/workspaces/<run-id>` as their default. Existing historical
+worktrees remain in place and fail freshness checks, never being reused or moved.
+`--runs-dir` selects storage and thus the new Run-owned default, subject to the
+existing execution-context consistency checks. No override relocates a capture
+or rewrites a frozen contract. A default inside the resolved source checkout is
+rejected before admission with an instruction to supply a fresh external
+`--workspace`; no fallback is selected.
+
+Application placement policy permits only the dedicated workspace child beneath
+Runs storage. It rejects stage/evidence locations, sibling Runs, ancestors
+containing records, collisions (including dangling symlinks), inaccessible parents,
+and source overlap in either direction, including aliases. Required parents are
+prepared before admission. Placement is rechecked immediately before creation,
+and Git rechecks source/freshness constraints. Later creation failures preserve
+partial data and terminal failure semantics. `execution-workspace.json` records
+the actual resolved admitted path with Run/Attempt ownership before worktree creation;
+CLI execution JSON, stderr summaries, terminal reports and evidence expose it.
+Historical evidence without that information stays readable with an unknown path.
+
+Each explicit intake creates a distinct Run and fresh workspace even when issue
+identity and intent digest match. Executing a captured Run never recaptures the
+issue. There is no deduplication, deletion, automatic migration or source candidate
+application. Source repositories stay in place, including linked-worktree metadata
+and Shipyard candidate refs. Agents, staging, publication and ignored-file cleanup
+operate on the workspace child, leaving sibling records untouched. This remains
+trusted-local operational isolation, not an adversarial filesystem sandbox.
 
 ### `playbooks` / `skills`
 
@@ -439,6 +462,8 @@ The PoC uses filesystem-only persistence:
 ├── run.json
 ├── contract.json
 ├── execution-context.json  # new CLI captures only; invocation locator
+├── workspace-layout.json   # new captures: versioned non-contract layout policy
+├── execution-workspace.json          # admitted Run/Attempt and resolved actual path
 ├── events.jsonl
 ├── evidence.json
 ├── intent.md
@@ -451,10 +476,11 @@ The PoC uses filesystem-only persistence:
 ├── build/          # optional plan.md update and stage capture
 ├── test/           # complete check manifest and bounded numbered logs
 ├── review/         # review.md, validated decision and stage capture
-└── report.md
+├── report.md
+└── workspace/       # retained isolated linked worktree; excluded from evidence
 ```
 
-Terminal Run directories are immutable.
+Terminal Shipyard records and evidence are immutable; checkout contents remain mutable.
 
 The implemented `FileIntentStore` persists captured intent under an explicit
 Runs root. `intent.md` holds exact UTF-8 bytes; `intent.json` holds only source
@@ -484,7 +510,11 @@ inspectable. OS permissions do not protect against other local writers.
 It records frozen provenance, exact candidate, check results, criterion coverage,
 timing, optional provider usage/actual charge and explicit missing evidence.
 The index hashes prior regular files with relative paths and sizes, including the
-report but excluding itself; symlinks are rejected. VERIFIED packaging reconciles
+report but excluding itself and the validated dedicated workspace subtree. The
+workspace is pruned before traversal, including its `.git` link and repository
+symlinks. Symlinks outside the checkout, including a replaced workspace root,
+are rejected. External workspace overrides require no subtree exclusion. Editing
+a retained checkout does not change or require rewriting terminal evidence. VERIFIED packaging reconciles
 DESIGN/TEST/REVIEW against the terminal verification record. No model participates
 in packaging and no execution allowance is required. Disk errors are surfaced;
 partial PACKAGE is retained and cannot be silently retried.

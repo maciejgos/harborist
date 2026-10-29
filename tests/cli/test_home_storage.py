@@ -159,7 +159,7 @@ def test_projects_share_home_storage_with_distinct_workspaces(
             app, ["run", str(contract.run_id), "--repo", str(target)]
         )
         assert executed.exit_code == 0, executed.output
-        workspace = home / ".shipyard" / "workspaces" / str(contract.run_id)
+        workspace = home / ".shipyard" / "runs" / str(contract.run_id) / "workspace"
         assert (workspace / "project.txt").read_text() == name
         assert not (target / "requested.txt").exists()
         assert not (target / ".shipyard").exists()

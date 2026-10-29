@@ -395,7 +395,7 @@ def test_preflight_preserves_created_capture(
     assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
 
 
-def test_default_workspace_uses_home_with_custom_runs_root(
+def test_default_workspace_uses_custom_runs_root(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
@@ -405,7 +405,7 @@ def test_default_workspace_uses_home_with_custom_runs_root(
         store=store, run_id=contract.run_id, repository=repo, agent=FakeAgent()
     )
     assert result.run.outcome == RunOutcome.VERIFIED
-    workspace = home / ".shipyard" / "workspaces" / str(contract.run_id)
+    workspace = store.directory(contract.run_id) / "workspace"
     assert result.candidate is not None
     assert git(workspace, "rev-parse", "HEAD") == result.candidate.candidate_sha
     assert (store.directory(contract.run_id) / "evidence.json").is_file()
@@ -420,6 +420,7 @@ def test_default_workspace_errors_leave_run_created(
     kind: str,
 ) -> None:
     store, repo, contract = capture(tmp_path, frozen_contract)
+    (store.directory(contract.run_id) / "workspace-layout.json").unlink()
     home = tmp_path / "home"
     if kind == "overlap":
         home = tmp_path / "repository" / "home"
