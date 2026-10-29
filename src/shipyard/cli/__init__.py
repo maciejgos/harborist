@@ -11,7 +11,7 @@ import typer
 
 from shipyard.application import create_run
 from shipyard.application.context import ExecutionContext, load_context
-from shipyard.configuration import load_execution_settings
+from shipyard.configuration import SettingsError, load_execution_settings
 from shipyard.domain import ArtifactStage, ExecutionBudget
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitWorkspaceError
@@ -35,11 +35,11 @@ def intake(
         str, typer.Argument(help="file:path or github:owner/repo#number")
     ],
     settings: Annotated[
-        Path,
+        Path | None,
         typer.Option(
-            help="Operator settings YAML; methodology paths resolve beside it."
+            help="Optional operator YAML override; methodology paths resolve beside it."
         ),
-    ],
+    ] = None,
     repo: Annotated[
         Path, typer.Option(help="Target implementation repository.")
     ] = Path("."),
@@ -60,19 +60,34 @@ def intake(
 ) -> None:
     """Capture a CREATED Run and print a human-readable summary.
 
+    Defaults to shipyard.settings.yaml at the target checkout root selected by
+    --repo (default: .), including from subdirectories. --settings PATH takes
+    precedence; relative explicit paths use the invocation directory.
+    Methodology paths resolve beside the selected settings file. On missing or
+    invalid settings, supply --settings PATH. No other locations are searched.
+
     Existing scripts consuming JSON stdout must add --json for the full frozen contract.
     Prints shipyard run <run-id>; custom storage adds only --runs-dir.
     Does not execute agents or verification checks.
     """
     try:
-        execution = load_execution_settings(
-            path=settings,
-            budget=ExecutionBudget(
-                total_seconds=timeout, verification_reserve_seconds=verification_reserve
-            ),
-        )
         repository = GitRepository(path=repo)
         root = repository.checkout_root()
+        selected_settings = (
+            settings if settings is not None else root / "shipyard.settings.yaml"
+        )
+        budget = ExecutionBudget(
+            total_seconds=timeout, verification_reserve_seconds=verification_reserve
+        )
+        try:
+            execution = load_execution_settings(path=selected_settings, budget=budget)
+            compile_methodology(execution)
+        except ValueError as error:
+            raise SettingsError(
+                f"Invalid execution settings {selected_settings}: {error}. "
+                "Supply --settings PATH to select a valid file; relative explicit "
+                "paths use the invocation directory."
+            ) from error
         runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
         contract = create_run(
             source=source,

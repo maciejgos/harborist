@@ -97,6 +97,7 @@ github:owner/repo#42
 Intake commands available in Phase 2:
 
 ```text
+shipyard intake file:./issue.md
 shipyard intake file:./issue.md --settings ./operator.yaml
 shipyard intake github:owner/repo#42 --settings ./operator.yaml
 shipyard inspect <run-id>
@@ -257,8 +258,20 @@ Operator YAML is loaded into a complete immutable execution snapshot. Methodolog
 paths resolve beside the settings file and exact UTF-8 content is hashed. Safe
 unique-key YAML parsing is shared with verification configuration. Budget cannot
 be specified in YAML: Shipyard supplies defaults or an explicit application budget.
-No new execution-semantic project settings are supported by this PoC beyond the
-base-revision verification configuration.
+Intake CLI defaults to the single `shipyard.settings.yaml` at the resolved target
+checkout root, selected by `--repo` or `.` from the invocation directory. Git
+resolves the root when either directory is a subdirectory. Explicit `--settings
+PATH` takes precedence, including external files; relative explicit paths use
+the invocation directory. No recursive search, global/home fallback, merging,
+automatic creation, or migration is performed. Missing, unreadable, or invalid
+selected settings fail before Run creation with the selected path and remediation
+to supply `--settings PATH`; an invalid explicit override never falls back.
+
+Execution settings are local intake inputs independent of `--ref`. Root
+`shipyard.yaml` remains separate and supplies mandatory checks from the frozen
+base SHA. Settings cannot replace these checks or weaken TEST/REVIEW gates.
+Existing Runs consume captured execution and methodology snapshots without
+rediscovering or reloading live files.
 
 ### `application`
 

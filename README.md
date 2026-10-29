@@ -122,11 +122,17 @@ ordering, or change domain state; the filesystem Run store validates lifecycle e
 ## Capture a Run
 
 The target repository must have a committed root `shipyard.yaml` with its mandatory
-checks. Shipyard includes its own configuration. Choose operator settings with an
-explicit model/profile and local playbook/skill sources; the examples freeze these
-inputs without invoking the selected model.
+checks. Shipyard includes its own verification and execution configuration.
+Intake defaults to `shipyard.settings.yaml` at the resolved target checkout root.
+This checkout supplies an explicit model/profile and canonical playbook/skill
+sources; intake freezes these inputs without invoking the selected model.
 
 ```bash
+uv run shipyard intake 'github:maciejgos/shipyard#7'
+
+uv run shipyard intake file:examples/intake/issue.md
+
+# Existing explicit invocations remain supported.
 uv run shipyard intake file:examples/intake/issue.md \
   --repo . --settings examples/intake/settings.yaml
 
@@ -320,6 +326,22 @@ guarantee. This store supports CREATED captures, not later lifecycle updates.
 See [Run persistence specification](spec/015-run-contract-persistence/spec.md).
 
 ## Operator execution settings
+
+The CLI selects exactly `<resolved-target-checkout-root>/shipyard.settings.yaml`
+when `--settings` is omitted. `--repo` selects the target (default: `.`); Git
+resolves its root even from a subdirectory. Caller configuration cannot override
+another target repository. Explicit `--settings PATH` takes precedence, supports
+files outside the target, and resolves relative paths from the invocation
+directory. Playbook and skill paths resolve beside the selected settings file.
+There is no recursive search, global/home fallback, merging, or file creation.
+
+Missing, unreadable, or invalid selected settings fail before Run creation; the
+diagnostic names the path and instructs you to supply `--settings PATH`. An invalid
+explicit override never falls back. Existing Runs use their frozen settings and
+methodology and never reload or rediscover these files. Execution settings are
+local intake inputs independent of `--ref`; mandatory checks remain in
+`shipyard.yaml` at the frozen base SHA and cannot be overridden by settings.
+GitHub examples require an installed, authenticated `gh` with issue access.
 
 `load_execution_settings(path=Path("operator.yaml"))` captures a version 1 YAML
 file with `playbook` and `skills` source records (`name`, `version`, `path`), a
@@ -631,7 +653,7 @@ See the [process-evidence contract](spec/046-build-process-evidence/spec.md).
 Capture a Run, then copy the execution command from the default summary:
 
 ```bash
-shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository
+shipyard intake file:./issue.md --repo /path/to/repository
 # stdout: a human-readable summary including a command such as:
 shipyard run <run-id>
 ```
