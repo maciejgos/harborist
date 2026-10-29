@@ -94,9 +94,14 @@ file:./issue.md
 github:owner/repo#42
 ```
 
-Intake commands available in Phase 2:
+Capture-and-execute and capture-only commands:
 
 ```text
+shipyard run 'github:maciejgos/shipyard#7'
+shipyard run file:./issue.md
+uv run shipyard run 'github:maciejgos/shipyard#7'
+uv run shipyard run file:./issue.md
+shipyard run <run-id>
 shipyard intake file:./issue.md
 shipyard intake file:./issue.md --settings ./operator.yaml
 shipyard intake github:owner/repo#42 --settings ./operator.yaml
@@ -104,7 +109,7 @@ shipyard inspect <run-id>
 shipyard methodology <run-id> [--stage build]
 ```
 
-Additional intake options:
+Additional source-capture options (for `intake` and source-mode `run`):
 
 ```text
 --repo
@@ -114,6 +119,47 @@ Additional intake options:
 --json
 --runs-dir
 ```
+
+`run` dispatches recognized `file:` and `github:` prefixes as validated selectors;
+all other inputs must parse as Run UUIDs. It never guesses another source type.
+Source mode composes the existing `create_run` and `execute_run` application
+boundaries in that order, through shared CLI capture preparation. It saves exactly
+one Run, context and workspace-layout metadata, then executes that UUID with its
+frozen contract. Files/GitHub are read/fetched once; execution uses the saved
+snapshot. Source issue and target repository remain independent. No workflow rules
+or subprocess CLI invocation are introduced.
+
+`--settings`, `--ref`, `--timeout` and `--verification-reserve` apply only to capture;
+UUID mode rejects explicitly supplied values, including defaults, and never
+reloads settings or changes frozen inputs. Source settings use the resolved target
+checkout root's `shipyard.settings.yaml`, including from subdirectories; explicit
+relative `--settings` uses invocation cwd. Selected-file errors never fall back.
+`--context` selects existing Runs and is rejected with a source. Both run modes
+support `--repo`, `--runs-dir`, `--workspace` and `--json` under existing context and
+placement rules. Invalid selectors/options fail before application execution.
+
+Source capture notices identify the CREATED UUID on stderr, alongside existing
+progress. Human mode ends with the existing terminal result; successful combined
+execution requires no second command. `--json` emits exactly one terminal execution
+result on stdout, preserving `run`, `workspace`, `report` and `evidence`; it never
+emits intake JSON. Capture/preflight errors leave stdout empty and start no agents.
+GitHub adapter errors offer safe installation/PATH, authentication/access, timeout
+retry and invalid-response remediation, without exposing raw transport payloads.
+
+If preflight fails after capture, the CLI checks durable lifecycle state and offers
+recovery only for the retained CREATED Run, with its UUID and shell-quoted storage
+locator. Workspace failures explain selecting a fresh external `--workspace`:
+
+```bash
+shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+uv run shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+```
+
+Recovery consumes saved context and frozen inputs without the original source or
+live settings. Once admitted, the ordinary executor owns failure, cancellation,
+packaging and terminal immutability. No automatic retries, recapture, candidate
+application, push or issue closure are added. `inspect` and `methodology` retain
+their independent read-only behavior.
 
 Intake prints a concise human-readable summary to stdout and leaves captures in
 CREATED. The summary includes the Run ID, resolved checkout root, frozen base
@@ -144,7 +190,7 @@ retain cwd and `~/.shipyard/runs`; invocation from elsewhere needs the repositor
 and any nondefault storage root. Fallback never backfills context, layout metadata,
 or frozen inputs/contracts. Existing locators cannot be bypassed by omitting
 `--context`, and captures are not migrated or recaptured.
-`shipyard run` executes one captured Run synchronously
+`shipyard run <run-id>` executes one captured Run synchronously
 and prints a human-readable terminal summary plus report/evidence paths by default.
 `--json` preserves the full terminal result for scripts; existing JSON consumers
 must select it explicitly. Verification does not apply the candidate.

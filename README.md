@@ -84,7 +84,7 @@ uv run pyright
 
 The project pins Python 3.14. uv will download it if needed. Domain contracts are
 available through `shipyard.domain`; intake and inspection are available through
-the CLI. Synchronous execution is available with `shipyard run <run-id>`.
+the CLI. Synchronous execution accepts `shipyard run <source>` or `shipyard run <run-id>`.
 The Run lifecycle acceptance contract is in
 [spec/001-run-lifecycle/spec.md](spec/001-run-lifecycle/spec.md), alongside its
 intake intent and implementation plan. VERIFIED completion now requires a
@@ -650,7 +650,61 @@ order. Routine TDD policy stays in operating guidance; explicitly requested proo
 still requires adequate evidence. Older captures/responses remain readable.
 See the [process-evidence contract](spec/046-build-process-evidence/spec.md).
 
-Capture a Run, then copy the execution command from the default summary:
+Capture and execute synchronously in one command:
+
+```bash
+shipyard run 'github:maciejgos/shipyard#7'
+shipyard run file:./issue.md
+# From a development checkout:
+uv run shipyard run 'github:maciejgos/shipyard#7'
+uv run shipyard run file:./issue.md
+```
+
+Source mode calls intake once, saves one CREATED Run and executes that same
+capture through DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE. Files are read
+once and GitHub issues fetched once; execution uses the saved snapshot. The issue's
+GitHub repository is independent of the target selected by `--repo`. GitHub capture
+uses local `gh`; failures explain installation/PATH, authentication/access,
+timeout retry, or invalid-response corrections without exposing response bodies.
+
+Source mode accepts `--settings`, `--ref` (default HEAD), `--timeout` (1800 seconds),
+and `--verification-reserve` (300 seconds) with their intake meanings. Settings
+default to `shipyard.settings.yaml` at the resolved target checkout root, including
+from a subdirectory. Explicit `--settings PATH` takes precedence, resolving relative
+to the invocation directory; unavailable or invalid selected settings never fall
+back. Capture freezes settings, methodology, base revision and budget.
+
+UUID mode executes the saved Run without recapturing or reloading live settings.
+Explicit capture-only options are rejected even when their value equals the
+default; omit them to execute a saved Run, or supply a source to create a new one.
+`--context` selects an existing Run only and cannot accompany a source.
+Both modes accept `--repo`, `--runs-dir`, `--workspace` and `--json`, preserving
+saved-context constraints and workspace placement rules described below. Invalid
+selectors and conflicting options fail before capture or agent execution.
+
+Capture notices and progress go to stderr. Human mode ends with the terminal
+summary and report/evidence locations. `--json` writes one terminal execution-result
+document to stdout (`run`, `workspace`, `report`, `evidence`), never an intake
+contract. Capture/preflight failures leave stdout empty. Capture failure starts no
+agents and creates no valid Run; once admitted, failures/cancellation retain the
+ordinary terminal evidence and exit statuses, without retry or recapture.
+Verification does not apply a candidate, push changes, or close an issue.
+
+If capture succeeds but execution preflight fails, stderr identifies the retained
+CREATED UUID and prints a shell-quoted recovery command. Correct the problem and
+execute that UUID rather than capturing again. Custom storage needs its locator;
+workspace placement errors need a fresh external path, for example:
+
+```bash
+shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+uv run shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+```
+
+The original source and live settings are unnecessary for recovery; saved context
+selects the target repository. No automatic restart occurs after admission, and
+terminal Runs remain immutable.
+
+For capture-only use, keep `intake`, then copy its execution command when ready:
 
 ```bash
 shipyard intake file:./issue.md --repo /path/to/repository

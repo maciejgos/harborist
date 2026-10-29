@@ -17,7 +17,8 @@ def read_markdown_intent(*, run_id: UUID, path: Path) -> IntentSnapshot:
         markdown = resolved.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise MarkdownIntakeError(
-            f"Cannot read Markdown source {path}: {error}"
+            f"Cannot read Markdown source {path}: {error}. "
+            "Check the path, read permissions and UTF-8 encoding."
         ) from error
     return IntentSnapshot.create(
         run_id=run_id, source_ref=f"file:{resolved}", markdown=markdown
