@@ -123,10 +123,10 @@ def test_default_summary(
         contract.verification.source_sha256,
         "\x1b",
         "\r",
-        "shipyard apply",
         "PACKAGE started",
     ):
         assert hidden not in text
+    assert ("shipyard apply" in text) == (outcome == "VERIFIED")
     assert "PACKAGE started" in result.stderr
     assert "PACKAGE completed" in result.stderr
 

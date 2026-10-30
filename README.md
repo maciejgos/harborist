@@ -963,3 +963,59 @@ are flushed immediately and remain readable in redirected logs, for example:
 shipyard run <run-id> --context /absolute/execution-context.json --json \
   >result.json 2>progress.log
 ```
+
+### Apply a verified candidate
+
+`VERIFIED` establishes the exact candidate revision; it does not update your
+source checkout or any branch. After PACKAGE, the terminal prints “Verified;
+awaiting application” with a shell-quoted command. Replace
+`REPLACE_WITH_LOCAL_BRANCH` with an existing local branch:
+
+```bash
+shipyard apply <run-id> --branch main
+shipyard apply <run-id> --branch release --repo '/path/to/repository' --runs-dir '/path/to/custom runs'
+```
+
+Application is a separate synchronous user operation. It does not invoke agents,
+rerun verification, create commits, or push. Saved execution context selects the
+original repository independently of cwd. Custom storage requires `--runs-dir`;
+the default is `~/.shipyard/runs`. Explicit repository/storage options must match
+the saved context after resolving aliases and repository subdirectories. Invalid
+existing context fails closed. Only absent context permits legacy `--repo`/cwd
+and default storage resolution.
+
+Only a complete packaged COMPLETED/VERIFIED Run with consistent immutable
+DESIGN, TEST and independent REVIEW evidence can be applied. The original base
+and candidate commit and Run-owned candidate ref must remain available. Mutable
+retained workspace edits are never applied. Targets must be existing local
+branches and strictly behind the exact candidate; ahead or divergent branches
+require a new Run against the updated target.
+
+For a target checked out in the selected checkout, advancement requires a clean
+index and working tree, including no untracked or ignored files, and no pending
+Git operation. Preserve changes elsewhere and finish or abort Git operations
+before retrying. A target occupied by another worktree is refused: free that
+branch first. An unoccupied branch advances without switching or changing the
+selected checkout, even if that checkout is dirty. Hooks are disabled; application
+never resets, cleans, stashes, or discards user files. An already-equal target
+reports **Already applied**, without touching checkout files; this does not assert
+that those files are clean.
+
+Success prints the Run, branch, candidate and durable receipt path. Receipts are
+stored separately at `<runs-root>/applications/<run-id>/<target-key>.json`, keyed
+by normalized repository and full branch name. They record the previous/resulting
+SHAs and a timezone-qualified timestamp. Different targets get separate receipts;
+repetition reuses the existing receipt. An observed no-op without an earlier
+receipt records both SHAs as the candidate. Terminal Run artifacts and verification
+evidence remain unchanged.
+
+Receipt preparation happens before advancement. Partial failures return nonzero,
+report the observed target SHA and receipt/preparation paths, and preserve state.
+Inspect those paths and the checkout, resolve the obstruction, then retry the same
+command. Retry revalidates evidence, recognizes an already-equal target and can
+finish a missing receipt without advancing again. Pending and confirmation files
+remain as recovery evidence. Without a durable post-advancement confirmation,
+retry records only the observed no-op, not an assumed historical advancement.
+Git ref updates check the expected old SHA; no rollback is attempted. There is no
+cross-resource transaction or power-loss guarantee, and concurrent external
+checkout/file writers remain outside the local PoC guarantees.

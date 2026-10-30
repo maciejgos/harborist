@@ -10,7 +10,7 @@ from uuid import UUID
 import typer
 
 from shipyard.application import create_run
-from shipyard.application.context import ExecutionContext, load_context
+from shipyard.application.context import ExecutionContext, resolve_context
 from shipyard.configuration import SettingsError, load_execution_settings
 from shipyard.domain import ArtifactStage, ExecutionBudget, RunContract
 from shipyard.git import GitRepository
@@ -21,7 +21,8 @@ from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology, compose_guidance
 
 app = typer.Typer(
-    no_args_is_help=True, help="Freeze, execute and inspect Shipyard Runs."
+    no_args_is_help=True,
+    help="Freeze, execute, inspect and explicitly apply verified Shipyard Runs.",
 )
 
 
@@ -290,7 +291,12 @@ def run_command(
     from shipyard.agents.codex import CodexAgent
     from shipyard.application.execution import execute_run
     from shipyard.cli.progress import ProgressReporter
-    from shipyard.cli.run_summary import artifact_paths, render_summary, single_line
+    from shipyard.cli.run_summary import (
+        application_guidance,
+        artifact_paths,
+        render_summary,
+        single_line,
+    )
     from shipyard.domain import RunLifecycle, RunOutcome
 
     captured = False
@@ -351,47 +357,13 @@ def run_command(
         reporter.line(f"Run: {execution_id}")
         phase = "Execution context resolution"
         try:
-            selected_context = context
-            if selected_context is None:
-                selected_root = (
-                    runs_dir if runs_dir is not None else runs_root()
-                ).resolve()
-                automatic = selected_root / str(execution_id) / "execution-context.json"
-                try:
-                    automatic.lstat()
-                except FileNotFoundError:
-                    pass  # Only an absent automatic locator permits historical fallback.
-                except OSError as error:
-                    raise ValueError(
-                        f"Invalid execution context {automatic}: {error}"
-                    ) from error
-                else:
-                    selected_context = automatic
-            if selected_context is not None:
-                locator = load_context(path=selected_context, run_id=execution_id)
-                if repo is not None:
-                    try:
-                        matching_repo = (
-                            GitRepository(path=repo).checkout_root()
-                            == locator.repository
-                        )
-                    except ValueError as error:
-                        raise ValueError(
-                            f"Conflicting --repo {repo}; expected {locator.repository}: {error}"
-                        ) from error
-                    if not matching_repo:
-                        raise ValueError(
-                            f"Conflicting --repo {repo}; expected {locator.repository}"
-                        )
-                if runs_dir is not None and runs_dir.resolve() != locator.runs_root:
-                    raise ValueError(
-                        f"Conflicting --runs-dir {runs_dir}; expected {locator.runs_root}"
-                    )
-                repo = locator.repository
-                runs_dir = locator.runs_root
-            else:
-                repo = repo if repo is not None else Path(".")
-                runs_dir = (runs_dir if runs_dir is not None else runs_root()).resolve()
+            repo, runs_dir = resolve_context(
+                run_id=execution_id,
+                repo=repo,
+                runs_dir=runs_dir,
+                context=context,
+                default_root=runs_root(),
+            )
             phase = "Execution preflight"
             evidence = execute_run(
                 store=FileRunStore(root=runs_dir),
@@ -510,9 +482,59 @@ def run_command(
         )
     else:
         typer.echo(render_summary(evidence, directory))
+    if evidence.run.outcome == RunOutcome.VERIFIED:
+        for line in application_guidance(
+            run_id=execution_id, repository=repo, root=runs_dir
+        ):
+            typer.echo(line, err=json_output)
     if evidence.run.lifecycle == RunLifecycle.CANCELLED:
         raise typer.Exit(code=130)
     if evidence.run.lifecycle == RunLifecycle.FAILED:
         raise typer.Exit(code=1)
     if evidence.run.outcome != RunOutcome.VERIFIED:
         raise typer.Exit(code=2)
+
+
+@app.command("apply")
+def apply_command(
+    run_id: UUID,
+    branch: Annotated[
+        str, typer.Option(help="Existing local branch to fast-forward; required.")
+    ],
+    repo: Annotated[
+        Path | None, typer.Option(help="Repository checkout; must match saved context.")
+    ] = None,
+    runs_dir: Annotated[
+        Path | None,
+        typer.Option(help="Runs storage locator (default: ~/.shipyard/runs)."),
+    ] = None,
+) -> None:
+    """Explicitly apply a packaged VERIFIED candidate without rerunning verification.
+
+    Saved context selects the repository independently of cwd. Only an absent
+    locator permits --repo/cwd fallback. Advances require ancestry and a clean
+    selected checkout, including ignored files. Other occupied worktrees block
+    advancement; unoccupied branches leave checkout files alone. Already-equal
+    targets are successful no-ops. Receipts live under applications/<run-id>/ in
+    Runs storage. Partial failures retain preparation records: inspect the reported
+    target and receipt paths, resolve obstructions, then retry this command.
+    """
+    import subprocess
+
+    from shipyard.application.apply import apply_run
+
+    try:
+        result = apply_run(
+            run_id=run_id, branch=branch, repository=repo, runs_dir=runs_dir
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        typer.echo(
+            f"Application failed for Run {run_id}, branch {branch}: {error}", err=True
+        )
+        raise typer.Exit(code=1) from error
+    typer.echo(
+        f"{'Already applied' if result.already_applied else 'Applied'}: Run {run_id}"
+    )
+    typer.echo(f"Branch: {branch}")
+    typer.echo(f"Candidate: {result.receipt.candidate_sha}")
+    typer.echo(f"Receipt: {result.path}")

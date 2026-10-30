@@ -106,3 +106,29 @@ def render_summary(evidence: RunEvidence, directory: Path) -> str:
         *[f"{label}: {path}" for label, path in artifact_paths(directory).items()],
     ]
     return "\n".join(single_line(line) for line in lines)
+
+
+def application_guidance(
+    *, run_id: object, repository: Path, root: Path
+) -> tuple[str, ...]:
+    """A portable shell command, including legacy captures without saved context."""
+    import shlex
+
+    from shipyard.paths import runs_root
+
+    command = [
+        "shipyard",
+        "apply",
+        str(run_id),
+        "--branch",
+        "REPLACE_WITH_LOCAL_BRANCH",
+        "--repo",
+        str(repository.resolve()),
+    ]
+    if root.resolve() != runs_root().resolve():
+        command.extend(["--runs-dir", str(root.resolve())])
+    return (
+        "Verified; awaiting application",
+        "Replace REPLACE_WITH_LOCAL_BRANCH with an existing local branch:",
+        shlex.join(command),
+    )

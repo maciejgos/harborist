@@ -662,3 +662,58 @@ for 15-second elapsed updates during blocking synchronous calls. That thread
 uses a separate monotonic presentation clock, never the execution budget, and
 is stopped and joined on return or exception. Presentation write errors disable
 reporting without changing workflow results.
+
+## Explicit candidate application
+
+`shipyard apply <run-id> --branch <existing-local-branch> [--repo PATH]
+[--runs-dir PATH]` is an independent synchronous operation after PACKAGE. The
+canonical stage flow above is unchanged. VERIFIED remains the software outcome;
+new terminal summaries say “Verified; awaiting application” and print a
+shell-quoted command with an explicit branch placeholder. JSON stdout retains
+its `run`, `workspace`, `report`, `evidence` contract; guidance goes to stderr.
+Application does not invoke agents or rerun verification.
+
+`application/context.py` shares saved-locator resolution between run and apply.
+Default storage is `~/.shipyard/runs`; custom storage needs `--runs-dir`. Valid
+context selects the repository independently of cwd, and explicit options must
+match after path/checkout normalization. Invalid existing locators fail closed;
+only absence permits legacy explicit repository or cwd/default storage fallback.
+
+`evidence/application.py` reads the immutable index, validates canonical relative
+paths, regular files, lengths and SHA-256 digests, and reconciles frozen capture,
+lifecycle, Attempt, stage captures, specification, TEST and REVIEW with terminal
+verification. Retained workspace files and HEAD are excluded from eligibility.
+`domain/application.py` describes versioned receipts independently of I/O.
+`application/apply.py` sequences validation, Git preflight, receipt preparation,
+expected-old advancement, final SHA confirmation and receipt publication.
+
+The existing system-Git adapter requires actual original base/candidate commit
+objects and the matching Run-owned candidate ref. Only existing local branches
+are eligible. Ahead/divergent targets need a new Run. A checked-out target requires
+clean tracked, staged, untracked and ignored state and no in-progress Git operation.
+Another worktree occupying the branch blocks advancement and is identified in the
+error. Unoccupied branches use expected-old update-ref without changing checkout
+files. Checked-out advancement prepares a ref transaction, holds the target lock
+while two-tree read-tree updates index/files, then commits the ref transaction.
+Hooks and replacement objects are disabled. Other branches/checkouts are preserved;
+there is no reset, clean, stash, force-update, commit creation or automatic rollback.
+Already-equal targets are validated no-ops, even with dirty files.
+
+`persistence/application.py` reserves each target operation using a nonblocking
+filesystem lock. Durable preparation precedes mutation. Create-only receipts live
+outside packaged Runs at `<runs-root>/applications/<run-id>/<target-key>.json`;
+the key hashes normalized repository and full branch name. Each receipt records
+Run, candidate, repository, branch, previous/resulting SHA and zoned timestamp.
+Separate targets do not overwrite receipts and repetition reuses the original.
+Preparation (`.pending.json`) and post-Git confirmation (`.confirmed.json`) files
+remain for recovery; staged publication flushes file data and syncs the directory.
+
+Failures after possible mutation return nonzero with observed target SHA,
+receipt/preparation locations and retry guidance. Users inspect state, resolve
+obstructions and retry the same command. Retry revalidates everything and can
+complete a missing receipt without a second advance. With no durable confirmation
+of earlier advancement, equality produces an observed-no-op receipt with equal
+previous/resulting SHAs. Success requires a durable receipt and confirmed target.
+Run artifacts remain byte-for-byte immutable; receipts are not verification
+evidence. Full transactions across Git and storage, power-loss atomicity and
+concurrent external checkout writers are outside the PoC guarantees.
