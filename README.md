@@ -6,6 +6,38 @@ Shipyard is a local, evidence-driven delivery harness for native coding agents. 
 > verification, bounded logs, shared budget accounting and terminal reports/evidence.
 > Phase 9 baseline evaluation remains ahead.
 
+## Available commands
+
+From the development checkout, prefix commands with `uv run` (for example,
+`uv run shipyard --help`). An installed `shipyard` entry point and
+`uv run python -m shipyard` expose the same CLI.
+
+| Command | Purpose |
+| --- | --- |
+| `shipyard intake <source>` | Capture a CREATED Run with frozen inputs, then print its summary and execution command without running agents or checks. |
+| `shipyard run <source>` | Capture a source and execute the delivery workflow synchronously. |
+| `shipyard run <run-id>` | Execute a previously captured CREATED Run using its frozen inputs. |
+| `shipyard inspect <run-id>` | Validate and print the saved contract as JSON without rereading the original inputs. |
+| `shipyard methodology <run-id>` | Preview the frozen playbook and skills as JSON without executing or modifying the Run. |
+
+`<source>` accepts `file:path/to/issue.md` or `github:owner/repo#42` (quote
+GitHub selectors in shell commands). `<run-id>` is the captured Run's UUID.
+
+Available options:
+
+| Applies to | Options |
+| --- | --- |
+| All commands | `--runs-dir PATH` selects Run storage (default: `~/.shipyard/runs`); `--help` shows command usage. |
+| `intake` and `run <source>` | `--repo PATH` selects the target repository (default: current directory); `--settings PATH` overrides the target root's `shipyard.settings.yaml`; `--ref TEXT` selects the base commit-ish (default: `HEAD`); `--timeout INTEGER` sets the total budget (default: 1800 seconds); `--verification-reserve INTEGER` reserves verification time (default: 300 seconds). The total budget must exceed the reserve. |
+| `intake` | `--json` prints the full frozen contract instead of the human-readable summary. |
+| Both `run` forms | `--workspace PATH` selects a fresh isolated workspace; `--json` prints the full Run result instead of the human-readable summary. |
+| `run <run-id>` | `--context PATH` selects an explicit saved context locator; `--repo PATH` constrains the saved repository. `--runs-dir` must also match saved context when present. Source-capture options cannot override frozen inputs. |
+| `methodology` | `--stage STAGE` previews composed guidance for one native-agent stage: `design`, `plan`, `build`, or `review`. |
+
+Use `shipyard --help` for the command list, or `shipyard <command> --help`
+for full usage. The top-level `--install-completion` and `--show-completion`
+options install or display shell completion.
+
 ## Git workspaces and candidates
 
 ```python
