@@ -33,6 +33,7 @@ from shipyard.domain.stage_result import (
     AgentStage,
     InvalidStageOutput,
     ReviewStageResult,
+    StageStatus,
 )
 from shipyard.domain.usage import Usage
 from shipyard.git.repository import GitRepository
@@ -200,6 +201,13 @@ def execute_stage(
             f"Native agent exited with code {response.returncode}"
         )
     output = parse_output(response.output, request)
+    if stage == AgentStage.DESIGN and output.result.status == StageStatus.READY:
+        try:
+            extract_criteria(output.artifact or "")
+        except ValueError as error:
+            raise InvalidStageOutput(
+                "READY DESIGN requires unique, nonempty acceptance declarations"
+            ) from error
     decision = None
     if isinstance(output.result, ReviewStageResult):
         assert candidate is not None

@@ -37,9 +37,12 @@ class FakeAgent:
             output=json.dumps(
                 {
                     "result": result,
-                    "artifact": None
-                    if request.stage == AgentStage.BUILD
-                    else "# Artifact\r\n",
+                    "artifact": {
+                        AgentStage.DESIGN: "# Artifact\r\nAC-001: Required behavior\r\n",
+                        AgentStage.PLAN: "# Artifact\r\n",
+                        AgentStage.BUILD: None,
+                        AgentStage.REVIEW: "# Artifact\r\n",
+                    }[request.stage],
                     "plan_update": "# Revised plan"
                     if request.stage == AgentStage.BUILD
                     else None,
@@ -77,7 +80,10 @@ def test_independent_durable_chain(
             upstream["spec.md"] = directory / "spec.md"
         elif stage == AgentStage.PLAN:
             upstream["plan.md"] = directory / "plan.md"
-    assert upstream["spec.md"].read_bytes() == b"# Artifact\r\n"
+    assert (
+        upstream["spec.md"].read_bytes()
+        == b"# Artifact\r\nAC-001: Required behavior\r\n"
+    )
     assert upstream["plan.md"].read_bytes() == b"# Artifact\r\n"
     assert (tmp_path / "build" / "plan.md").read_text() == "# Revised plan"
     with pytest.raises(FileExistsError):
@@ -290,9 +296,20 @@ def test_invalid_review_has_no_success_capture(
     assert len(agent.requests) == (0 if defect == "empty-evidence" else 1)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise SystemExit(7)",
+        "pass",  # No final message.
+        "import pathlib; pathlib.Path(sys.argv[sys.argv.index('--output-last-message') + 1]).write_bytes(b'x' * (4 * 1024 * 1024 + 1))",
+        "import pathlib; pathlib.Path(sys.argv[sys.argv.index('--output-last-message') + 1]).write_bytes(bytes([255]))",
+    ],
+    ids=["nonzero", "missing-final", "oversized-final", "invalid-utf8-final"],
+)
 def test_failed_native_process_retains_bounded_diagnostics(
     tmp_path: Path,
     frozen_contract: RunContract,
+    body: str,
 ) -> None:
     from shipyard.agents.codex import CodexAgent
     from tests.agents.test_codex import fake
@@ -300,7 +317,8 @@ def test_failed_native_process_retains_bounded_diagnostics(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     executable = fake(
-        tmp_path, "import sys; sys.stderr.write('x' * 100000); raise SystemExit(7)"
+        tmp_path,
+        "import sys; sys.stderr.write('x' * 100000); sys.stderr.flush()\n" + body,
     )
     directory = tmp_path / "design"
     with pytest.raises(AgentExecutionError):

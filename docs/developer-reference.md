@@ -20,6 +20,13 @@ Use the [CLI usage guide](usage.md) for ordinary execution.
 - [Module implementation details](#implementation-details-by-module)
 - [Candidate application](#candidate-application-implementation)
 
+## CLI organization
+
+`cli/__init__.py` registers commands. Dedicated `intake`, `inspection`, `run` and
+`apply` modules own their handlers, while `cli/capture.py` shares source capture
+preparation and execution-command rendering. Installed and module entry points
+continue to use the same `app`.
+
 ## Domain records
 
 The Run lifecycle acceptance contract is in
@@ -617,7 +624,9 @@ mutates a previously captured Run.
 
 `extract_criteria` reads explicit `AC-NNN: text` declarations (also Markdown list
 items or headings with an em dash), ignoring fenced examples and prose references.
-Every declared criterion is required. Empty/duplicate declarations fail closed;
+READY DESIGN output is validated before PLAN: missing, duplicate or empty
+acceptance declarations produce INVALID_STAGE_OUTPUT. Clarification output does
+not require acceptance declarations. Every declared criterion is required;
 `SpecificationReference` binds unique IDs to exact spec UTF-8 SHA-256.
 
 REVIEW preflight reconciles complete TEST captures with frozen check configuration,
@@ -642,6 +651,8 @@ continuity API. Requests carry stage, workspace, frozen profile/guidance, upstre
 text, remaining seconds and REVIEW candidate; outputs separate process status
 from structured final JSON. Parsing reuses existing stage contracts and rejects
 missing Markdown, wrong stages, foreign candidates and unauthorized plan changes.
+Empty or whitespace-only intent is preserved for DESIGN to assess actionability;
+generated upstream artifacts must remain nonblank.
 
 `CodexAgent` uses one fresh ephemeral `codex exec` subprocess per invocation with
 explicit model, workspace, sandbox and schema. It reads only the final message,
@@ -651,7 +662,8 @@ harness controls; only reasoning-effort config pairs are initially supported.
 Timeouts terminate the process group best-effort; temporary files are cleaned.
 The shared subprocess capture drains pipes while retaining a 64 KiB prefix per
 stream, flags truncation, and closes inherited pipes without waiting for detached
-descendants. Diagnostics survive nonzero exits and deadlines in partial captures.
+descendants. Diagnostics survive nonzero exits, deadlines, and missing, oversized
+or invalid UTF-8 final messages in partial captures.
 Optional validated usage belongs to the NativeAgent response, never the agent
 output envelope; the Codex adapter currently reports no usage/billing counters.
 Authentication stays in the local Codex environment; no live-provider smoke test
@@ -660,6 +672,12 @@ is claimed by the synthetic process integration suite.
 **Invariant:** vendor-specific behavior stays behind `NativeAgent`.
 
 ### `git`
+
+`GitRepository` retains the public adapter methods. `git/application.py` composes
+application validation and branch transactions behind that facade; shared subprocess
+transport and environment handling live in `git/command.py`, with shared failures
+in `git/errors.py`. This keeps transaction details separate from repository reads
+and candidate publication without changing their callers.
 
 The implemented `GitRepository` resolves a supplied repository's committed HEAD
 or explicit native Git commit-ish to a full validated SHA. It invokes system Git
@@ -683,6 +701,11 @@ The implemented Git boundary owns:
 - isolated worktree creation;
 - candidate commit creation;
 - candidate ref management.
+
+`require_normal_index_tracking` rejects assume-unchanged and skip-worktree flags
+that could hide tracked edits. Candidate publication checks this before staging;
+every exact-revision cleanliness check and checked-out application preflight also
+enforces it. Shipyard rejects these flags without changing the index itself.
 
 `require_clean_revision` provides a read-only pre/post REVIEW assertion for an
 existing checkout at the exact candidate SHA, rejecting tracked, untracked and

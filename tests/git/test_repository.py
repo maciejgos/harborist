@@ -168,7 +168,7 @@ def test_missing_git_preserves_launch_error(
     ) -> subprocess.CompletedProcess[bytes]:
         raise error
 
-    monkeypatch.setattr("shipyard.git.repository.subprocess.run", missing_git)
+    monkeypatch.setattr("shipyard.git.command.subprocess.run", missing_git)
     with pytest.raises(GitResolutionError) as caught:
         GitRepository(path=tmp_path).resolve_base()
     assert caught.value.__cause__ is error
@@ -197,7 +197,7 @@ def test_malformed_successful_output_is_rejected(
             args=["git"], returncode=0, stdout=stdout, stderr=b""
         )
 
-    monkeypatch.setattr("shipyard.git.repository.subprocess.run", malformed_git)
+    monkeypatch.setattr("shipyard.git.command.subprocess.run", malformed_git)
     with pytest.raises(GitResolutionError) as caught:
         GitRepository(path=tmp_path).resolve_base()
     assert isinstance(caught.value.__cause__, cause)
@@ -245,7 +245,7 @@ def test_subprocess_environment_preserves_configuration_without_repo_overrides(
             args=args, returncode=0, stdout=b"a" * 40 + b"\n", stderr=b""
         )
 
-    monkeypatch.setattr("shipyard.git.repository.subprocess.run", inspect_git)
+    monkeypatch.setattr("shipyard.git.command.subprocess.run", inspect_git)
     assert GitRepository(path=tmp_path).resolve_base() == "a" * 40
     assert calls == 1
     assert all(os.environ[name] == "caller-repository-override" for name in overrides)

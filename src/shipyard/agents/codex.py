@@ -125,13 +125,22 @@ class CodexAgent:
                         f"Codex exited with code {capture.returncode}",
                         response=diagnostics,
                     )
-                with output.open("rb") as stream:
-                    content = stream.read(_MAX_OUTPUT_BYTES + 1)
-                if len(content) > _MAX_OUTPUT_BYTES:
-                    raise AgentExecutionError("Codex final message exceeds size limit")
+                try:
+                    with output.open("rb") as stream:
+                        content = stream.read(_MAX_OUTPUT_BYTES + 1)
+                    if len(content) > _MAX_OUTPUT_BYTES:
+                        raise AgentExecutionError(
+                            "Codex final message exceeds size limit",
+                            response=diagnostics,
+                        )
+                    final = content.decode("utf-8")
+                except (OSError, UnicodeError) as error:
+                    raise AgentExecutionError(
+                        "Cannot read Codex final message", response=diagnostics
+                    ) from error
                 return AgentResponse(
                     returncode=0,
-                    output=content.decode("utf-8"),
+                    output=final,
                     stdout=capture.stdout.decode("utf-8", errors="replace"),
                     stderr=capture.stderr.decode("utf-8", errors="replace"),
                     stdout_truncated=capture.stdout_truncated,

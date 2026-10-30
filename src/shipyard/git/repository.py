@@ -1,7 +1,6 @@
 """Resolve exact commit identities through the system Git executable."""
 
 import os
-import select
 import stat
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -10,30 +9,19 @@ from uuid import UUID
 from pydantic import TypeAdapter
 
 from shipyard.domain import Attempt, Candidate, GitCommitSha
+from shipyard.git.application import GitApplication
+from shipyard.git.command import run_git as _run_git
+from shipyard.git.errors import GitReadError, GitResolutionError, GitWorkspaceError
+
+__all__ = [
+    "GitReadError",
+    "GitRepository",
+    "GitResolutionError",
+    "GitWorkspace",
+    "GitWorkspaceError",
+]
 
 _COMMIT_SHA_ADAPTER = TypeAdapter(GitCommitSha)
-_REPOSITORY_OVERRIDES = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_COMMON_DIR",
-    "GIT_IMPLICIT_WORK_TREE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_INDEX_FILE",
-    "GIT_NAMESPACE",
-    "GIT_PREFIX",
-    "GIT_SHALLOW_FILE",
-    "GIT_GRAFT_FILE",
-    "GIT_REPLACE_REF_BASE",
-)
-
-
-class GitResolutionError(ValueError):
-    """A commit-ish could not be resolved to a validated full commit identity."""
-
-
-class GitReadError(ValueError):
-    """A committed blob could not be read at an exact commit identity."""
 
 
 class GitRepository:
@@ -161,10 +149,23 @@ class GitRepository:
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitReadError(context) from error
 
+    def require_normal_index_tracking(self) -> None:
+        """Reject index flags that can hide differences from the exact commit."""
+        try:
+            flags = self._run("ls-files", "-v", "-z").split(b"\0")
+            if any(f and (f[:1].islower() or f.startswith(b"S ")) for f in flags):
+                raise GitReadError(
+                    "Tracked files require normal index tracking without assume-unchanged "
+                    "or skip-worktree flags; preserve local edits and restore normal index tracking"
+                )
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise GitReadError("Cannot inspect candidate index tracking") from error
+
     def require_clean_revision(self, *, commit_sha: GitCommitSha) -> None:
         """Assert an existing checkout is clean at an exact candidate; never checkout."""
         if self.resolve_base() != commit_sha:
             raise GitReadError("Workspace HEAD must match exact candidate SHA")
+        self.require_normal_index_tracking()
         try:
             if self._run("status", "--porcelain", "--untracked-files=all", "--ignored"):
                 raise GitReadError("REVIEW requires a clean candidate workspace")
@@ -175,216 +176,31 @@ class GitRepository:
         self, *, run_id: UUID, base: str, candidate: str
     ) -> None:
         """Require original commit objects and the durable Run-owned ref."""
-        try:
-            for sha in (base, candidate):
-                _COMMIT_SHA_ADAPTER.validate_python(sha)
-                if self._run("cat-file", "-t", sha) != b"commit\n":
-                    raise ValueError("Expected an actual commit object")
-                if self._run("for-each-ref", f"refs/replace/{sha}"):
-                    raise ValueError("Replacement objects cannot authorize application")
-            if (
-                self._run(
-                    "rev-parse", "--verify", f"refs/shipyard/runs/{run_id}/candidate"
-                )
-                .decode()
-                .strip()
-                != candidate
-            ):
-                raise ValueError("Run-owned candidate ref does not match")
-        except (OSError, subprocess.CalledProcessError, ValueError) as error:
-            raise GitWorkspaceError(
-                f"Invalid or unavailable base/candidate: {error}; restore the original "
-                "repository and Run-owned candidate ref before retrying"
-            ) from error
+        self._application().validate_application_candidate(
+            run_id=run_id, base=base, candidate=candidate
+        )
 
     def branch_sha(self, branch: str) -> str:
-        """Accept only a valid, existing, nonsymbolic local branch."""
-        try:
-            if not branch or branch.startswith("-"):
-                raise ValueError("Invalid branch name")
-            ref = f"refs/heads/{branch}"
-            self._run("check-ref-format", "--branch", branch)
-            self._run("check-ref-format", ref)
-            if self._run("for-each-ref", "--format=%(symref)", ref).strip():
-                raise ValueError("Symbolic target branch is unsupported")
-            sha = self._run("show-ref", "--verify", "--hash", ref).decode().strip()
-            _COMMIT_SHA_ADAPTER.validate_python(sha)
-            if self._run("cat-file", "-t", sha) != b"commit\n":
-                raise ValueError("Branch must identify an actual commit")
-            return sha
-        except (OSError, subprocess.CalledProcessError, ValueError) as error:
-            raise GitWorkspaceError(
-                f"Invalid or missing local branch {branch!r}; supply --branch with an "
-                "existing local branch (remote-only references are unsupported)"
-            ) from error
-
-    def _application_checkout(self, branch: str) -> bool:
-        root = self.checkout_root()
-        selected = False
-        # Porcelain -z represents even whitespace/newline-containing paths exactly.
-        for record in self._run("worktree", "list", "--porcelain", "-z").split(b"\0\0"):
-            fields = record.split(b"\0")
-            if f"branch refs/heads/{branch}".encode() not in fields:
-                continue
-            paths = [os.fsdecode(f[9:]) for f in fields if f.startswith(b"worktree ")]
-            if len(paths) != 1:
-                raise GitWorkspaceError("Ambiguous target worktree occupancy")
-            path = Path(paths[0])
-            if (
-                path.resolve() != root
-                or any(f.startswith((b"locked", b"prunable")) for f in fields)
-                or not path.is_dir()
-            ):
-                raise GitWorkspaceError(
-                    f"Target is occupied by worktree {path}; free the branch before retrying"
-                )
-            selected = True
-        return selected
+        """Resolve an existing, nonsymbolic local branch."""
+        return self._application().branch_sha(branch)
 
     def preflight_application(self, *, branch: str, candidate: str) -> str:
-        previous = self.branch_sha(branch)
-        if previous == candidate:
-            return previous
-        try:
-            self._run("merge-base", "--is-ancestor", previous, candidate)
-        except subprocess.CalledProcessError as error:
-            raise GitWorkspaceError(
-                "Target is ahead of or diverged from the candidate; create a new Run "
-                "against the updated target"
-            ) from error
-        if self._application_checkout(branch):
-            if self._run("status", "--porcelain", "--untracked-files=all", "--ignored"):
-                raise GitWorkspaceError(
-                    "Application requires a clean index and checkout, including untracked "
-                    "and ignored files; preserve your changes elsewhere before retrying"
-                )
-            flags = self._run("ls-files", "-v", "-z").split(b"\0")
-            if any(f and (f[:1].islower() or f.startswith(b"S ")) for f in flags):
-                raise GitWorkspaceError(
-                    "Application requires tracked files without assume-unchanged or "
-                    "skip-worktree flags; preserve local edits and restore normal index tracking before retrying"
-                )
-            for marker in (
-                "MERGE_HEAD",
-                "CHERRY_PICK_HEAD",
-                "REVERT_HEAD",
-                "rebase-merge",
-                "rebase-apply",
-                "sequencer",
-                "BISECT_LOG",
-                "BISECT_START",
-            ):
-                path = Path(
-                    os.fsdecode(self._run("rev-parse", "--git-path", marker)).strip()
-                )
-                if not path.is_absolute():
-                    path = self._path / path
-                if path.exists() or path.is_symlink():
-                    raise GitWorkspaceError(
-                        f"Git operation in progress ({marker}); finish or abort it yourself before retrying"
-                    )
-            if self._run("ls-files", "--unmerged"):
-                raise GitWorkspaceError(
-                    "Resolve unmerged index entries before retrying"
-                )
-        return previous
+        """Validate target ancestry, occupancy and checkout state."""
+        return self._application().preflight_application(
+            branch=branch, candidate=candidate
+        )
 
     def advance_branch(self, *, branch: str, previous: str, candidate: str) -> None:
-        """Fast-forward with expected-old locking, without hooks or rollback.
+        """Advance an eligible branch with expected-old locking."""
+        self._application().advance_branch(
+            branch=branch, previous=previous, candidate=candidate
+        )
 
-        The ref transaction is prepared before checkout writes and held through
-        read-tree. Failed writes retain partial checkout state for inspection.
-        """
-        if self.branch_sha(branch) != previous:
-            raise GitWorkspaceError(
-                "Target changed before advancement; retry with a new Run if needed"
-            )
-        observed = self.preflight_application(branch=branch, candidate=candidate)
-        if observed != previous:
-            raise GitWorkspaceError("Target changed before advancement")
-        if previous == candidate:
-            return
-        ref = f"refs/heads/{branch}"
-        try:
-            if not self._application_checkout(branch):
-                self._run(
-                    "-c",
-                    f"core.hooksPath={os.devnull}",
-                    "update-ref",
-                    "--no-deref",
-                    ref,
-                    candidate,
-                    previous,
-                )
-            else:
-                process = subprocess.Popen(
-                    [
-                        "git",
-                        "-C",
-                        str(self._path),
-                        "-c",
-                        f"core.hooksPath={os.devnull}",
-                        "update-ref",
-                        "--no-deref",
-                        "--stdin",
-                    ],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=_git_environment(),
-                )
-                assert process.stdin is not None and process.stdout is not None
-                try:
-                    process.stdin.write(
-                        f"start\nupdate {ref} {candidate} {previous}\nprepare\n".encode()
-                    )
-                    process.stdin.flush()
-                    reply = b""
-                    while b"prepare: ok\n" not in reply:
-                        if not select.select([process.stdout], [], [], 10)[0]:
-                            raise GitWorkspaceError(
-                                "Timed out preparing expected-old Git transaction"
-                            )
-                        chunk = os.read(process.stdout.fileno(), 4096)
-                        if not chunk:
-                            raise GitWorkspaceError(
-                                "Git refused expected-old transaction; target may have changed"
-                            )
-                        reply += chunk
-                    self._run(
-                        "-c",
-                        f"core.hooksPath={os.devnull}",
-                        "read-tree",
-                        "-u",
-                        "-m",
-                        previous,
-                        candidate,
-                    )
-                    _, stderr = process.communicate(b"commit\n", timeout=10)
-                    if process.returncode:
-                        raise GitWorkspaceError(
-                            f"Git ref commit failed: {stderr.decode(errors='replace')}"
-                        )
-                finally:
-                    if process.poll() is None:
-                        process.kill()
-                    process.communicate(timeout=10)
-                self.require_clean_revision(commit_sha=candidate)
-            if self.branch_sha(branch) != candidate:
-                raise GitWorkspaceError(
-                    "Resulting target does not match verified candidate"
-                )
-        except (OSError, subprocess.SubprocessError, ValueError) as error:
-            raise GitWorkspaceError(
-                f"Cannot advance target; partial state is retained: {error}; inspect checkout before retrying"
-            ) from error
+    def _application(self) -> GitApplication:
+        return GitApplication(repository=self, path=self._path, run=self._run)
 
     def _run(self, *args: str) -> bytes:
         return _run_git(self._path, *args)
-
-
-class GitWorkspaceError(ValueError):
-    """A workspace or candidate operation failed; partial state is retained."""
 
 
 class GitWorkspace:
@@ -433,6 +249,7 @@ class GitWorkspace:
                 raise ValueError("Candidate requires detached HEAD")
             if _run_git(self.path, "ls-files", "--unmerged"):
                 raise ValueError("Candidate cannot contain unresolved merges")
+            repository.require_normal_index_tracking()
             self.clean_ignored_files()
             _run_git(self.path, "add", "--all", "--", ".")
             _run_git(
@@ -459,21 +276,3 @@ class GitWorkspace:
             raise GitWorkspaceError(
                 f"Cannot publish candidate; workspace retained: {error}"
             ) from error
-
-
-def _git_environment() -> dict[str, str]:
-    environment = os.environ.copy()
-    for name in _REPOSITORY_OVERRIDES:
-        environment.pop(name, None)
-    environment["GIT_OPTIONAL_LOCKS"] = "0"
-    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
-    return environment
-
-
-def _run_git(path: Path, *args: str) -> bytes:
-    return subprocess.run(
-        ["git", "-C", str(path), *args],
-        check=True,
-        capture_output=True,
-        env=_git_environment(),
-    ).stdout

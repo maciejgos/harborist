@@ -530,3 +530,98 @@ def test_candidate_message_uses_frozen_source_and_retains_identities(
     assert result.candidate.attempt_id == attempt.attempt_id
     assert result.run.verification is not None
     assert result.run.verification.candidate == result.candidate
+
+
+@pytest.mark.parametrize(
+    "specification",
+    ["# No acceptance declarations", "AC-001: First\nAC-001: Duplicate", "AC-001: "],
+    ids=["missing", "duplicate", "empty"],
+)
+def test_invalid_design_stops_before_plan(
+    tmp_path: Path, frozen_contract: RunContract, specification: str
+) -> None:
+    class InvalidDesign(FakeAgent):
+        def execute(self, request: AgentRequest) -> AgentResponse:
+            response = super().execute(request)
+            if request.stage != AgentStage.DESIGN:
+                return response
+            data = json.loads(response.output)
+            data["artifact"] = specification
+            return AgentResponse(returncode=0, output=json.dumps(data))
+
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    agent = InvalidDesign()
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=agent,
+    )
+    assert result.run.failure_reason == FailureReason.INVALID_STAGE_OUTPUT
+    assert agent.calls == [AgentStage.DESIGN]
+    assert result.candidate is None and result.test is None
+    assert not (store.directory(contract.run_id) / "design" / "manifest.json").exists()
+    assert (store.directory(contract.run_id) / "evidence.json").exists()
+
+
+@pytest.mark.parametrize("markdown", ["", " \n\t"])
+def test_empty_intent_reaches_design_for_clarification(
+    tmp_path: Path, frozen_contract: RunContract, markdown: str
+) -> None:
+    from shipyard.domain import IntentSnapshot
+
+    template = RunContract.model_validate(
+        {
+            **frozen_contract.model_dump(),
+            "intent": IntentSnapshot.create(
+                run_id=frozen_contract.run_id,
+                source_ref="file:/empty.md",
+                markdown=markdown,
+            ),
+        }
+    )
+    store, repo, contract = capture(tmp_path, template)
+
+    class Clarify(FakeAgent):
+        def execute(self, request: AgentRequest) -> AgentResponse:
+            assert request.inputs[0].content == markdown
+            response = super().execute(request)
+            data = json.loads(response.output)
+            data["artifact"] = "What change should be made?"
+            return AgentResponse(returncode=0, output=json.dumps(data))
+
+    agent = Clarify("clarify")
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=agent,
+    )
+    assert result.run.outcome == RunOutcome.NEEDS_CLARIFICATION
+    assert agent.calls == [AgentStage.DESIGN]
+    assert result.contract.intent.markdown == markdown
+    assert (store.directory(contract.run_id) / "evidence.json").exists()
+
+
+def test_test_cannot_verify_hidden_tracked_changes(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    store, repo, contract = capture(
+        tmp_path,
+        frozen_contract,
+        "git update-index --assume-unchanged shipyard.yaml && echo hidden >> shipyard.yaml",
+    )
+    agent = FakeAgent()
+    result = execute_run(
+        store=store,
+        run_id=contract.run_id,
+        repository=repo,
+        workspace=tmp_path / "work",
+        agent=agent,
+    )
+    assert result.test is not None and result.test.collection.passed
+    assert "index tracking" in (result.test.workspace_error or "")
+    assert result.run.outcome == RunOutcome.TEST_FAILED
+    assert AgentStage.REVIEW not in agent.calls

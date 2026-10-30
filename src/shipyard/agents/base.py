@@ -33,11 +33,11 @@ class AgentInput(BaseModel):
     name: Literal[
         "intent.md", "spec.md", "plan.md", "test-evidence.json", "build-process.json"
     ]
-    content: Annotated[str, Field(strict=True, min_length=1)]
+    content: Annotated[str, Field(strict=True)]
 
     @model_validator(mode="after")
     def nonblank(self) -> Self:
-        if not self.content.strip():
+        if self.name != "intent.md" and not self.content.strip():
             raise ValueError("Upstream artifact must not be blank")
         return self
 

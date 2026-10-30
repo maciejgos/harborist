@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Reject index flags that hide tracked edits before candidate publication and
+  exact-revision checks, preventing verification of files absent from the commit.
+- Validate READY DESIGN acceptance declarations before PLAN and classify invalid
+  specifications as INVALID_STAGE_OUTPUT. Empty requests reach DESIGN unchanged
+  so it can request clarification.
+- Preserve bounded provider diagnostics when final output is missing, oversized
+  or invalid UTF-8.
+- Separate CLI registration, command handlers and capture helpers; extract Git
+  application transactions behind the existing repository adapter.
+
 ## Phase 8 — PACKAGE and evidence (2026-10-27)
 
 - Added synchronous `shipyard run <run-id>` with exclusive one-attempt execution,

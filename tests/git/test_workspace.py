@@ -195,3 +195,29 @@ def test_checkout_root_preserves_trailing_spaces(tmp_path: Path) -> None:
     init_repository(repo)
     git(repo, "commit", "--allow-empty", "-m", "base")
     assert GitRepository(path=repo).checkout_root() == repo.resolve()
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_candidate_rejects_hidden_index_flags_before_publication(
+    tmp_path: Path, flag: str
+) -> None:
+    repo, attempt = source(tmp_path)
+    workspace = GitRepository(path=repo).create_workspace(
+        attempt=attempt, path=tmp_path / "build"
+    )
+    git(workspace.path, "update-index", flag, "tracked")
+    (workspace.path / "tracked").write_text("hidden change")
+    with pytest.raises(ValueError, match="index tracking"):
+        workspace.publish_candidate(message="Must not publish hidden changes")
+    assert git(workspace.path, "rev-parse", "HEAD") == attempt.start_sha
+    assert git(repo, "for-each-ref", workspace.candidate_ref) == ""
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_exact_revision_rejects_hidden_tracked_edits(tmp_path: Path, flag: str) -> None:
+    repo, attempt = source(tmp_path)
+    git(repo, "update-index", flag, "tracked")
+    (repo / "tracked").write_text("hidden change")
+    assert git(repo, "status", "--porcelain") == ""
+    with pytest.raises(ValueError, match="index tracking"):
+        GitRepository(path=repo).require_clean_revision(commit_sha=attempt.start_sha)

@@ -114,13 +114,13 @@ def test_github_capture_failure_is_actionable(
 def test_dispatch_rejects_before_application_calls(
     monkeypatch: pytest.MonkeyPatch, argument: str, options: list[str], explanation: str
 ) -> None:
-    from shipyard import cli
     from shipyard.application import execution
+    from shipyard.cli import capture as cli_capture
 
     def forbidden(**kwargs: object) -> None:
         pytest.fail("Invalid invocation must not capture or execute")
 
-    monkeypatch.setattr(cli, "create_run", forbidden)
+    monkeypatch.setattr(cli_capture, "create_run", forbidden)
     monkeypatch.setattr(execution, "execute_run", forbidden)
     result = runner.invoke(app, ["run", argument, *options])
     assert result.exit_code != 0
@@ -134,9 +134,9 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
 ) -> None:
     import json
 
-    from shipyard import cli
     from shipyard.agents import codex
     from shipyard.application.execution import execute_run
+    from shipyard.cli import capture as cli_capture
     from shipyard.domain import RunContract
     from shipyard.intake import github
     from shipyard.persistence import FileRunStore
@@ -151,7 +151,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
     executions: list[object] = []
     original_read = Path.read_bytes
     original_transport = subprocess.run
-    original_create = cli.create_run
+    original_create = cli_capture.create_run
 
     def read(self: Path) -> bytes:
         nonlocal reads
@@ -189,7 +189,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
     agent = FakeAgent()
     monkeypatch.setattr(Path, "read_bytes", read)
     monkeypatch.setattr(github.subprocess, "run", transport)
-    monkeypatch.setattr(cli, "create_run", capture_once)
+    monkeypatch.setattr(cli_capture, "create_run", capture_once)
     monkeypatch.setattr("shipyard.application.execution.execute_run", execute_once)
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     nested = target / "nested"

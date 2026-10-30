@@ -286,7 +286,7 @@ def test_context_rejects_explicit_conflicts(
     agent = FakeAgent("clarify")
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     if automatic:
-        monkeypatch.setattr("shipyard.cli.runs_root", lambda: path.parent.parent)
+        monkeypatch.setattr("shipyard.cli.run.runs_root", lambda: path.parent.parent)
     arguments = ["run", str(contract.run_id)]
     if not automatic:
         arguments += ["--context", str(path)]
@@ -396,7 +396,8 @@ def test_absent_context_keeps_legacy_selection_without_backfill(
     repository = tmp_path / "repository"
     if selection == "default":
         monkeypatch.setattr(
-            "shipyard.cli.runs_root", lambda: store.directory(contract.run_id).parent
+            "shipyard.cli.run.runs_root",
+            lambda: store.directory(contract.run_id).parent,
         )
     if selection == "explicit":
         elsewhere = tmp_path / "elsewhere"
