@@ -11,6 +11,8 @@ from shipyard.persistence import FileRunStore
 
 
 class RunView(QueueRecord):
+    title: str = ""
+    candidate_sha: str | None = None
     run: Run | None = None
     run_error: str | None = None
     attempt_id: UUID | None = None
@@ -23,7 +25,7 @@ def read_record(record: QueueRecord) -> RunView:
     store = FileRunStore(root=submission.runs_root)
     directory = store.directory(submission.run_id)
     try:
-        store.load(submission.run_id)
+        contract = store.load(submission.run_id)
         run = store.load_state(submission.run_id)
         attempt_id: UUID | None = None
         if (directory / "attempt.json").exists():
@@ -46,6 +48,17 @@ def read_record(record: QueueRecord) -> RunView:
         return RunView(
             **record.model_dump(),
             run=run,
+            title=next(
+                (
+                    line.strip().lstrip("# ")[:200]
+                    for line in contract.intent.markdown.splitlines()
+                    if line.strip()
+                ),
+                "Untitled request",
+            ),
+            candidate_sha=run.verification.candidate.candidate_sha
+            if run.verification
+            else None,
             attempt_id=attempt_id,
             artifacts=artifacts,
             package_available=len(artifacts) == 2,

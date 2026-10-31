@@ -3,7 +3,8 @@
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
 > **Status:** Phase 10 local background control plane implemented around the
-> synchronous, revision-bound execution core. Phase 9 baseline evaluation remains
+> synchronous, revision-bound execution core, including a lightweight browser
+> execution monitor. Phase 9 baseline evaluation remains
 > outstanding; see the [service guide](docs/background-control-plane.md).
 
 ## Quick start
@@ -24,7 +25,9 @@ uv run shipyard run file:examples/intake/issue.md
 ```
 
 The command captures and queues the request, then returns its Run ID. The
-service executes independently of the terminal. View the result with
+service executes independently of the terminal. Run `uv run shipyard web` in
+another terminal to follow stage progress visually at http://127.0.0.1:8765.
+View the result with
 `uv run shipyard status <run-id> --wait`, or use `run --foreground` for
 synchronous execution and terminal result exit codes. Review the report/evidence.
 For a VERIFIED Run, apply its candidate to an existing local branch explicitly:
@@ -45,6 +48,7 @@ Application requires the branch to be eligible for advancement. See
 | `shipyard run <run-id>` | Submit a saved CREATED Run. |
 | `shipyard service start/status/stop` | Manage background execution. |
 | `shipyard runs` / `shipyard status <run-id> --wait` | Reconnect and inspect delivery/results. |
+| `shipyard web` | Watch execution at http://127.0.0.1:8765. |
 | `shipyard inspect <run-id>` | Validate and print the frozen contract. |
 | `shipyard methodology <run-id>` | Preview frozen playbook and skills. |
 | `shipyard apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate. |

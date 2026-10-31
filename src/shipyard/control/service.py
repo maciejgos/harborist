@@ -15,6 +15,8 @@ from shipyard.agents.base import NativeAgent
 from shipyard.control.queue import QueueStore, Submission
 from shipyard.control.read_model import read_record
 from shipyard.control.worker import Worker
+from shipyard.domain import RunLifecycle
+from shipyard.persistence import FileRunStore
 
 MAX_REQUEST = 64 * 1024
 
@@ -77,6 +79,37 @@ class ControlService:
                     for item in self.queue.list()
                 ]
             }
+        if method == "GET" and "/artifacts/" in path:
+            parts = path.strip("/").split("/")
+            if (
+                len(parts) != 4
+                or parts[0] != "runs"
+                or parts[2] != "artifacts"
+                or parts[3] not in ("report.md", "evidence.json")
+            ):
+                raise ValueError("Unknown artifact route")
+            record = self.queue.get(UUID(parts[1]))
+            store = FileRunStore(root=record.submission.runs_root)
+            state = store.load_state(record.submission.run_id)
+            if state.lifecycle not in (
+                RunLifecycle.COMPLETED,
+                RunLifecycle.FAILED,
+                RunLifecycle.CANCELLED,
+            ):
+                raise ValueError("Terminal artifact is not available yet")
+            directory = store.directory(record.submission.run_id)
+            artifact = directory / parts[3]
+            if (
+                directory.is_symlink()
+                or artifact.is_symlink()
+                or artifact.resolve().parent != directory.resolve()
+            ):
+                raise ValueError("Artifact must be a regular file inside its Run")
+            with artifact.open("rb") as source:
+                content = source.read(2 * 1024 * 1024 + 1)
+            if len(content) > 2 * 1024 * 1024:
+                raise ValueError("Artifact exceeds the 2 MiB viewing limit")
+            return {"name": parts[3], "content": content.decode("utf-8")}
         if method == "GET" and path.startswith("/runs/"):
             return read_record(
                 self.queue.get(UUID(path.removeprefix("/runs/")))

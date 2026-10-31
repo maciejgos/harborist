@@ -2,7 +2,8 @@
 
 Start `shipyard service start` before using `shipyard run`. Runs now submit to
 the service and return promptly. Use `shipyard status <run-id> --wait` to view
-the result. Add `--foreground` to run examples below when synchronous output or
+the result. For a visual timeline, run `shipyard web` in another terminal and
+open http://127.0.0.1:8765. Add `--foreground` to run examples below when synchronous output or
 terminal exit codes are needed. See the [service guide](background-control-plane.md)
 for migration, JSON response semantics and interruption behavior.
 

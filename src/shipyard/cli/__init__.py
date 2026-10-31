@@ -8,6 +8,7 @@ from shipyard.cli.intake import intake
 from shipyard.cli.monitoring import runs, status
 from shipyard.cli.run import run_command
 from shipyard.cli.service import service_app
+from shipyard.cli.web import web
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -23,3 +24,5 @@ app.add_typer(service_app, name="service")
 
 app.command("runs")(runs)
 app.command("status")(status)
+
+app.command("web")(web)

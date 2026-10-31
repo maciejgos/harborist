@@ -16,8 +16,9 @@ introduced. The explicit foreground mode remains available for compatibility.
 
 A control directory owns an advisory process lock, an owner-only Unix HTTP
 socket, an atomic filesystem queue and a stop signal in service memory. The
-socket is local-only; HTTP JSON is also the web read model. A browser frontend,
-TCP listener, remote authentication and team access are outside this slice.
+socket is local-only; HTTP JSON is also the web read model. A separate read-only
+browser adapter serves the dashboard on 127.0.0.1. Remote authentication and
+team access remain outside this slice.
 
 POST /runs accepts versioned execution locators for an already captured Run.
 Intake remains a CLI operation and freezes inputs before submission. Run UUID is
@@ -40,8 +41,8 @@ therefore show INTERRUPTED beside a valid terminal Run.
 GET /health, GET /runs and GET /runs/{uuid} read persisted records. Progress is
 observational and may lag; validated lifecycle and immutable terminal evidence
 are authoritative. Concurrent lifecycle writes may temporarily yield an explicit
-unavailable status rather than fabricated state. Artifact references are paths,
-not an unrestricted file download endpoint.
+unavailable status rather than fabricated state. Artifact references identify packaged files. An allowlisted GET endpoint serves
+only report.md and evidence.json as bounded plain text for the browser adapter.
 
 POST /stop stops new submissions and claims, drains the current execution and
 leaves queued work intact. A forced kill may leave subprocesses alive; restart
@@ -130,7 +131,8 @@ Submission JSON has `version: 1`, `run_id`, `repository`, `runs_root` and option
 `workspace`, with absolute resolved paths. POST `/runs` returns its durable queue
 record. POST `/stop` returns `{"stopping": true}`. Unsupported routes, malformed
 bodies and invalid records return explicit JSON errors. Request bodies are
-limited to 64 KiB. No arbitrary artifact downloads or TCP listener are exposed.
+limited to 64 KiB. No arbitrary artifact downloads are exposed. The execution service stays on
+its Unix socket; the browser adapter is loopback-only and read-only.
 `package_available` means both terminal files are present; it does not rehash
 artifacts or grant verification. Explicit apply continues to validate evidence.
 
@@ -142,3 +144,44 @@ only native-agent responses are replaced. They verify client exit, VERIFIED
 packaging, duplicates, graceful drain, owner exclusivity and forced-kill restart.
 They do not exercise live paid agent calls, OS boot/login supervision or power
 loss. The service is supported on local Unix systems with flock and Unix sockets.
+
+
+## Browser execution monitor
+
+Start (or upgrade and restart) the service, then launch the monitor in another
+terminal:
+
+```bash
+uv run shipyard service start
+uv run shipyard web
+```
+
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Submit work from another
+terminal with `shipyard run`. The dashboard shows submitted Run history,
+search, selected Run details, the seven-stage timeline, lifecycle/outcome,
+Attempt ID, verified candidate SHA and report/evidence viewers. It polls every
+two seconds. Closing the browser or stopping `shipyard web` leaves the execution
+service and active Runs running.
+
+The monitor is a thin adapter over the canonical control plane. Browser GETs
+under `/api` proxy only health, Run listing/detail and the two named artifacts.
+No submission, shutdown, apply or recovery mutations are exposed by the web
+adapter. Its loopback binding and Host validation keep it local. No framework,
+Node build, hosted service or separate state store is required.
+
+Use `shipyard web --control-dir PATH --port 8766` to select another service or
+port. The control directory must match `service start` and `run`. An unavailable
+service has an explicit retry state; failed refreshes retain prior data with a
+stale-data warning. Selection and search survive polling and reconnects. Reports
+are shown as plain text in a keyboard-accessible dialog, never interpreted as
+HTML. Artifact viewing is limited to 2 MiB per file and rejects symlinks.
+
+Existing queue snapshots remain compatible. Older records without stage history
+show **Not recorded** for missing observations; they never appear successful by
+inference. INTAKE completion reflects a validated frozen capture. Per-stage
+observations are separate from authoritative lifecycle and verification. Restart
+an older running service after upgrading to enable stage history and artifact
+endpoints; let active work finish before a normal upgrade/restart.
+
+The dashboard lists submissions in its selected control directory. It does not
+scan unrelated Runs roots or automatically import historical foreground Runs.

@@ -11,7 +11,7 @@ from tempfile import NamedTemporaryFile
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shipyard.domain import RunLifecycle
 from shipyard.persistence import FileRunStore
@@ -58,6 +58,7 @@ class QueueRecord(BaseModel):
     state: DeliveryState = DeliveryState.QUEUED
     submitted_at: datetime
     updated_at: datetime
+    stages: dict[str, Progress] = Field(default_factory=dict)
     progress: Progress | None = None
     error: str | None = None
 
@@ -163,7 +164,11 @@ class QueueStore:
             record = self._read(run_id)
             if record.state != DeliveryState.RUNNING:
                 raise ValueError("Progress requires an active claim")
-            self._change(record, progress=progress)
+            self._change(
+                record,
+                progress=progress,
+                stages={**record.stages, progress.stage: progress},
+            )
 
     def finish(self, run_id: UUID, *, error: str | None = None) -> QueueRecord:
         with self._locked():

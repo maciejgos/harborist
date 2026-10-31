@@ -31,3 +31,9 @@ errors/warnings. `git diff --check` also passed.
 - Queue snapshots are atomic/fsynced, but Git, lifecycle journals and PACKAGE are not a single transaction. Power-loss behavior is not certified.
 - Package availability indicates file presence; evidence integrity remains independently checked by explicit apply.
 - Phase 9's matched direct-Codex comparison and explicit trust evaluation remain outstanding.
+
+## Browser UI follow-up
+
+This report covered the initial JSON read model. Owner clarification required a
+visible browser monitor; specification 058 and its report record that correction.
+The earlier statement excluding a browser frontend is superseded by that work.

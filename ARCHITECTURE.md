@@ -136,6 +136,7 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point, service client and presentation
 ├── control/        # local queue, service ownership, execution and read model
+├── web/            # read-only loopback browser adapter and packaged static assets
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
 ├── application/    # durable intake, synchronous Run executor and native stages
 ├── intake/         # local Markdown and authenticated gh capture
@@ -246,3 +247,13 @@ and one local service wrap the synchronous executor without changing verificatio
 invariants. Interrupted claims are never retried. See the
 [service contract](docs/background-control-plane.md) and specifications 050–057.
 Phase 9 evaluation remains outstanding as recorded in the validation audit.
+
+
+The Phase 10 browser monitor (`shipyard web`, specification 058) is a separate,
+replaceable, read-only adapter. It serves packaged HTML/CSS/JavaScript on
+127.0.0.1 and proxies allowlisted GETs through ControlClient to the existing
+Unix-socket service. It does not read Run storage directly or own execution,
+queue state or lifecycle transitions. Closing the monitor cannot stop a Run.
+Per-stage observations persist in queue snapshots and never grant verification;
+missing historical observations remain explicitly unknown. Named report/evidence
+viewing is a bounded control-plane read, not unrestricted filesystem serving.

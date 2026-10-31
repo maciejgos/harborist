@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shipyard · Execution monitor</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><a class="brand" href="/">Shipyard</a><div class="header-right"><span>Execution monitor</span><span id="connection" role="status">Connecting…</span></div></header>
+<div id="connection-error" class="notice error" role="alert" hidden></div>
+<div class="layout">
+<aside aria-label="Run history"><div class="rail-heading"><h1>Run history</h1><button id="refresh" type="button">↻ Refresh</button></div><label class="sr-only" for="search">Search Runs</label><input id="search" type="search" placeholder="Search runs…" autocomplete="off"><p id="history-status" class="muted" role="status">Loading Runs…</p><nav id="runs" aria-label="Select a Run"></nav><p class="rail-note">Read-only monitor<br><span id="last-updated">Updates every 2 seconds</span></p></aside>
+<main id="detail" aria-label="Run detail"><div class="empty"><h2>Loading execution history</h2><p>Connecting to the local Shipyard service.</p></div></main>
+</div>
+<dialog id="artifact-dialog" aria-labelledby="artifact-title"><div class="dialog-header"><h2 id="artifact-title">Artifact</h2><button id="close-artifact" type="button">Close</button></div><p id="artifact-status" role="status"></p><pre id="artifact-content" tabindex="0"></pre></dialog>
+</body></html>
