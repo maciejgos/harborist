@@ -25,3 +25,9 @@ Other arbitrary custom roots are not globally scanned; explicitly submitted
 Runs retain their selected root. Conflicting UUIDs fail rather than mixing
 verification across saved locations. Browser QA covered the in-app browser;
 other browser engines were not separately tested.
+
+## Evidence-backed timeline follow-up
+
+Specification 060 corrects the initial queue-observation-only timeline. Historical
+stage manifests, trusted TEST captures and PACKAGE evidence now populate stage
+progress; only genuinely missing or invalid captures remain unknown.

@@ -58,9 +58,11 @@ function renderDetail() {
   for (const name of stages) {
     const observation = record.stages?.[name];
     let state = observation?.state || (name === 'intake' && record.run ? 'completed' : 'unknown');
+    if (state === 'completed' && ['TEST_FAILED', 'CHANGES_REQUIRED'].includes(observation?.reason)) state = 'failed';
+    if (state === 'completed' && ['NEEDS_CLARIFICATION', 'NEEDS_RESCOPING'].includes(observation?.reason)) state = observation.reason.toLowerCase();
     if (state === 'started' && finished(record)) state = 'interrupted';
     const item = text('li', '', 'stage'); item.dataset.state = state;
-    item.append(text('span', state === 'completed' ? '✓' : state === 'started' ? '●' : state === 'failed' ? '×' : '·', 'stage-symbol'), text('span', name.toUpperCase(), 'stage-name'), text('span', state === 'unknown' ? 'Not recorded' : state === 'started' ? 'Running' : state[0].toUpperCase() + state.slice(1), 'stage-state'));
+    item.append(text('span', state === 'completed' ? '✓' : state === 'started' ? '●' : state === 'failed' ? '×' : '·', 'stage-symbol'), text('span', name.toUpperCase(), 'stage-name'), text('span', state === 'unknown' ? 'Not recorded' : state === 'started' ? 'Running' : (state[0].toUpperCase() + state.slice(1)).replaceAll('_', ' '), 'stage-state'));
     timeline.append(item);
   }
   main.append(timeline);
@@ -90,6 +92,7 @@ function renderDetail() {
   }
   current.append(text('p', message, 'notice'));
   for (const error of [record.error, record.run_error]) if (error) current.append(text('p', error, 'notice error'));
+  for (const [stage, error] of Object.entries(record.stage_errors || {})) current.append(text('p', `${stage.toUpperCase()} history unavailable: ${error}`, 'notice error'));
   if (record.progress?.reason) current.append(text('p', record.progress.reason, 'muted'));
   main.append(current);
 }

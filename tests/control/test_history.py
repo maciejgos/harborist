@@ -33,7 +33,9 @@ def test_saved_foreground_run_is_listed_readable_and_never_queued(
     assert detail["source"] == "saved"
     assert detail["state"] is None
     assert detail["package_available"]
-    assert detail["stages"] == {}
+    stages = detail["stages"]
+    assert isinstance(stages, dict)
+    assert stages["package"]["state"] == "completed"
     assert detail["candidate_sha"] is not None
     assert detail["submitted_at"] is None
     report = service.dispatch(

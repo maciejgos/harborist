@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from shipyard.control.queue import DeliveryState, Progress, QueueRecord, Submission
+from shipyard.control.stage_history import read_stage_history
 from shipyard.domain import Run, RunLifecycle
 from shipyard.domain.attempt import Attempt
 from shipyard.persistence import FileRunStore
@@ -31,6 +32,7 @@ class RunView(BaseModel):
     recorded_at: datetime | None = None
     updated_at: datetime | None = None
     stages: dict[str, Progress] = Field(default_factory=dict)
+    stage_errors: dict[str, str] = Field(default_factory=dict)
     progress: Progress | None = None
     error: str | None = None
     title: str = ""
@@ -74,12 +76,18 @@ def _project(view: RunView) -> RunView:
         contract = store.load(submission.run_id)
         run = store.load_state(submission.run_id)
         attempt_id: UUID | None = None
+        attempt: Attempt | None = None
         if (directory / "attempt.json").exists():
             attempt = Attempt.model_validate_json(
                 (directory / "attempt.json").read_bytes()
             )
-            if attempt.run_id != submission.run_id:
+            if (
+                attempt.run_id != submission.run_id
+                or attempt.start_sha != contract.base_sha
+            ):
                 raise ValueError("Attempt identity mismatch")
+            if run.verification is not None and run.verification.attempt != attempt:
+                raise ValueError("Attempt differs from terminal verification")
             attempt_id = attempt.attempt_id
         terminal = run.lifecycle in (
             RunLifecycle.COMPLETED,
@@ -91,9 +99,18 @@ def _project(view: RunView) -> RunView:
             for name in ("report.md", "evidence.json")
             if terminal and (directory / name).is_file()
         }
+        history = (
+            read_stage_history(
+                directory=directory, contract=contract, run=run, attempt=attempt
+            )
+            if attempt is not None
+            else None
+        )
         return RunView.model_validate(
             {
                 **view.model_dump(),
+                "stages": {**(history.stages if history else {}), **view.stages},
+                "stage_errors": history.errors if history else {},
                 "run": run,
                 "title": next(
                     (

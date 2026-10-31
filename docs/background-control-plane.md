@@ -177,10 +177,12 @@ stale-data warning. Selection and search survive polling and reconnects. Reports
 are shown as plain text in a keyboard-accessible dialog, never interpreted as
 HTML. Artifact viewing is limited to 2 MiB per file and rejects symlinks.
 
-Existing queue snapshots remain compatible. Older records without stage history
-show **Not recorded** for missing observations; they never appear successful by
-inference. INTAKE completion reflects a validated frozen capture. Per-stage
-observations are separate from authoritative lifecycle and verification. Restart
+Existing queue snapshots remain compatible. Historical stage progress is recovered
+from attributed native-stage manifests, trusted TEST captures and PACKAGE
+evidence. Missing or invalid captures remain unknown, with explicit diagnostics
+for invalid history; they never appear successful from the Run outcome alone.
+INTAKE completion reflects a validated frozen capture. Timeline observations
+remain separate from authoritative lifecycle and verification. Restart
 an older running service after upgrading to enable stage history and artifact
 endpoints; let active work finish before a normal upgrade/restart.
 
@@ -196,8 +198,12 @@ Its lifecycle/outcome still comes from validated FileRunStore records. Recorded
 and updated times use contract/run file modification timestamps for legacy
 captures; these timestamps order the view and never confer execution authority.
 Queue submission/update times remain authoritative for service delivery.
-Historical stage observations are not fabricated; absent progress is shown as
-Not recorded. `status --wait` returns immediately for a terminal historical Run.
+Historical stage progress uses saved structured evidence when queue observations
+are absent. Failed checks and rejected reviews appear failed; recorded
+clarification/rescoping, cancellation and downstream skips remain distinct.
+Missing captures still show Not recorded. This projection neither reruns checks
+nor grants or modifies VERIFIED. `status --wait` returns immediately for a
+terminal historical Run.
 
 Discovery never executes, repairs or changes a Run. Missing roots are empty;
 unrelated files and symlink directories are ignored. Partial/corrupt UUID

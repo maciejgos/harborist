@@ -255,7 +255,9 @@ replaceable, read-only adapter. It serves packaged HTML/CSS/JavaScript on
 Unix-socket service. It does not read Run storage directly or own execution,
 queue state or lifecycle transitions. Closing the monitor cannot stop a Run.
 Per-stage observations persist in queue snapshots and never grant verification;
-missing historical observations remain explicitly unknown. Named report/evidence
+historical timelines recover recorded stages from attributed native/TEST/PACKAGE
+captures; absent or invalid evidence remains explicitly unknown. This does not
+rerun verification or change Run state. Named report/evidence
 viewing is a bounded control-plane read, not unrestricted filesystem serving.
 
 

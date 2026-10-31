@@ -1,0 +1,3 @@
+# Plan
+
+Add a focused stage-history reader at the control-plane presentation boundary. Parse existing StageExecution, TestExecution and RunEvidence contracts; reconcile identities and frozen TEST configuration. Recover observed completion/outcomes and terminal failure/skip paths without granting verification. Merge recovered history underneath explicit queue observations, expose malformed-history diagnostics, and render blocked outcomes clearly in the existing UI. Test real Git/check workflows with a fake native-agent boundary before implementation, then verify the exact reported historical Run in the browser and run pytest/Ruff/Pyright.
