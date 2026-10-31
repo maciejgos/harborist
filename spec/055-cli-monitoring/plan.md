@@ -1,3 +1,5 @@
-# Plan
+# Implementation plan
 
-Implement in roadmap order with focused failing behavioral tests, the smallest implementation and full pytest, Ruff and Pyright validation. Commit each completed slice.
+Add runs and status commands over ControlClient. Human and JSON views read persisted delivery data. --wait polls until a delivery terminal state and never mutates or cancels execution. Successful reads exit zero independently of software outcome.
+
+Validation: focused red → green tests, then full pytest, Ruff and Pyright.

@@ -5,6 +5,7 @@ import typer
 from shipyard.cli.apply import apply_command
 from shipyard.cli.inspection import inspect, methodology
 from shipyard.cli.intake import intake
+from shipyard.cli.monitoring import runs, status
 from shipyard.cli.run import run_command
 from shipyard.cli.service import service_app
 
@@ -20,3 +21,5 @@ app.command("apply")(apply_command)
 
 app.add_typer(service_app, name="service")
 
+app.command("runs")(runs)
+app.command("status")(status)
