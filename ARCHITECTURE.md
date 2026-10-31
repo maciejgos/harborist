@@ -1,6 +1,6 @@
 # Shipyard Architecture
 
-This document describes the **Shipyard PoC** architecture. MVP and Product architecture are intentionally out of scope.
+This document describes the **Shipyard execution core** and the authorized Phase 10 local background control plane. Broader Product infrastructure remains out of scope.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -39,7 +39,7 @@ The PoC intentionally uses a small local stack:
 - filesystem-backed persistence
 - pytest, Ruff, and Pyright for validation
 
-No web framework, database, background worker system, or cloud infrastructure is part of the PoC.
+The execution core uses no web framework, database or cloud infrastructure. Phase 10 adds a local service around that core; see [the service contract](docs/background-control-plane.md).
 
 ## Architecture Invariants
 
@@ -232,3 +232,11 @@ transaction; partial failures retain recovery records.
 
 See [application usage](docs/usage.md#apply-a-verified-candidate) and
 [implementation details](docs/developer-reference.md#candidate-application-implementation).
+
+## Phase 10 local service
+
+The owner authorized background execution on 2026-10-31. A filesystem queue
+and one local service wrap the synchronous executor without changing verification
+invariants. Interrupted claims are never retried. See the
+[service contract](docs/background-control-plane.md) and specifications 050–057.
+Phase 9 evaluation remains outstanding as recorded in the validation audit.
