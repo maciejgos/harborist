@@ -39,6 +39,7 @@ def test_cli_streams_and_preserves_terminal_json(
         app,
         [
             "run",
+            "--foreground",
             "--json",
             str(contract.run_id),
             "--repo",
@@ -99,6 +100,7 @@ def test_cli_finalization_failure_is_safe(
         app,
         [
             "run",
+            "--foreground",
             str(contract.run_id),
             "--repo",
             str(tmp_path / "repository"),

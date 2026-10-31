@@ -122,7 +122,7 @@ def test_dispatch_rejects_before_application_calls(
 
     monkeypatch.setattr(cli_capture, "create_run", forbidden)
     monkeypatch.setattr(execution, "execute_run", forbidden)
-    result = runner.invoke(app, ["run", argument, *options])
+    result = runner.invoke(app, ["run", "--foreground", argument, *options])
     assert result.exit_code != 0
     assert result.stdout == ""
     assert explanation in result.stderr
@@ -200,6 +200,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
         app,
         [
             "run",
+            "--foreground",
             source,
             "--runs-dir",
             str(tmp_path / "runs"),
@@ -252,6 +253,7 @@ def test_preflight_failure_retains_capture_and_recovers_without_live_inputs(
         app,
         [
             "run",
+            "--foreground",
             f"file:{issue}",
             "--repo",
             str(target),
@@ -310,6 +312,7 @@ def test_file_capture_failure_has_correction_and_no_run(
         app,
         [
             "run",
+            "--foreground",
             f"file:{issue}",
             "--repo",
             str(target),
@@ -346,6 +349,7 @@ def test_admitted_source_outcomes_retain_evidence_without_recovery(
         app,
         [
             "run",
+            "--foreground",
             f"file:{issue}",
             "--repo",
             str(target),
@@ -394,6 +398,7 @@ def test_source_configuration_selection(
         app,
         [
             "run",
+            "--foreground",
             f"file:{issue}",
             "--repo",
             str(target),

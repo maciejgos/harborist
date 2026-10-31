@@ -99,6 +99,7 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
         "run",
         str(contract.run_id),
     ] + (["--runs-dir", str(runs)] if layout != "default" else [])
+    command += " --foreground"
     if layout != "external":
         command += " --json"
     # Advancing HEAD must never change the base used by the emitted command.
@@ -246,7 +247,7 @@ def test_bad_context_fails_before_admission(
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     result = CliRunner().invoke(
         app,
-        ["run", str(contract.run_id)]
+        ["run", "--foreground", str(contract.run_id)]
         + (
             ["--runs-dir", str(locator.runs_root)]
             if automatic
@@ -287,7 +288,7 @@ def test_context_rejects_explicit_conflicts(
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     if automatic:
         monkeypatch.setattr("shipyard.cli.run.runs_root", lambda: path.parent.parent)
-    arguments = ["run", str(contract.run_id)]
+    arguments = ["run", "--foreground", str(contract.run_id)]
     if not automatic:
         arguments += ["--context", str(path)]
     result = CliRunner().invoke(app, arguments + [option, str(other)])
@@ -323,6 +324,7 @@ def test_matching_aliases_and_explicit_workspace_are_supported(
         app,
         [
             "run",
+            "--foreground",
             str(contract.run_id),
             *([] if automatic else ["--context", str(path)]),
             "--repo",
@@ -377,7 +379,7 @@ def test_explicit_context_alone_selects_locator(
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     selected = path if explicit_valid else tmp_path / "missing.json"
     result = CliRunner().invoke(
-        app, ["run", str(contract.run_id), "--context", str(selected)]
+        app, ["run", "--foreground", str(contract.run_id), "--context", str(selected)]
     )
     assert result.exit_code == (2 if explicit_valid else 1), result.output
     assert bool(agent.calls) == explicit_valid
@@ -416,7 +418,7 @@ def test_absent_context_keeps_legacy_selection_without_backfill(
         )
     }
     monkeypatch.setattr(codex, "CodexAgent", lambda: FakeAgent("clarify"))
-    arguments = ["run", str(contract.run_id)]
+    arguments = ["run", "--foreground", str(contract.run_id)]
     if selection != "default":
         arguments += ["--runs-dir", str(store.directory(contract.run_id).parent)]
     if selection == "explicit":

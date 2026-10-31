@@ -1,4 +1,4 @@
-"""Synchronous execution command, recovery guidance and result presentation."""
+"""Background submission with explicit synchronous compatibility mode."""
 
 import json
 import os
@@ -59,11 +59,30 @@ def run_command(
     json_output: Annotated[
         bool, typer.Option("--json", help="Print the full Run result as JSON.")
     ] = False,
+    foreground: Annotated[
+        bool,
+        typer.Option(
+            "--foreground",
+            help="Execute synchronously in this terminal instead of submitting.",
+        ),
+    ] = False,
+    control_dir: Annotated[
+        Path | None,
+        typer.Option(
+            help="Background service directory (default ~/.shipyard/control)."
+        ),
+    ] = None,
     workspace: Annotated[
         Path | None, typer.Option(help="Fresh isolated workspace path.")
     ] = None,
 ) -> None:
-    """Capture a source then execute, or execute a saved Run UUID synchronously.
+    """Capture a source or submit a saved Run to the local background service.
+
+    Start the service with shipyard service start. Submission returns promptly;
+    closing this terminal does not stop execution. Use --foreground for the
+    original synchronous behavior and terminal-result exit codes. Background
+    exit zero means durable acceptance, not VERIFIED. --json returns the delivery
+    record in background mode. Use shipyard status RUN_ID to monitor.
 
     Sources accept file:<nonempty-path> and github:owner/repo#positive-issue-number.
     Source capture uses shipyard.settings.yaml at the target checkout root,
@@ -83,8 +102,8 @@ def run_command(
     invalid existing context fails closed without repair. From a development
     checkout use uv run shipyard run <run-id>.
 
-    Human output ends with a terminal summary and report/evidence locations.
-    Scripts consuming the previous JSON default must add --json.
+    Foreground human output ends with a terminal summary and report/evidence locations.
+    Scripts consuming the previous synchronous JSON must add --foreground --json.
     Writes terminal evidence; verification does not apply the candidate.
     """
     from shipyard.agents.codex import CodexAgent
@@ -151,6 +170,43 @@ def run_command(
     except (ValueError, OSError) as error:
         typer.echo(json.dumps({"error": str(error)}), err=True)
         raise typer.Exit(code=1) from error
+
+    if not foreground:
+        from shipyard.cli.service import control_root
+        from shipyard.control.client import ControlClient
+        from shipyard.control.queue import Submission
+
+        try:
+            selected_repo, selected_root = resolve_context(
+                run_id=execution_id,
+                repo=repo,
+                runs_dir=runs_dir,
+                context=context,
+                default_root=runs_root(),
+            )
+            submission = Submission(
+                run_id=execution_id,
+                repository=selected_repo,
+                runs_root=selected_root,
+                workspace=workspace.resolve() if workspace is not None else None,
+            )
+            record = ControlClient(control_root(control_dir)).request(
+                "POST", "/runs", submission.model_dump(mode="json")
+            )
+        except (ValueError, OSError) as error:
+            typer.echo(str(error), err=True)
+            typer.echo(
+                f"Run {execution_id} retained; inspect or submit this UUID after correcting the problem.",
+                err=True,
+            )
+            raise typer.Exit(1) from error
+        if json_output:
+            typer.echo(json.dumps(record))
+        else:
+            typer.echo(
+                f"Run: {execution_id}\nDelivery: {record['state']}\nUse shipyard status {execution_id} to monitor."
+            )
+        return
 
     with ProgressReporter() as reporter:
         reporter.line(f"Run: {execution_id}")
@@ -253,6 +309,7 @@ def run_command(
                 reporter.line("Recover with:")
                 reporter.line(
                     execution_command(execution_id, runs_dir, recovery_workspace)
+                    + " --foreground"
                 )
             raise typer.Exit(code=1) from error
         reporter.line(

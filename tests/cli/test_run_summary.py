@@ -93,6 +93,7 @@ def test_default_summary(
         app,
         [
             "run",
+            "--foreground",
             str(contract.run_id),
             "--repo",
             str(tmp_path / "repository"),
@@ -152,6 +153,7 @@ def test_partial_package_failure_does_not_advertise_artifacts(
     monkeypatch.setattr(execution, "package_run", broken)
     args = [
         "run",
+        "--foreground",
         str(contract.run_id),
         "--repo",
         str(tmp_path / "repository"),
@@ -198,6 +200,7 @@ def test_output_selection_only_renders_packaged_evidence(
     monkeypatch.setattr(execution, "execute_run", returned)
     args = [
         "run",
+        "--foreground",
         str(contract.run_id),
         "--repo",
         str(tmp_path / "repository"),

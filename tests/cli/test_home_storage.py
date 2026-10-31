@@ -156,7 +156,7 @@ def test_projects_share_home_storage_with_distinct_workspaces(
         # Also exercise historical execution without a saved locator.
         (directory / "execution-context.json").unlink()
         executed = CliRunner().invoke(
-            app, ["run", str(contract.run_id), "--repo", str(target)]
+            app, ["run", "--foreground", str(contract.run_id), "--repo", str(target)]
         )
         assert executed.exit_code == 0, executed.output
         workspace = home / ".shipyard" / "runs" / str(contract.run_id) / "workspace"
