@@ -13,6 +13,7 @@ from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
 from shipyard.control.queue import QueueStore, Submission
+from shipyard.control.read_model import read_record
 from shipyard.control.worker import Worker
 
 MAX_REQUEST = 64 * 1024
@@ -72,12 +73,14 @@ class ControlService:
         if method == "GET" and path == "/runs":
             return {
                 "runs": [
-                    item.model_dump(mode="json")
+                    read_record(item).model_dump(mode="json")
                     for item in self.queue.list()
                 ]
             }
         if method == "GET" and path.startswith("/runs/"):
-            return self.queue.get(UUID(path.removeprefix("/runs/"))).model_dump(mode="json")
+            return read_record(
+                self.queue.get(UUID(path.removeprefix("/runs/")))
+            ).model_dump(mode="json")
         raise ValueError("Unknown service route or method")
 
     def serve(self) -> None:
