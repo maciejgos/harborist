@@ -9,7 +9,11 @@ See the [Phase 8 audit](spec/045-phase8-acceptance-audit/report.md).
 
 ## Bird's Eye View
 
-Shipyard is a local, synchronous CLI application. It accepts a Markdown file or GitHub Issue, freezes the Run contract, executes one canonical playbook around a native coding agent, verifies the resulting Git commit, and writes durable evidence to the local filesystem.
+Shipyard accepts a Markdown file or GitHub Issue, freezes the Run contract,
+executes one canonical playbook around a native coding agent, verifies the
+resulting Git commit, and writes durable evidence to the local filesystem.
+The CLI submits to a local background service by default; `--foreground` invokes
+the same synchronous execution core in the client process.
 
 ```mermaid
 flowchart TB
@@ -88,8 +92,9 @@ PACKAGE is outside the normal execution budget and runs for every terminal outco
 ## Input and CLI
 
 The CLI accepts local Markdown (`file:./issue.md`) or GitHub Issues
-(`github:owner/repo#42`). Source-mode `run` composes `create_run` and
-`execute_run`: capture once, then execute the saved contract. `intake` captures
+(`github:owner/repo#42`). Source-mode `run` captures once with `create_run`, then submits the saved
+contract locator to the service. `--foreground` composes capture and
+`execute_run` directly. `intake` captures
 without execution; `inspect` and `methodology` are read-only.
 
 The CLI owns parsing, configuration selection, presentation and exit codes.
@@ -129,7 +134,8 @@ refs/shipyard/runs/<run-id>/candidate
 
 ```text
 src/shipyard/
-├── cli/            # CLI entry point and presentation
+├── cli/            # CLI entry point, service client and presentation
+├── control/        # local queue, service ownership, execution and read model
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
 ├── application/    # durable intake, synchronous Run executor and native stages
 ├── intake/         # local Markdown and authenticated gh capture
@@ -210,7 +216,7 @@ CHANGES_REQUIRED
 
 Execution failures remain distinct from software outcomes.
 
-Run progress uses an optional application callback carrying stage lifecycle and
+Foreground Run progress uses an optional application callback carrying stage lifecycle and
 validated outcome/reason values. It has no routing or persistence authority.
 The CLI renders flushed plain stderr lines and owns one transient timer thread
 for 15-second elapsed updates during blocking synchronous calls. That thread

@@ -28,3 +28,5 @@ The current architecture describes the PoC. Future product requirements live in
 
 Historical acceptance contracts, plans and audits remain in [spec/](../spec/).
 Packaged playbooks and skills remain runtime resources under `src/shipyard/`.
+
+- [Background service and CLI migration](background-control-plane.md)

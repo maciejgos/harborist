@@ -67,3 +67,50 @@ def test_unavailable_service_retains_created_run(
     assert result.exit_code == 1
     assert "service start" in result.output
     assert store.load_state(contract.run_id).lifecycle == "CREATED"
+
+
+def test_source_capture_submits_once_and_retains_frozen_context(
+    tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from uuid import UUID
+
+    from shipyard.control.queue import QueueStore, Submission
+    from tests.settings_helpers import write_settings
+
+    store, repo, _ = capture(tmp_path, frozen_contract)
+    source = tmp_path / "issue.md"
+    source.write_text("Implement a bounded change")
+    queue = QueueStore(tmp_path / "control")
+
+    def request(
+        self: ControlClient,
+        method: str,
+        path: str,
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        assert method == "POST" and path == "/runs"
+        return queue.submit(Submission.model_validate(payload)).model_dump(mode="json")
+
+    monkeypatch.setattr(ControlClient, "request", request)
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            f"file:{source}",
+            "--repo",
+            str(repo.checkout_root()),
+            "--settings",
+            str(write_settings(tmp_path)),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    record = json.loads(result.stdout)
+    run_id = UUID(record["submission"]["run_id"])
+    assert record["state"] == "QUEUED"
+    assert len(queue.list()) == 1
+    assert store.load(run_id).intent.markdown == "Implement a bounded change"
+    assert (store.directory(run_id) / "execution-context.json").is_file()
+    assert not (store.directory(run_id) / ".execution").exists()

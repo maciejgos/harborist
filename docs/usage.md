@@ -1,3 +1,11 @@
+# Background execution (Phase 10)
+
+Start `shipyard service start` before using `shipyard run`. Runs now submit to
+the service and return promptly. Use `shipyard status <run-id> --wait` to view
+the result. Add `--foreground` to run examples below when synchronous output or
+terminal exit codes are needed. See the [service guide](background-control-plane.md)
+for migration, JSON response semantics and interruption behavior.
+
 # Usage
 
 [Documentation index](README.md) · [Architecture](../ARCHITECTURE.md)

@@ -179,3 +179,13 @@ a retained checkout does not change or require rewriting terminal evidence. VERI
 DESIGN/TEST/REVIEW against the terminal verification record. No model participates
 in packaging and no execution allowance is required. Disk errors are surfaced;
 partial PACKAGE is retained and cannot be silently retried.
+
+## Phase 10 delivery persistence
+
+The background service stores delivery snapshots separately in
+`~/.shipyard/control/queue`. Run/Attempt evidence remains in the existing Runs
+root. Queue snapshots are locked and atomically replaced; they do not make Run
+journals, Git and PACKAGE transactional. Interrupted claims are retained without
+automatic retry, session resume or evidence mutation. See the
+[background service guide](background-control-plane.md) for restart and shutdown
+semantics. Phase 11 recovery is not implemented.
