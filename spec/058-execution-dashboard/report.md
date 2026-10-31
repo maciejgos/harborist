@@ -46,3 +46,9 @@ bounded to 2 MiB. The verified candidate field is present only when the validate
 Run has a verification record. This is a local monitor, not team/remote access,
 publication, recovery or cancellation infrastructure. Browser QA used the in-app
 browser; other browser engines were not separately tested.
+
+## Saved-history follow-up
+
+Specification 059 supersedes the initial submission-only limitation. The monitor
+now discovers saved foreground Runs under ~/.shipyard/runs without importing
+them into the queue.

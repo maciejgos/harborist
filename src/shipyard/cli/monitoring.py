@@ -26,7 +26,10 @@ def _fields(value: object) -> dict[str, object]:
 
 def render_record(record: dict[str, object]) -> str:
     run_id = _fields(record.get("submission")).get("run_id", "unknown")
-    lines = [f"Run: {run_id}", f"Delivery: {record.get('state', 'unknown')}"]
+    lines = [
+        f"Run: {run_id}",
+        f"Delivery: {record.get('state') or 'Not submitted to service'}",
+    ]
     run = _fields(record.get("run"))
     for label, key in (
         ("Status", "lifecycle"),
@@ -64,7 +67,7 @@ def status(
         float, typer.Option(min=0.01, max=60, help="Polling seconds.")
     ] = 1,
 ) -> None:
-    """Inspect one submission; leaving this viewer never cancels execution.
+    """Inspect a saved Run or service submission; leaving this viewer never cancels execution.
 
     Exit zero means status was read successfully, not that the Run is VERIFIED.
     """
@@ -72,7 +75,12 @@ def status(
     try:
         while True:
             record = client.request("GET", f"/runs/{run_id}")
-            if not wait or record.get("state") in TERMINAL:
+            lifecycle = _fields(record.get("run")).get("lifecycle")
+            if (
+                not wait
+                or record.get("state") in TERMINAL
+                or lifecycle in {"COMPLETED", "FAILED", "CANCELLED"}
+            ):
                 typer.echo(json.dumps(record) if json_output else render_record(record))
                 return
             time.sleep(interval)
@@ -85,7 +93,7 @@ def status(
 
 
 def runs(control_dir: ControlDirectory = None, json_output: JsonOutput = False) -> None:
-    """List service submissions (not uncaptured work or unrelated Runs roots)."""
+    """List saved Runs in ~/.shipyard/runs plus service submissions."""
     try:
         response = ControlClient(control_root(control_dir)).request("GET", "/runs")
         if json_output:
@@ -99,7 +107,7 @@ def runs(control_dir: ControlDirectory = None, json_output: JsonOutput = False) 
                     render_record(record)
                     for record in cast(list[dict[str, object]], records)
                 )
-                or "No submissions."
+                or "No saved Runs."
             )
     except ValueError as error:
         typer.echo(str(error), err=True)

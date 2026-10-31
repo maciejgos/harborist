@@ -38,7 +38,8 @@ inspect retained records and use a fresh intake where necessary (Phase 11 will
 provide recovery rules). A crash after PACKAGE but before queue completion may
 therefore show INTERRUPTED beside a valid terminal Run.
 
-GET /health, GET /runs and GET /runs/{uuid} read persisted records. Progress is
+GET /health, GET /runs and GET /runs/{uuid} read persisted records. Run history
+combines UUID captures under ~/.shipyard/runs with service submissions. Progress is
 observational and may lag; validated lifecycle and immutable terminal evidence
 are authoritative. Concurrent lifecycle writes may temporarily yield an explicit
 unavailable status rather than fabricated state. Artifact references identify packaged files. An allowlisted GET endpoint serves
@@ -84,8 +85,8 @@ accepted, not VERIFIED. `status --json` adds validated Run state, Attempt ID,
 observational progress and package file availability. `status --wait` polls and
 returns the terminal delivery record; it also exits zero for a successful read,
 regardless of software outcome. Inspect `run.outcome` and `run.failure_reason`.
-Interrupting the viewer leaves the service running. Listings include only
-submitted Runs in the selected service, not every capture on disk.
+Interrupting the viewer leaves the service running. Listings include saved Runs
+under ~/.shipyard/runs and submissions in the selected service.
 
 `run --foreground` retains the former synchronous output and terminal exit codes
 (0 VERIFIED, 2 other software outcomes, 1 execution failure, 130 cancellation).
@@ -183,5 +184,26 @@ observations are separate from authoritative lifecycle and verification. Restart
 an older running service after upgrading to enable stage history and artifact
 endpoints; let active work finish before a normal upgrade/restart.
 
-The dashboard lists submissions in its selected control directory. It does not
-scan unrelated Runs roots or automatically import historical foreground Runs.
+The dashboard and `shipyard runs` discover all saved Run directories under
+`~/.shipyard/runs`, including earlier foreground executions and CREATED captures,
+then merge service submissions without duplicates. No import, queue insertion,
+source checkout or execution-context locator is required. Individual details and
+the report/evidence viewers work for historical Runs too.
+
+Read responses identify `source: "saved"` or `source: "service"`. A saved Run has
+`state: null` and `submitted_at: null`, because it has no service-delivery record.
+Its lifecycle/outcome still comes from validated FileRunStore records. Recorded
+and updated times use contract/run file modification timestamps for legacy
+captures; these timestamps order the view and never confer execution authority.
+Queue submission/update times remain authoritative for service delivery.
+Historical stage observations are not fabricated; absent progress is shown as
+Not recorded. `status --wait` returns immediately for a terminal historical Run.
+
+Discovery never executes, repairs or changes a Run. Missing roots are empty;
+unrelated files and symlink directories are ignored. Partial/corrupt UUID
+captures appear unavailable without hiding valid history. An identical Run in
+the queue and saved root appears once, using actual delivery metadata. Conflicting
+UUIDs in different roots fail explicitly rather than mixing candidate evidence.
+Arbitrary custom Runs roots are not globally scanned; service submissions retain
+access to their explicitly recorded roots. Restart an older running service after
+active work finishes to enable expanded history discovery.

@@ -1,0 +1,3 @@
+# Plan
+
+Separate RunView from the queue persistence model so a saved Run can be displayed without inventing a Submission or DeliveryState. Add a read-only history catalog over a selected saved-Runs root (default ~/.shipyard/runs) and the current QueueStore. Reuse FileRunStore validation and the existing projection for all details and artifact reads. Prefer actual queue metadata when the same Run/location appears in both sources; fail on identity collisions across roots. Use filesystem timestamps only as explicitly recorded-time fallback for legacy captures. Keep missing stage observations unknown. Update browser and CLI terminal handling for absent delivery state, then verify saved historical report access in the browser.

@@ -43,7 +43,7 @@ def test_artifact_api_only_reads_named_terminal_artifacts(
             runs_root=store.directory(contract.run_id).parent,
         )
     )
-    service = ControlService(queue, agent=FakeAgent())
+    service = ControlService(queue, agent=FakeAgent(), history_root=tmp_path / "runs")
     prefix = f"/runs/{contract.run_id}/artifacts/"
     with pytest.raises(ValueError):
         service.dispatch("GET", prefix + "report.md", b"")

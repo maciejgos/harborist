@@ -27,7 +27,7 @@ def test_read_model_distinguishes_delivery_run_and_missing_package(
     assert view["state"] == "QUEUED"
     assert view["run"]["lifecycle"] == "CREATED"
     assert not view["package_available"]
-    service = ControlService(queue, agent=FakeAgent())
+    service = ControlService(queue, agent=FakeAgent(), history_root=tmp_path / "runs")
     assert service.worker.execute_next()
     view = service.dispatch("GET", f"/runs/{contract.run_id}", b"")
     assert view["state"] == "FINISHED"
@@ -60,7 +60,11 @@ def test_invalid_lifecycle_is_explicitly_unavailable(
 
 
 def test_unknown_and_traversal_routes_fail(tmp_path: Path) -> None:
-    service = ControlService(QueueStore(tmp_path / "control"), agent=FakeAgent())
+    service = ControlService(
+        QueueStore(tmp_path / "control"),
+        agent=FakeAgent(),
+        history_root=tmp_path / "runs",
+    )
     for path in (f"/runs/{uuid4()}", "/runs/../../secret", "/artifacts/etc/passwd"):
         with pytest.raises(ValueError):
             service.dispatch("GET", path, b"")

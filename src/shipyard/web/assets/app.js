@@ -1,6 +1,7 @@
 'use strict';
 const stages = ['intake', 'design', 'plan', 'build', 'test', 'review', 'package'];
 const terminal = new Set(['FINISHED', 'FAILED', 'INTERRUPTED']);
+const finished = record => terminal.has(record.state) || ['COMPLETED', 'FAILED', 'CANCELLED'].includes(record.run?.lifecycle);
 const $ = id => document.getElementById(id);
 let records = [], selected = location.hash.slice(1), busy = false, timer, lastSuccess = null, artifactRequest = 0;
 const text = (tag, value, className) => { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node; };
@@ -18,10 +19,11 @@ function filtered() {
 }
 function renderHistory() {
   const list = $('runs');
+  const scrollTop = list.scrollTop;
   const focusId = document.activeElement?.dataset.runId;
   list.replaceChildren();
   const visible = filtered();
-  $('history-status').textContent = records.length ? `${visible.length} of ${records.length} Runs` : 'No submissions yet. Start a Run from the CLI.';
+  $('history-status').textContent = records.length ? `${visible.length} of ${records.length} Runs` : 'No saved Runs yet. Start a Run from the CLI.';
   if (records.length && !visible.length) $('history-status').textContent = 'No matching Runs.';
   for (const record of visible) {
     const id = record.submission.run_id;
@@ -31,10 +33,11 @@ function renderHistory() {
     button.append(text('span', record.title || 'Untitled request', 'run-title'));
     const meta = text('span', '', 'run-meta');
     meta.append(text('span', id.slice(0, 8), 'mono muted'));
-    const state = record.run?.outcome || record.run?.failure_reason || record.state;
+    const state = record.run?.outcome || record.run?.failure_reason || record.state || record.run?.lifecycle || 'UNAVAILABLE';
     meta.append(text('span', state, 'state ' + tone(state)));
     button.append(meta); button.addEventListener('click', () => choose(id)); list.append(button);
   }
+  list.scrollTop = scrollTop;
   if (focusId) [...list.children].find(node => node.dataset.runId === focusId)?.focus({preventScroll: true});
 }
 function choose(id) {
@@ -55,7 +58,7 @@ function renderDetail() {
   for (const name of stages) {
     const observation = record.stages?.[name];
     let state = observation?.state || (name === 'intake' && record.run ? 'completed' : 'unknown');
-    if (state === 'started' && terminal.has(record.state)) state = 'interrupted';
+    if (state === 'started' && finished(record)) state = 'interrupted';
     const item = text('li', '', 'stage'); item.dataset.state = state;
     item.append(text('span', state === 'completed' ? '✓' : state === 'started' ? '●' : state === 'failed' ? '×' : '·', 'stage-symbol'), text('span', name.toUpperCase(), 'stage-name'), text('span', state === 'unknown' ? 'Not recorded' : state === 'started' ? 'Running' : state[0].toUpperCase() + state.slice(1), 'stage-state'));
     timeline.append(item);
@@ -65,9 +68,9 @@ function renderDetail() {
   const fields = text('dl', '');
   pair(fields, 'Status', record.run?.lifecycle, tone(record.run?.lifecycle));
   pair(fields, 'Attempt', record.attempt_id, 'mono');
-  pair(fields, 'Delivery', record.state, tone(record.state));
+  if (record.state) pair(fields, 'Delivery', record.state, tone(record.state));
   pair(fields, 'Verified candidate', record.candidate_sha, 'mono');
-  pair(fields, 'Submitted', date(record.submitted_at), 'mono');
+  pair(fields, record.source === 'saved' ? 'Recorded' : 'Submitted', date(record.submitted_at || record.recorded_at), 'mono');
   pair(fields, 'Updated', date(record.updated_at), 'mono');
   if (record.run?.outcome) pair(fields, 'Outcome', record.run.outcome, tone(record.run.outcome));
   if (record.run?.failure_reason) pair(fields, 'Failure', record.run.failure_reason, 'bad');
@@ -78,10 +81,13 @@ function renderDetail() {
     const button = text('button', name === 'report.md' ? 'Read report' : 'View evidence'); button.type = 'button';
     button.dataset.artifactName = name; button.addEventListener('click', () => showArtifact(record.submission.run_id, name)); links.append(button);
   }
-  if (!links.children.length) links.append(text('p', terminal.has(record.state) ? 'No terminal report is available. Inspect the retained Run records.' : 'Reports and evidence become available during PACKAGE.', 'muted'));
+  if (!links.children.length) links.append(text('p', finished(record) ? 'No terminal report is available. Inspect the retained Run records.' : 'Reports and evidence become available during PACKAGE.', 'muted'));
   evidence.append(links); main.append(evidence);
   const current = text('section', ''); current.append(text('h3', 'What is happening'));
   let message = record.state === 'QUEUED' ? 'Waiting for the execution service.' : record.state === 'INTERRUPTED' ? 'The service stopped during this execution. The Run will not be retried automatically.' : record.state === 'FAILED' ? 'Execution could not finish. Inspect the error below and retained Run records.' : record.state === 'FINISHED' ? 'Execution has finished. Review the outcome and evidence above.' : record.progress?.state === 'started' ? `${record.progress.stage.toUpperCase()} is running. Progress is observational; validated Run state is authoritative.` : 'Waiting for the next recorded stage update.';
+  if (record.source === 'saved') {
+    message = !record.run ? 'This saved Run could not be read. Inspect the error below.' : record.run.lifecycle === 'COMPLETED' ? 'Execution has finished. Review the outcome and evidence above.' : record.run.lifecycle === 'FAILED' ? 'Execution failed. Review the failure and retained evidence.' : record.run.lifecycle === 'CANCELLED' ? 'Execution was cancelled.' : record.run.lifecycle === 'CREATED' ? 'This request was captured but has not started execution.' : 'The saved records report RUNNING. No background-service progress is recorded for this Run.';
+  }
   current.append(text('p', message, 'notice'));
   for (const error of [record.error, record.run_error]) if (error) current.append(text('p', error, 'notice error'));
   if (record.progress?.reason) current.append(text('p', record.progress.reason, 'muted'));

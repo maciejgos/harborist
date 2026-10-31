@@ -41,7 +41,7 @@ class Agent(FakeAgent):
         while not (root / 'release').exists():
             time.sleep(0.02)
         return super().execute(request)
-ControlService(QueueStore(root), agent=Agent()).serve()
+ControlService(QueueStore(root), agent=Agent(), history_root=root / "runs").serve()
 """
     return subprocess.Popen(
         [sys.executable, "-c", script, str(root)],

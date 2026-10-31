@@ -257,3 +257,10 @@ queue state or lifecycle transitions. Closing the monitor cannot stop a Run.
 Per-stage observations persist in queue snapshots and never grant verification;
 missing historical observations remain explicitly unknown. Named report/evidence
 viewing is a bounded control-plane read, not unrestricted filesystem serving.
+
+
+Run history (specification 059) merges saved captures in ~/.shipyard/runs with
+service delivery records through a read-only catalog. Historical Runs retain
+validated lifecycle/evidence but have no fabricated queue state or execution
+locator. Discovery never submits, mutates or resumes work. The browser still
+uses only the canonical API; it does not scan storage directly.

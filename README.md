@@ -47,7 +47,7 @@ Application requires the branch to be eligible for advancement. See
 | `shipyard intake <source>` | Capture frozen inputs without executing. |
 | `shipyard run <run-id>` | Submit a saved CREATED Run. |
 | `shipyard service start/status/stop` | Manage background execution. |
-| `shipyard runs` / `shipyard status <run-id> --wait` | Reconnect and inspect delivery/results. |
+| `shipyard runs` / `shipyard status <run-id> --wait` | Inspect saved history and service delivery/results. |
 | `shipyard web` | Watch execution at http://127.0.0.1:8765. |
 | `shipyard inspect <run-id>` | Validate and print the frozen contract. |
 | `shipyard methodology <run-id>` | Preview frozen playbook and skills. |

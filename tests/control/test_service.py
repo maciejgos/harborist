@@ -31,7 +31,9 @@ def test_exclusive_owner_and_os_release() -> None:
 def test_local_health_stop_and_private_socket() -> None:
     with TemporaryDirectory(prefix="sy-", dir="/tmp") as directory:
         root = Path(directory)
-        service = ControlService(QueueStore(root), agent=FakeAgent())
+        service = ControlService(
+            QueueStore(root), agent=FakeAgent(), history_root=root / "runs"
+        )
         thread = Thread(target=service.serve)
         thread.start()
         assert service.ready.wait(5)
@@ -52,7 +54,9 @@ def test_local_health_stop_and_private_socket() -> None:
 def test_invalid_json_request_has_explicit_error() -> None:
     with TemporaryDirectory(prefix="sy-", dir="/tmp") as directory:
         root = Path(directory)
-        service = ControlService(QueueStore(root), agent=FakeAgent())
+        service = ControlService(
+            QueueStore(root), agent=FakeAgent(), history_root=root / "runs"
+        )
         thread = Thread(target=service.serve)
         thread.start()
         assert service.ready.wait(5)
@@ -110,7 +114,9 @@ def test_stop_drains_active_run_and_preserves_pending_claims(
                     runs_root=store.directory(run_id).parent,
                 )
             )
-        service = ControlService(queue, agent=BlockingAgent())
+        service = ControlService(
+            queue, agent=BlockingAgent(), history_root=tmp_path / "runs"
+        )
         thread = Thread(target=service.serve)
         thread.start()
         try:

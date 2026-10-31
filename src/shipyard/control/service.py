@@ -12,10 +12,11 @@ from typing import BinaryIO, Self
 from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
+from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueStore, Submission
-from shipyard.control.read_model import read_record
 from shipyard.control.worker import Worker
 from shipyard.domain import RunLifecycle
+from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 
 MAX_REQUEST = 64 * 1024
@@ -49,7 +50,12 @@ class ServiceOwnership:
 
 
 class ControlService:
-    def __init__(self, queue: QueueStore, *, agent: NativeAgent) -> None:
+    def __init__(
+        self, queue: QueueStore, *, agent: NativeAgent, history_root: Path | None = None
+    ) -> None:
+        self.history = RunHistory(
+            queue, root=history_root if history_root is not None else runs_root()
+        )
         self.queue = queue
         self.worker = Worker(queue, agent=agent)
         self.stopping = Event()
@@ -74,10 +80,7 @@ class ControlService:
                 return self.queue.submit(submission).model_dump(mode="json")
         if method == "GET" and path == "/runs":
             return {
-                "runs": [
-                    read_record(item).model_dump(mode="json")
-                    for item in self.queue.list()
-                ]
+                "runs": [item.model_dump(mode="json") for item in self.history.list()]
             }
         if method == "GET" and "/artifacts/" in path:
             parts = path.strip("/").split("/")
@@ -88,7 +91,11 @@ class ControlService:
                 or parts[3] not in ("report.md", "evidence.json")
             ):
                 raise ValueError("Unknown artifact route")
-            record = self.queue.get(UUID(parts[1]))
+            record = self.history.get(UUID(parts[1]))
+            if record.run is None:
+                raise ValueError(
+                    "Run records are unavailable; cannot read terminal artifacts"
+                )
             store = FileRunStore(root=record.submission.runs_root)
             state = store.load_state(record.submission.run_id)
             if state.lifecycle not in (
@@ -111,9 +118,9 @@ class ControlService:
                 raise ValueError("Artifact exceeds the 2 MiB viewing limit")
             return {"name": parts[3], "content": content.decode("utf-8")}
         if method == "GET" and path.startswith("/runs/"):
-            return read_record(
-                self.queue.get(UUID(path.removeprefix("/runs/")))
-            ).model_dump(mode="json")
+            return self.history.get(UUID(path.removeprefix("/runs/"))).model_dump(
+                mode="json"
+            )
         raise ValueError("Unknown service route or method")
 
     def serve(self) -> None:
