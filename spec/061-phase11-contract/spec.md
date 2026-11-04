@@ -1,0 +1,6 @@
+# Specification: Phase 11 continuation contract
+
+- AC-001: Continuation is explicitly authorized as rework or recovery and creates a new Attempt inside the same Run. Cancelled, clarified, rescoped and VERIFIED Runs cannot be continued. Rework accepts TEST_FAILED or CHANGES_REQUIRED with an exact previous candidate; recovery accepts only EXECUTION_FAILED, INVALID_STAGE_OUTPUT, CREDENTIAL_UNAVAILABLE or CREDENTIAL_REJECTED.
+- AC-002: Rework starts at PLAN from the previous candidate and reuses the frozen spec. Recovery restarts at DESIGN if no validated spec exists, otherwise PLAN; it discards partial work and starts from the latest durable candidate or frozen base. Every produced candidate receives fresh TEST and independent REVIEW.
+- AC-003: The frozen contract, profile, methodology and spec never change. Rework feedback is bounded input to PLAN; incompatible feedback produces NEEDS_RESCOPING and requires a new Run.
+- AC-004: Continuation consumes cumulative remaining Run time. Explicit additional seconds are recorded as a grant; missing timing after interrupted execution requires an explicit grant and conservatively consumes the previous allowance. No failed native session resumes.
