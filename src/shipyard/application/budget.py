@@ -30,9 +30,15 @@ class BudgetClock:
         self,
         budget: ExecutionBudget,
         *,
+        spent_seconds: float = 0,
+        granted_seconds: int = 0,
         monotonic: Callable[[], float] = time.monotonic,
         utcnow: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        if not math.isfinite(spent_seconds) or spent_seconds < 0 or granted_seconds < 0:
+            raise ValueError("Prior spending and explicit grants must be nonnegative")
+        self.spent_seconds = spent_seconds
+        self.granted_seconds = granted_seconds
         self.budget = budget
         self._monotonic = monotonic
         self._utcnow = utcnow
@@ -50,7 +56,7 @@ class BudgetClock:
         return now - self._start
 
     def allowance(self, stage: ArtifactStage, *, admission: bool = True) -> float:
-        limit = self.budget.total_seconds
+        limit = self.budget.total_seconds + self.granted_seconds - self.spent_seconds
         if stage in (ArtifactStage.DESIGN, ArtifactStage.PLAN, ArtifactStage.BUILD):
             limit -= self.budget.verification_reserve_seconds
         remaining = limit - self.elapsed()
@@ -71,6 +77,12 @@ class BudgetClock:
             started_at=start_time,
             ended_at=self._utcnow(),
             duration_seconds=end - start,
-            original_seconds=self.budget.total_seconds,
-            remaining_seconds=max(0, self.budget.total_seconds - end),
+            original_seconds=self.budget.total_seconds + self.granted_seconds,
+            remaining_seconds=max(
+                0,
+                self.budget.total_seconds
+                + self.granted_seconds
+                - self.spent_seconds
+                - end,
+            ),
         )

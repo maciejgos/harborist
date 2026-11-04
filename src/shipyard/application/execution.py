@@ -26,6 +26,7 @@ from shipyard.git import GitRepository
 from shipyard.git.repository import GitReadError, GitWorkspaceError
 from shipyard.paths import legacy_run_workspace
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.continuation import execution_lock, load_continuation
 from shipyard.persistence.workspace import (
     WorkspaceSelection,
     load_layout,
@@ -44,19 +45,58 @@ def execute_run(
     clock: BudgetClock | None = None,
     progress: ProgressCallback | None = None,
 ) -> RunEvidence:
+    """Execute one fresh Attempt under the local Run execution lock."""
+    with execution_lock(store, run_id):
+        return _execute_run(
+            store=store.pinned(run_id),
+            run_id=run_id,
+            repository=repository,
+            workspace=workspace,
+            agent=agent,
+            clock=clock,
+            progress=progress,
+        )
+
+
+def _execute_run(
+    *,
+    store: FileRunStore,
+    run_id: UUID,
+    repository: GitRepository,
+    workspace: Path | None,
+    agent: NativeAgent,
+    clock: BudgetClock | None,
+    progress: ProgressCallback | None,
+) -> RunEvidence:
     """Execute once, preserving partial work and terminal evidence.
 
-    Retry/recovery and concurrent local writers are unsupported. PACKAGE failures
-    propagate to the caller after terminal state has been persisted.
+    Continuations use an explicit durable admission and fresh upstream inputs.
+    PACKAGE failures propagate after terminal state has been persisted.
     """
     updates = ExecutionProgress(progress)
     contract = store.load(run_id)
     if clock is not None and clock.budget != contract.execution.budget:
         raise ValueError("Clock must use the frozen execution budget")
     directory = store.directory(run_id)
+    continuation = (
+        load_continuation(store, run_id) if store.selected_number(run_id) else None
+    )
+    if clock is not None and (
+        clock.spent_seconds != (continuation.spent_seconds if continuation else 0)
+        or clock.granted_seconds
+        != (continuation.granted_seconds if continuation else 0)
+    ):
+        raise ValueError("Clock must use the recorded spending and grants")
     selection = load_selection(directory, run_id)
     if workspace is None:
-        if selection is not None:
+        if continuation is not None:
+            workspace = (
+                store.original_directory(run_id).parent.parent
+                / "workspaces"
+                / str(run_id)
+                / str(continuation.attempt.attempt_id)
+            )
+        elif selection is not None:
             workspace = selection.path
         elif load_layout(directory, run_id) is not None:
             workspace = directory / "workspace"
@@ -64,7 +104,8 @@ def execute_run(
             workspace = legacy_run_workspace(run_id)
     validate_workspace_placement(path=workspace, run_directory=directory)
     workspace = repository.preflight_workspace(
-        base_sha=contract.base_sha, path=workspace
+        base_sha=continuation.attempt.start_sha if continuation else contract.base_sha,
+        path=workspace,
     )
     try:
         workspace.parent.mkdir(parents=True, exist_ok=True)
@@ -80,15 +121,25 @@ def execute_run(
             "inspect retained data; use a separate intake for a new Run, not --workspace to retry"
         )
     run = store.begin(run_id)
-    clock = clock or BudgetClock(contract.execution.budget)
+    clock = clock or BudgetClock(
+        contract.execution.budget,
+        spent_seconds=continuation.spent_seconds if continuation else 0,
+        granted_seconds=continuation.granted_seconds if continuation else 0,
+    )
     directory = store.directory(run_id)
-    attempt = Attempt.create(run_id, contract.base_sha)
+    attempt = (
+        continuation.attempt
+        if continuation
+        else Attempt.create(run_id, contract.base_sha)
+    )
     stages: list[StageExecution] = []
     timings: list[Timing] = []
     candidate: Candidate | None = None
     test: TestExecution | None = None
     error_text: str | None = None
     upstream: dict[str, Path] = {}
+    if continuation is not None and continuation.spec_digest is not None:
+        upstream["spec.md"] = directory / "frozen-spec.md"
     try:
         with (directory / "attempt.json").open("x", encoding="utf-8") as output:
             output.write(attempt.model_dump_json())
@@ -110,6 +161,10 @@ def execute_run(
             StageReceipt(stage=ArtifactStage.INTAKE, outcome=StepOutcome.SUCCEEDED)
         )
         validate_workspace_placement(path=workspace, run_directory=directory)
+        if "spec.md" in upstream:
+            routing = routing.accept(
+                StageReceipt(stage=ArtifactStage.DESIGN, outcome=StepOutcome.SUCCEEDED)
+            )
         isolated = repository.create_workspace(attempt=attempt, path=workspace)
         for stage in (
             AgentStage.DESIGN,
@@ -117,12 +172,15 @@ def execute_run(
             AgentStage.BUILD,
             AgentStage.REVIEW,
         ):
+            if stage == AgentStage.DESIGN and "spec.md" in upstream:
+                updates.emit(ArtifactStage.DESIGN, "skipped", "FROZEN_SPEC_REUSED")
+                continue
             mark = clock.mark()
             artifact_stage = ArtifactStage(stage.value)
             try:
                 allowance = math.floor(clock.allowance(artifact_stage))
                 context = (
-                    upstream
+                    dict(upstream)
                     if stage != AgentStage.REVIEW
                     else {
                         "spec.md": upstream["spec.md"],
@@ -134,6 +192,10 @@ def execute_run(
                         ),
                     }
                 )
+                if stage == AgentStage.PLAN and continuation is not None:
+                    context["continuation-context.json"] = (
+                        directory / "continuation-context.json"
+                    )
                 updates.emit(artifact_stage, "started")
                 execution = execute_stage(
                     contract=contract,
@@ -187,7 +249,8 @@ def execute_run(
                     candidate = isolated.publish_candidate(
                         message=candidate_message(
                             intent=contract.intent, attempt=attempt
-                        )
+                        ),
+                        attempt_scoped=continuation is not None,
                     )
                     clock.allowance(artifact_stage, admission=False)
                     if execution.output.plan_update is not None:
@@ -273,6 +336,9 @@ def execute_run(
             stage_timings=tuple(timings),
             error=error_text,
             workspace=workspace,
+            reused_specification=upstream.get("spec.md")
+            if continuation and continuation.spec_digest
+            else None,
         )
     except BaseException as error:
         updates.emit(

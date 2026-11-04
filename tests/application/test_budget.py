@@ -36,3 +36,17 @@ def test_clock_rejects_backward_measurements() -> None:
     )
     with pytest.raises(ValueError, match="nondecreasing"):
         clock.elapsed()
+
+
+def test_continuation_spends_prior_time_and_records_only_current_duration() -> None:
+    ticks = [10.0]
+    budget = ExecutionBudget(total_seconds=100, verification_reserve_seconds=20)
+    clock = BudgetClock(
+        budget, monotonic=lambda: ticks[0], spent_seconds=60, granted_seconds=10
+    )
+    assert clock.allowance(ArtifactStage.BUILD) == 30
+    ticks[0] += 5
+    timing = clock.timing(None)
+    assert timing.duration_seconds == 5
+    assert timing.original_seconds == 110
+    assert timing.remaining_seconds == 45
