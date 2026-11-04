@@ -546,8 +546,9 @@ routing, lifecycle/event persistence and PACKAGE. Early software outcomes, faile
 checks, invalid output, provider failures, cancellation and budget exhaustion each
 produce an explicit terminal state. Unexpected executor exceptions produce
 INTERNAL_ERROR. Failed TEST never invokes REVIEW. PACKAGE runs outside admission
-checks. The executor preserves workspaces and rejects any second admission;
-there is no retry/recovery or background service.
+checks. The executor preserves workspaces and rejects a second admission of the
+same Attempt. The local service and explicit continuation wrap this synchronous
+core without agent-session continuity.
 Before lifecycle admission it checks repository availability, the exact frozen
 commit, and fresh workspace placement outside the resolved checkout. Invalid
 paths leave the capture CREATED. New captures select
@@ -808,3 +809,35 @@ previous/resulting SHAs. Success requires a durable receipt and confirmed target
 Run artifacts remain byte-for-byte immutable; receipts are not verification
 evidence. Full transactions across Git and storage, power-loss atomicity and
 concurrent external checkout writers are outside the PoC guarantees.
+
+## Phase 11 implementation
+
+`domain/continuation.py` holds the explicit eligibility/lineage rules and bounded
+request contract. `persistence/continuation.py` admits immutable numbered Attempts
+under a nonblocking POSIX directory lock and records predecessor, input digests,
+cumulative spending and explicit grants. `FileRunStore.pinned` selects a stable
+Attempt during execution and evidence validation; ordinary reads choose latest.
+Previous journals keep their own terminal snapshot and never acquire a fabricated
+restart transition.
+
+`evidence/index.py` shares digest-checked PACKAGE reads with candidate application.
+`evidence/reuse.py` validates a completed DESIGN capture after worker loss, including
+its invocation's frozen profile/guidance and artifact ownership. A reused spec is
+an explicit prerequisite receipt and a separate frozen input, never a fabricated
+fresh DESIGN invocation. `execute_run` runs PLAN/BUILD and fresh TEST/REVIEW for
+all descendant candidates. `BudgetClock` keeps the original budget object while
+subtracting prior spending and adding only recorded grants; execution duration
+measures this Attempt and remaining seconds measure the whole Run.
+
+`cli/continuation.py` resolves saved context and implements `rework`/`recover`.
+`Submission.continuation` carries an expected predecessor and request UUID. Queue
+history retains previous deliveries; duplicate requests return old records, active
+claims cannot be replaced, and the worker revalidates before creating an Attempt.
+Read models select latest evidence and discard observations from older delivery
+identities. Candidate application checks the latest Attempt ref and complete
+fresh verification; copied specs do not copy verification.
+
+Partial admission or inconsistent journal writes remain fail-closed, retained
+records. No automatic repair, native-session resume, remote infrastructure or
+GitHub publication is introduced. See specifications 061–065 and the acceptance
+report for tested interruption and budget boundaries.

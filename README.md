@@ -2,10 +2,10 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 10 local background control plane completed on 2026-11-04 around the
-> synchronous, revision-bound execution core, including a lightweight browser
-> execution monitor. Phase 9 PoC validation is complete by owner decision
-> on 2026-11-04; see the [service guide](docs/background-control-plane.md).
+> **Status:** Phase 11 rework and recovery is complete (2026-11-04), with fresh
+> Attempts, frozen-spec reuse and cumulative budgets. The local background service
+> and read-only browser monitor wrap the synchronous execution core. See the
+> [Phase 11 acceptance report](spec/065-phase11-acceptance/report.md).
 
 ## Quick start
 
@@ -46,6 +46,8 @@ Application requires the branch to be eligible for advancement. See
 | `shipyard run <source>` | Capture and submit a request. |
 | `shipyard intake <source>` | Capture frozen inputs without executing. |
 | `shipyard run <run-id>` | Submit a saved CREATED Run. |
+| `shipyard rework <run-id> --feedback "..."` | Start a fresh Attempt after rejected software. |
+| `shipyard recover <run-id>` | Explicitly recover an eligible execution failure. |
 | `shipyard service start/status/stop` | Manage background execution. |
 | `shipyard runs` / `shipyard status <run-id> --wait` | Inspect saved history and service delivery/results. |
 | `shipyard web` | Watch execution at http://127.0.0.1:8765. |

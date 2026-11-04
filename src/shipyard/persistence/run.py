@@ -128,10 +128,10 @@ class FileRunStore:
 
     def numbers(self, run_id: UUID) -> list[int]:
         parent = self.original_directory(run_id) / "attempts"
-        if not parent.exists():
-            return [0]
         if parent.is_symlink():
             raise RunPersistenceError("Attempts directory must not be a symlink")
+        if not parent.exists():
+            return [0]
         numbers: list[int] = []
         for entry in parent.iterdir():
             if entry.is_symlink() or not entry.is_dir() or not entry.name.isdigit():

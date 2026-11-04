@@ -42,17 +42,15 @@ def test_recovery_failure_allowlist(reason: FailureReason) -> None:
             authorize_continuation(run, previous, None, request)
 
 
-@pytest.mark.parametrize("state", ["verified", "cancelled", "clarify", "running"])
+@pytest.mark.parametrize("state", ["rescope", "cancelled", "clarify", "running"])
 def test_ineligible_states_and_stale_identity(state: str) -> None:
     run = Run.create().start()
     if state == "cancelled":
         run = run.cancel()
-    elif state in {"verified", "clarify"}:
-        # A VERIFIED record requires independent evidence; no such record can be
-        # fabricated for admission. Test other non-rework completed outcomes.
+    elif state in {"rescope", "clarify"}:
         run = run.complete(
             RunOutcome.NEEDS_RESCOPING
-            if state == "verified"
+            if state == "rescope"
             else RunOutcome.NEEDS_CLARIFICATION
         )
     previous = Attempt.create(run.run_id, "a" * 40)

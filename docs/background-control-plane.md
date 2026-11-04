@@ -27,9 +27,12 @@ team access remain outside this slice.
 
 POST /runs accepts versioned execution locators for an already captured Run.
 Intake remains a CLI operation and freezes inputs before submission. Run UUID is
-the idempotency key within this control directory. Repeating an identical
+the initial-submission idempotency key within this control directory. Repeating an identical
 submission returns the existing record; conflicting locators fail. Requests
-must name resolved absolute paths. Only CREATED Runs may be newly submitted.
+must name resolved absolute paths. Initial submissions require CREATED Runs. Phase 11 submissions can carry an
+explicit continuation request UUID and expected predecessor identity; admission
+is validated before queueing and checked again by the serial worker. Earlier
+deliveries are archived separately; replay never creates another Attempt.
 Queue order is submission time then UUID. Queue wait does not consume the frozen
 execution budget. Work is claimed durably before executor admission.
 
@@ -39,8 +42,9 @@ FINISHED means the executor returned packaged evidence, not VERIFIED. FAILED
 means the executor raised; retained Run records remain authoritative.
 INTERRUPTED means service ownership was lost after claim. Restart never retries
 or resumes it, even if the Run still appears CREATED or terminal. Operators
-inspect retained records and use a fresh intake where necessary (Phase 11 will
-provide recovery rules). A crash after PACKAGE but before queue completion may
+inspect retained records and explicitly use `shipyard recover` where eligible
+(with an additional-time grant after worker loss), or use fresh intake. See
+[rework and recovery](usage.md#rework-and-recovery). A crash after PACKAGE but before queue completion may
 therefore show INTERRUPTED beside a valid terminal Run.
 
 GET /health, GET /runs and GET /runs/{uuid} read persisted records. Run history

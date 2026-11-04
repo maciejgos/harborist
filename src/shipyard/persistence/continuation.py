@@ -15,6 +15,7 @@ from shipyard.domain.attempt import Attempt
 from shipyard.domain.continuation import ContinuationRequest, authorize_continuation
 from shipyard.domain.stage_result import AgentStage, StageStatus
 from shipyard.evidence.index import load_index
+from shipyard.evidence.reuse import load_durable_spec
 from shipyard.persistence.run import FileRunStore, RunPersistenceError
 
 
@@ -105,7 +106,13 @@ def load_continuation(store: FileRunStore, run_id: UUID) -> ContinuationRecord:
     elif record.interrupted and record.request.additional_seconds > 0:
         if previous_run.lifecycle == RunLifecycle.RUNNING:
             previous_run = previous_run.fail(FailureReason.EXECUTION_FAILED)
-        expected_spec = None
+        spec = load_durable_spec(
+            directory=previous_dir,
+            contract=contract,
+            attempt=previous,
+            inherited_digest=prior.spec_digest if prior else None,
+        )
+        expected_spec = hashlib.sha256(spec).hexdigest() if spec else None
     else:
         raise ValueError("Missing predecessor evidence")
     if record.spent_seconds != expected_spent or record.spec_digest != expected_spec:
@@ -171,6 +178,12 @@ def prepare_continuation(
             if run.lifecycle == RunLifecycle.RUNNING:
                 run = run.fail(FailureReason.EXECUTION_FAILED)
             spent = float(allowance)
+            spec = load_durable_spec(
+                directory=directory,
+                contract=contract,
+                attempt=previous,
+                inherited_digest=prior.spec_digest if prior else None,
+            )
         else:
             evidence, indexed = load_index(directory)
             if (

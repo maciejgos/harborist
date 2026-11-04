@@ -240,6 +240,29 @@ def package_run(
         f"Playbook: {contract.execution.playbook.name} / {contract.execution.playbook.sha256}",
         f"Verification configuration: {contract.verification.source_sha256}",
     ]
+    if (directory / "continuation.json").is_file():
+        from shipyard.persistence.continuation import ContinuationRecord
+
+        continuation = ContinuationRecord.model_validate_json(
+            (directory / "continuation.json").read_bytes()
+        )
+        if continuation.attempt != attempt:
+            raise ValueError("Continuation report belongs to another Attempt")
+        lines.extend(
+            [
+                "",
+                "## Continuation",
+                "",
+                f"Action: {continuation.request.action}",
+                f"Previous Attempt: `{continuation.request.expected_attempt_id}`",
+                f"Frozen Run budget: {contract.execution.budget.total_seconds}s",
+                f"Prior spending charged: {continuation.spent_seconds:.3f}s",
+                f"Explicit cumulative time grants: {continuation.granted_seconds}s",
+                "Interrupted predecessor: yes"
+                if continuation.interrupted
+                else "Interrupted predecessor: no",
+            ]
+        )
     lines.extend(
         f"Skill: {skill.name} / {skill.sha256}" for skill in contract.execution.skills
     )

@@ -51,7 +51,15 @@ def read_record(record: QueueRecord) -> RunView:
 
 
 def read_saved(root: Path, run_id: UUID) -> RunView:
-    directory = FileRunStore(root=root).directory(run_id)
+    try:
+        directory = FileRunStore(root=root).directory(run_id)
+    except ValueError, OSError:
+        return _project(
+            RunView(
+                submission=SavedRunLocation(run_id=run_id, runs_root=root),
+                source="saved",
+            )
+        )
     timestamps: dict[str, datetime] = {}
     for field, name in (("recorded_at", "contract.json"), ("updated_at", "run.json")):
         try:

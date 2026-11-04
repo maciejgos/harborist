@@ -136,6 +136,11 @@ class QueueStore:
             )
             if existing is not None and existing.submission == submission:
                 return existing
+            if existing is not None and (
+                existing.submission.repository != submission.repository
+                or existing.submission.runs_root != submission.runs_root
+            ):
+                raise ValueError("Conflicting repository or Runs root for existing Run")
             archived = self._archive_path(submission)
             if archived.exists():
                 record = QueueRecord.model_validate_json(archived.read_bytes())

@@ -163,7 +163,8 @@ save. `begin` exclusively reserves `.execution`, records CREATED/RUNNING events
 and updates the Run snapshot. `finish` appends one terminal event and replaces
 run.json, requiring matching frozen verification before VERIFIED persistence.
 Reload replays validated lifecycle events and rejects snapshot disagreement.
-Terminal Runs cannot be re-admitted or finalized again. Journal/snapshot updates
+An Attempt cannot be re-admitted or finalized again; explicit continuation
+reserves a separate Attempt directory. Journal/snapshot updates
 are not transactionally atomic; interrupted writes fail closed and remain
 inspectable. OS permissions do not protect against other local writers.
 
@@ -188,4 +189,43 @@ root. Queue snapshots are locked and atomically replaced; they do not make Run
 journals, Git and PACKAGE transactional. Interrupted claims are retained without
 automatic retry, session resume or evidence mutation. See the
 [background service guide](background-control-plane.md) for restart and shutdown
-semantics. Phase 11 recovery is not implemented.
+semantics. Explicit Phase 11 recovery creates a separate Attempt as described below.
+
+## Phase 11 attempt persistence
+
+The original Run directory remains the first Attempt's immutable evidence. Later
+Attempts live under `<runs-root>/<run-id>/attempts/000001`, `000002`, etc. Each has
+copied frozen contract/intent/layout, a create-only `continuation.json`, bounded
+`continuation-context.json`, optional `frozen-spec.md`, independent `run.json`,
+`attempt.json`, lifecycle journal, captures, timing and PACKAGE. The root locator
+is never moved. Normal RunStore reads select the highest contiguous number;
+explicit numbered stores can inspect history. Gaps, symlinks and malformed or
+incomplete latest captures are errors, never fallback to an older VERIFIED result.
+
+Admission holds an advisory lock on the original directory inode, checks the
+expected predecessor, digests and attribution, then creates the next directory
+exclusively. Execution holds the same lock. This is a local POSIX lock and
+filesystem-only protocol, without a multi-file transaction or power-loss repair.
+Terminal predecessor records are not reopened or overwritten. An interrupted
+RUNNING snapshot remains historical; explicit recovery records a fresh Attempt
+and the interruption in its continuation receipt.
+
+Frozen specs come from checked PACKAGE indexes or a complete ready DESIGN
+manifest with matching request/profile/guidance, artifact hashes and ownership.
+An inherited spec remains fixed even if a later Attempt lost its worker.
+Incomplete DESIGN output is never accepted as a spec. Prior TEST/REVIEW is context
+only; the new Attempt must establish its own exact-candidate verification.
+Continuation receipts retain cumulative spending, all explicit grants and input
+digests. Missing reliable terminal timing charges the previous allowance in full.
+
+Later default checkouts live outside evidence at
+`<runs-root-parent>/workspaces/<run-id>/<attempt-id>`. All earlier checkouts and
+candidate refs remain retained. Later candidates have create-only Attempt refs,
+while the original Run candidate ref continues to identify the first candidate.
+Application resolves the latest Attempt's exact ref and verification evidence.
+
+The service archives earlier delivery snapshots in
+`<control-root>/deliveries/<run-id>/<request-id>.json` (`initial.json` for the
+original submission). Queue records remain separate from validated lifecycle.
+Replaying a retained request returns its prior delivery; it cannot create an
+Attempt. New continuation requests are checked both at submission and execution.

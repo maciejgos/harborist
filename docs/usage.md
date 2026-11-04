@@ -242,8 +242,9 @@ journal and snapshot writes fails closed. This is trusted-local persistence, not
 power-loss atomicity, OS-enforced immutability or protection against manual edits.
 A disk failure can prevent a report: PACKAGE errors are surfaced after terminal
 persistence. Workspaces and candidate refs are retained for inspection; cleanup,
-resume/recovery, SIGTERM handling, background service and concurrent writers are
-out of scope. No live-provider evaluation is claimed.
+automatic session resumption, SIGTERM handling and distributed writers remain
+out of scope. Explicit Phase 11 continuation is described below; the local service
+is described in the service guide. No live-provider evaluation is claimed.
 
 See the [Phase 8 acceptance audit](../spec/045-phase8-acceptance-audit/report.md).
 
@@ -319,3 +320,63 @@ retry records only the observed no-op, not an assumed historical advancement.
 Git ref updates check the expected old SHA; no rollback is attempted. There is no
 cross-resource transaction or power-loss guarantee, and concurrent external
 checkout/file writers remain outside the local PoC guarantees.
+
+## Rework and recovery
+
+Rework a TEST_FAILED or CHANGES_REQUIRED result with a fresh Attempt in the same Run:
+
+```bash
+shipyard rework <run-id> --feedback 'Fix the failing AC-002 behavior'
+shipyard status <run-id> --wait
+```
+
+Recover an eligible infrastructure/output failure:
+
+```bash
+shipyard recover <run-id>
+```
+
+Both commands queue through the local service by default. Add `--foreground` to
+execute synchronously, and `--json` for machine-readable results. They use the same
+saved context and `--repo`, `--runs-dir`, `--context` and fresh `--workspace` options
+as execution. `--expected-attempt <attempt-uuid>` rejects a stale predecessor;
+without it the CLI captures the currently selected Attempt identity. Background
+exit zero means acceptance. Foreground exits are 0 for VERIFIED, 2 for other
+software outcomes, 1 for failure and 130 for operator cancellation.
+
+Recovery accepts EXECUTION_FAILED, INVALID_STAGE_OUTPUT, CREDENTIAL_UNAVAILABLE
+and CREDENTIAL_REJECTED. Configuration errors, internal errors, exhausted-budget
+failures, CANCELLED, VERIFIED, clarification and rescoping outcomes require a new
+Run. Neither command resumes a native agent session. Recovery discards partial
+checkout work; it uses the previous packaged candidate when available, otherwise
+the failed Attempt's start SHA. Rework always starts at the previous candidate.
+A ready durable spec is reused; PLAN and BUILD run afresh, followed by fresh
+mandatory TEST and independent REVIEW for the exact new candidate. Failed TEST
+still prevents REVIEW. Feedback cannot rewrite the spec; a material acceptance
+change produces NEEDS_RESCOPING and requires a new Run.
+
+All Attempts share the frozen Run budget and verification reserve. Time already
+spent is subtracted. Add `--additional-seconds 600` only when explicitly granting
+more time. Worker loss or missing PACKAGE/timing requires a grant and
+conservatively charges the entire previous allowance, so the grant must exceed
+the frozen verification reserve. For example:
+
+```bash
+shipyard recover <run-id> --additional-seconds 600
+```
+
+The service never automatically retries an INTERRUPTED claim. Stop the old
+executor before recovery; the Run lock rejects an active parent executor.
+Incomplete admissions, corrupt journals, missing Attempt identity or invalid
+upstream captures fail closed and require inspection/new intake rather than
+in-place repair. A preflight error before Attempt creation leaves the predecessor
+unchanged. Failures after reservation retain the new directory and are never
+silently rolled back.
+
+Reports and normal status refer to the latest Attempt. Prior evidence stays at
+its original paths; subsequent captures are under
+`<runs-root>/<run-id>/attempts/000001`, `000002`, and so on. Later default checkouts
+are `<runs-root-parent>/workspaces/<run-id>/<attempt-id>`; use `--workspace` for
+custom placement. The original execution-context locator stays at the Run root.
+`shipyard apply` validates and applies only the latest VERIFIED candidate.
+Rework/recovery does not publish to GitHub or apply code automatically.

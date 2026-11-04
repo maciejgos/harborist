@@ -1,6 +1,6 @@
 # Shipyard Architecture
 
-This document describes the **Shipyard execution core** and the completed Phase 10 local background control plane. Broader Product infrastructure remains out of scope.
+This document describes the **Shipyard execution core** and the completed Phase 11 local rework/recovery workflow. Broader Product infrastructure remains out of scope.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -268,3 +268,38 @@ service delivery records through a read-only catalog. Historical Runs retain
 validated lifecycle/evidence but have no fabricated queue state or execution
 locator. Discovery never submits, mutates or resumes work. The browser still
 uses only the canonical API; it does not scan storage directly.
+
+## Phase 11 attempts and continuation
+
+Explicit `rework` and `recover` create fresh Attempt identities in the same Run.
+The first Attempt keeps its existing layout. Later Attempts own numbered
+`attempts/000001` directories with independent journals and terminal evidence;
+normal Run reads select the latest, without rewriting previous terminal records.
+A POSIX advisory lock on the original Run directory serializes admission and
+execution across foreground and service paths without adding files to evidence.
+
+Rework accepts TEST_FAILED or CHANGES_REQUIRED and starts at PLAN from the previous
+packaged candidate. Recovery accepts the documented execution-failure allowlist,
+discards partial checkout state and restarts at DESIGN or PLAN using validated
+durable specification evidence. Worker loss requires an explicit time grant;
+a completed DESIGN manifest can be checked independently when PACKAGE is absent.
+An already frozen spec survives interrupted rework. PLAN receives bounded prior
+plan, candidate, TEST, REVIEW and human feedback; incompatible feedback must return
+NEEDS_RESCOPING. There is no native-session resume or automatic retry.
+
+The immutable Run contract remains unchanged. A continuation record links the
+expected predecessor and fresh Attempt, copied-spec/context digests, cumulative
+time spending and explicit grants. The clock preserves the frozen verification
+reserve, subtracts all prior spending and adds only recorded grants. PACKAGE stays
+outside the budget. Every new candidate runs fresh trusted TEST and independent
+REVIEW, with no inherited verification. Later candidates use immutable
+`refs/shipyard/runs/<run>/attempts/<attempt>/candidate` refs; the original candidate
+ref remains intact. Explicit application validates the selected Attempt's ref.
+
+The queue retains earlier delivery snapshots under `deliveries/<run>/` and uses a
+continuation request UUID plus expected predecessor for idempotency. It rechecks
+admission at execution, never resumes interrupted claims and still runs one Run
+at a time. The monitor remains read-only and attributes observations to the
+current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
+[storage rules](docs/storage-and-recovery.md#phase-11-attempt-persistence) and the
+[acceptance audit](spec/065-phase11-acceptance/report.md).
