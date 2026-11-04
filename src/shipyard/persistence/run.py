@@ -29,12 +29,13 @@ class FileRunStore:
     recovery, or multi-file/power-loss atomicity guarantee.
     """
 
-    def __init__(self, *, root: Path) -> None:
+    def __init__(self, *, root: Path, attempt_number: int | None = None) -> None:
         self._root = root
+        self.attempt_number = attempt_number
 
     def save(self, contract: RunContract) -> None:
         contract = RunContract.model_validate(contract.model_dump())
-        directory = self._root / str(contract.run_id)
+        directory = self.directory(contract.run_id)
         try:
             self._root.mkdir(parents=True, exist_ok=True)
         except OSError as error:
@@ -43,6 +44,7 @@ class FileRunStore:
                 "check directory access and obstructing files or choose --runs-dir"
             ) from error
         try:
+            directory.parent.mkdir(parents=True, exist_ok=True)
             directory.mkdir()
         except FileExistsError as error:
             raise RunAlreadyExistsError(
@@ -58,7 +60,7 @@ class FileRunStore:
                 output.write(
                     Run(run_id=contract.run_id).model_dump_json().encode("utf-8")
                 )
-            FileIntentStore(root=self._root).save(contract.intent)
+            FileIntentStore(root=self._root, directory=directory).save(contract.intent)
             with (directory / "workspace-layout.json").open("xb") as output:
                 output.write(
                     WorkspaceLayout(run_id=contract.run_id)
@@ -75,20 +77,27 @@ class FileRunStore:
 
     def load(self, run_id: UUID) -> RunContract:
         run_id = _RUN_ID.validate_python(run_id)
-        directory = self._root / str(run_id)
+        directory = self.directory(run_id)
         try:
             contract = RunContract.model_validate_json(
                 (directory / "contract.json").read_bytes()
             )
             run = Run.model_validate_json((directory / "run.json").read_bytes())
-            intent = FileIntentStore(root=self._root).load(run_id)
+            intent = FileIntentStore(root=self._root, directory=directory).load(run_id)
             if contract.run_id != run_id or run.run_id != run_id:
                 raise ValueError("Persisted records must belong to requested Run")
             load_layout(directory, run_id)
             self.load_state(run_id)
+            if self.selected_number(run_id) != 0:
+                from shipyard.persistence.continuation import load_continuation
+
+                load_continuation(self, run_id)
+                if contract != self.pinned(run_id, 0).load(run_id):
+                    raise ValueError("Continuation changed the frozen contract")
             if run.verification is not None and (
                 run.verification.verification != contract.verification
-                or run.verification.attempt.start_sha != contract.base_sha
+                or run.verification.attempt.start_sha
+                != self.attempt_start(run_id, contract.base_sha)
             ):
                 raise ValueError("Verification must match frozen contract")
             if contract.intent != intent:
@@ -100,8 +109,52 @@ class FileRunStore:
                 "check the Run ID, --runs-dir and directory access"
             ) from error
 
-    def directory(self, run_id: UUID) -> Path:
+    def original_directory(self, run_id: UUID) -> Path:
         return self._root / str(_RUN_ID.validate_python(run_id))
+
+    def numbers(self, run_id: UUID) -> list[int]:
+        parent = self.original_directory(run_id) / "attempts"
+        if not parent.exists():
+            return [0]
+        if parent.is_symlink():
+            raise RunPersistenceError("Attempts directory must not be a symlink")
+        numbers: list[int] = []
+        for entry in parent.iterdir():
+            if entry.is_symlink() or not entry.is_dir() or not entry.name.isdigit():
+                raise RunPersistenceError("Invalid attempt directory")
+            number = int(entry.name)
+            if number < 1 or entry.name != f"{number:06d}":
+                raise RunPersistenceError("Invalid attempt number")
+            numbers.append(number)
+        numbers.sort()
+        if numbers != list(range(1, len(numbers) + 1)):
+            raise RunPersistenceError("Attempt history has gaps")
+        return [0, *numbers]
+
+    def selected_number(self, run_id: UUID) -> int:
+        return (
+            self.attempt_number
+            if self.attempt_number is not None
+            else self.numbers(run_id)[-1]
+        )
+
+    def pinned(self, run_id: UUID, number: int | None = None) -> FileRunStore:
+        return FileRunStore(
+            root=self._root,
+            attempt_number=self.selected_number(run_id) if number is None else number,
+        )
+
+    def directory(self, run_id: UUID) -> Path:
+        original = self.original_directory(run_id)
+        number = self.selected_number(run_id)
+        return original if number == 0 else original / "attempts" / f"{number:06d}"
+
+    def attempt_start(self, run_id: UUID, base: str) -> str:
+        if self.selected_number(run_id) == 0:
+            return base
+        from shipyard.persistence.continuation import load_continuation
+
+        return load_continuation(self, run_id).attempt.start_sha
 
     def load_state(self, run_id: UUID) -> Run:
         directory = self.directory(run_id)
@@ -183,7 +236,8 @@ class FileRunStore:
         contract = self.load(run.run_id)
         if run.verification is not None and (
             run.verification.verification != contract.verification
-            or run.verification.attempt.start_sha != contract.base_sha
+            or run.verification.attempt.start_sha
+            != self.attempt_start(run.run_id, contract.base_sha)
         ):
             raise RunPersistenceError("Verification must match the frozen contract")
         previous = self.load_state(run.run_id)

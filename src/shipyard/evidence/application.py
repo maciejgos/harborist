@@ -1,9 +1,8 @@
 """Read-only reconciliation of packaged verification with immutable captures."""
 
 import hashlib
-import stat
 from collections import Counter
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from uuid import UUID
 
 from shipyard.agents.base import AgentRequest
@@ -14,50 +13,17 @@ from shipyard.domain import RunLifecycle, RunOutcome
 from shipyard.domain.artifact import ArtifactKind, ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.stage_result import AgentStage, ReviewStageResult, StageStatus
+from shipyard.evidence.index import load_index
 from shipyard.evidence.package import RunEvidence
 from shipyard.persistence import FileRunStore
 from shipyard.skills.composition import compile_methodology, compose_guidance
 
 
-def _regular(path: Path) -> bytes:
-    if not stat.S_ISREG(path.lstat().st_mode):
-        raise ValueError(f"Evidence must be a regular file: {path}")
-    return path.read_bytes()
-
-
 def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
     """Validate the index before consuming records; never inspect workspace HEAD."""
-    directory = root / str(run_id)
-    if directory.is_symlink():
-        raise ValueError("Run directory must not be a symlink")
-    evidence = RunEvidence.model_validate_json(_regular(directory / "evidence.json"))
-    if evidence.version != 1:
-        raise ValueError("Unsupported evidence version")
-    indexed: dict[str, bytes] = {}
-    for entry in evidence.files:
-        relative = PurePosixPath(entry.path)
-        if (
-            not relative.parts
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or relative.as_posix() != entry.path
-            or entry.path in indexed
-            or relative.parts[0] == "workspace"
-            or entry.path == "evidence.json"
-        ):
-            raise ValueError(f"Unsafe or duplicate evidence path: {entry.path}")
-        path = directory
-        for part in relative.parts:
-            path = path / part
-            if path.is_symlink():
-                raise ValueError(f"Evidence symlink: {path}")
-        raw = _regular(path)
-        if (
-            len(raw) != entry.size_bytes
-            or hashlib.sha256(raw).hexdigest() != entry.sha256
-        ):
-            raise ValueError(f"Evidence length/digest mismatch: {entry.path}")
-        indexed[entry.path] = raw
+    store = FileRunStore(root=root).pinned(run_id)
+    directory = store.directory(run_id)
+    evidence, indexed = load_index(directory)
 
     def read(name: str) -> bytes:
         if name not in indexed:
@@ -81,7 +47,6 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
     ):
         if (directory / name).exists() or (directory / name).is_symlink():
             read(name)
-    store = FileRunStore(root=root)
     contract = store.load(run_id)
     run = store.load_state(run_id)
     attempt = Attempt.model_validate_json(read("attempt.json"))
