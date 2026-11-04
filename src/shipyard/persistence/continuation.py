@@ -130,7 +130,11 @@ def load_continuation(store: FileRunStore, run_id: UUID) -> ContinuationRecord:
 
 
 def prepare_continuation(
-    *, store: FileRunStore, run_id: UUID, request: ContinuationRequest
+    *,
+    store: FileRunStore,
+    run_id: UUID,
+    request: ContinuationRequest,
+    dry_run: bool = False,
 ) -> tuple[FileRunStore, ContinuationRecord]:
     with execution_lock(store, run_id):
         previous_store = store.pinned(run_id)
@@ -266,6 +270,8 @@ def prepare_continuation(
             interrupted=interrupted,
         )
         selected = store.pinned(run_id, record.previous_number + 1)
+        if dry_run:
+            return selected, record
         selected.save(contract)
         target = selected.directory(run_id)
         if spec is not None:

@@ -3,6 +3,7 @@
 import typer
 
 from shipyard.cli.apply import apply_command
+from shipyard.cli.continuation import recover, rework
 from shipyard.cli.inspection import inspect, methodology
 from shipyard.cli.intake import intake
 from shipyard.cli.monitoring import runs, status
@@ -19,6 +20,8 @@ app.command()(inspect)
 app.command()(methodology)
 app.command("run")(run_command)
 app.command("apply")(apply_command)
+app.command()(rework)
+app.command()(recover)
 
 app.add_typer(service_app, name="service")
 

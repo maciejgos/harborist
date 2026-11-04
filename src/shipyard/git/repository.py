@@ -173,11 +173,11 @@ class GitRepository:
             raise GitReadError("Cannot inspect candidate workspace") from error
 
     def validate_application_candidate(
-        self, *, run_id: UUID, base: str, candidate: str
+        self, *, run_id: UUID, base: str, candidate: str, attempt_id: UUID | None = None
     ) -> None:
         """Require original commit objects and the durable Run-owned ref."""
         self._application().validate_application_candidate(
-            run_id=run_id, base=base, candidate=candidate
+            run_id=run_id, base=base, candidate=candidate, attempt_id=attempt_id
         )
 
     def branch_sha(self, branch: str) -> str:

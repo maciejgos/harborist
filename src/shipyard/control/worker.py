@@ -6,6 +6,7 @@ from shipyard.application.progress import ProgressUpdate
 from shipyard.control.queue import Progress, QueueRecord, QueueStore
 from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.continuation import prepare_continuation
 
 
 class Worker:
@@ -32,8 +33,15 @@ class Worker:
             )
 
         try:
+            store = FileRunStore(root=submission.runs_root)
+            if submission.continuation is not None:
+                store, _ = prepare_continuation(
+                    store=store,
+                    run_id=submission.run_id,
+                    request=submission.continuation,
+                )
             execute_run(
-                store=FileRunStore(root=submission.runs_root),
+                store=store,
                 run_id=submission.run_id,
                 repository=GitRepository(path=submission.repository),
                 workspace=submission.workspace,

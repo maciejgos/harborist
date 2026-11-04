@@ -91,7 +91,21 @@ class FileRunStore:
             if self.selected_number(run_id) != 0:
                 from shipyard.persistence.continuation import load_continuation
 
-                load_continuation(self, run_id)
+                record = load_continuation(self, run_id)
+                attempt_path = directory / "attempt.json"
+                if attempt_path.exists():
+                    from shipyard.domain.attempt import Attempt
+
+                    if (
+                        Attempt.model_validate_json(attempt_path.read_bytes())
+                        != record.attempt
+                    ):
+                        raise ValueError("Attempt differs from explicit admission")
+                if (
+                    run.verification is not None
+                    and run.verification.attempt != record.attempt
+                ):
+                    raise ValueError("Verification belongs to another Attempt")
                 if contract != self.pinned(run_id, 0).load(run_id):
                     raise ValueError("Continuation changed the frozen contract")
             if run.verification is not None and (

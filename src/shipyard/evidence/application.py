@@ -60,7 +60,7 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
         or evidence.contract != contract
         or evidence.attempt != attempt
         or attempt.run_id != run_id
-        or attempt.start_sha != contract.base_sha
+        or attempt.start_sha != store.attempt_start(run_id, contract.base_sha)
         or candidate is None
         or test is None
         or candidate != run.verification.candidate
@@ -86,7 +86,30 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
             if Path(captured) != directory / name:
                 raise ValueError("TEST log path attribution mismatch")
     stages = {s.stage: s for s in evidence.stages}
-    if len(evidence.stages) != 4 or set(stages) != set(AgentStage):
+    required_stages = set(AgentStage)
+    if evidence.reused_spec_sha256 is not None:
+        from shipyard.persistence.continuation import load_continuation
+
+        read("continuation.json")
+        read("continuation-context.json")
+        record = load_continuation(store, run_id)
+        raw_spec = read("frozen-spec.md")
+        if (
+            record.attempt != attempt
+            or evidence.reused_spec_sha256 != record.spec_digest
+            or hashlib.sha256(raw_spec).hexdigest() != record.spec_digest
+        ):
+            raise ValueError("Reused specification provenance mismatch")
+        specification = raw_spec.decode()
+        required_stages.remove(AgentStage.DESIGN)
+    else:
+        design = stages.get(AgentStage.DESIGN)
+        specification = design.output.artifact if design is not None else None
+    if (
+        len(evidence.stages) != len(required_stages)
+        or set(stages) != required_stages
+        or specification is None
+    ):
         raise ValueError(
             "Application requires complete canonical native-stage captures"
         )
@@ -115,7 +138,7 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
             or inputs.get("intent.md") != contract.intent.markdown
             or (
                 stage.stage != AgentStage.DESIGN
-                and inputs.get("spec.md") != stages[AgentStage.DESIGN].output.artifact
+                and inputs.get("spec.md") != specification
             )
             or (
                 stage.stage == AgentStage.BUILD
@@ -123,6 +146,13 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
             )
         ):
             raise ValueError("Stage request attribution mismatch")
+        if (
+            stage.stage == AgentStage.PLAN
+            and "continuation-context.json" in inputs
+            and inputs["continuation-context.json"].encode()
+            != read("continuation-context.json")
+        ):
+            raise ValueError("Continuation PLAN input differs from frozen context")
         names = {
             "request.json": ArtifactKind.LOG,
             "stdout.log": ArtifactKind.LOG,
@@ -186,7 +216,6 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
             and read(f"{prefix}/plan.md").decode() != stage.output.plan_update
         ):
             raise ValueError("BUILD plan update mismatch")
-    design = stages[AgentStage.DESIGN]
     review_stage = stages[AgentStage.REVIEW]
     review = review_stage.output.result
     if not isinstance(review, ReviewStageResult):
@@ -194,7 +223,7 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
     request = AgentRequest.model_validate_json(read("review/request.json"))
     inputs = {i.name: i.content for i in request.inputs}
     if (
-        inputs.get("spec.md") != design.output.artifact
+        inputs.get("spec.md") != specification
         or inputs.get("test-evidence.json", "").encode() != read("test/manifest.json")
         or review_stage.test_evidence_sha256
         != hashlib.sha256(read("test/manifest.json")).hexdigest()
@@ -212,7 +241,7 @@ def load_application_evidence(*, root: Path, run_id: UUID) -> RunEvidence:
         attempt=attempt,
         candidate=candidate,
         test=test,
-        specification=design.output.artifact or "",
+        specification=specification or "",
         review=review,
     )
     if (

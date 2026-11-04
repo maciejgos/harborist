@@ -12,6 +12,7 @@ from shipyard.control.stage_history import read_stage_history
 from shipyard.domain import Run, RunLifecycle
 from shipyard.domain.attempt import Attempt
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.continuation import load_continuation
 
 
 class SavedRunLocation(BaseModel):
@@ -40,6 +41,7 @@ class RunView(BaseModel):
     run: Run | None = None
     run_error: str | None = None
     attempt_id: UUID | None = None
+    attempt_number: int = 0
     package_available: bool = False
     artifacts: dict[str, str] = Field(default_factory=dict)
 
@@ -49,7 +51,7 @@ def read_record(record: QueueRecord) -> RunView:
 
 
 def read_saved(root: Path, run_id: UUID) -> RunView:
-    directory = root / str(run_id)
+    directory = FileRunStore(root=root).directory(run_id)
     timestamps: dict[str, datetime] = {}
     for field, name in (("recorded_at", "contract.json"), ("updated_at", "run.json")):
         try:
@@ -71,8 +73,9 @@ def read_saved(root: Path, run_id: UUID) -> RunView:
 def _project(view: RunView) -> RunView:
     submission = view.submission
     store = FileRunStore(root=submission.runs_root)
-    directory = store.directory(submission.run_id)
     try:
+        store = store.pinned(submission.run_id)
+        directory = store.directory(submission.run_id)
         contract = store.load(submission.run_id)
         run = store.load_state(submission.run_id)
         attempt_id: UUID | None = None
@@ -83,7 +86,8 @@ def _project(view: RunView) -> RunView:
             )
             if (
                 attempt.run_id != submission.run_id
-                or attempt.start_sha != contract.base_sha
+                or attempt.start_sha
+                != store.attempt_start(submission.run_id, contract.base_sha)
             ):
                 raise ValueError("Attempt identity mismatch")
             if run.verification is not None and run.verification.attempt != attempt:
@@ -106,10 +110,23 @@ def _project(view: RunView) -> RunView:
             if attempt is not None
             else None
         )
+        number = store.selected_number(submission.run_id)
+        observations = view.stages
+        progress = view.progress
+        if number and (
+            not isinstance(submission, Submission)
+            or submission.continuation is None
+            or submission.continuation.request_id
+            != load_continuation(store, submission.run_id).request.request_id
+        ):
+            observations = {}
+            progress = None
         return RunView.model_validate(
             {
                 **view.model_dump(),
-                "stages": {**(history.stages if history else {}), **view.stages},
+                "attempt_number": number,
+                "progress": progress,
+                "stages": {**(history.stages if history else {}), **observations},
                 "stage_errors": history.errors if history else {},
                 "run": run,
                 "title": next(

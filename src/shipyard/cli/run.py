@@ -316,7 +316,7 @@ def run_command(
             f"Result: {evidence.run.outcome or evidence.run.failure_reason or evidence.run.lifecycle}"
         )
         reporter.line(single_line(f"Workspace: {evidence.workspace or 'unknown'}"))
-        directory = runs_dir / str(execution_id)
+        directory = FileRunStore(root=runs_dir).directory(execution_id)
         for label, path in artifact_paths(directory).items():
             reporter.line(single_line(f"{label}: {path}"))
     if json_output:
@@ -327,12 +327,8 @@ def run_command(
                     "workspace": str(evidence.workspace)
                     if evidence.workspace
                     else None,
-                    "report": str(
-                        (runs_dir / str(execution_id) / "report.md").resolve()
-                    ),
-                    "evidence": str(
-                        (runs_dir / str(execution_id) / "evidence.json").resolve()
-                    ),
+                    "report": str((directory / "report.md").resolve()),
+                    "evidence": str((directory / "evidence.json").resolve()),
                 }
             )
         )

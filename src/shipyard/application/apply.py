@@ -10,6 +10,7 @@ from shipyard.application.context import resolve_context
 from shipyard.domain.application import ApplicationReceipt
 from shipyard.evidence.application import load_application_evidence
 from shipyard.git.repository import GitRepository
+from shipyard.persistence import FileRunStore
 from shipyard.persistence.application import ApplicationStore
 
 
@@ -36,7 +37,12 @@ def apply_run(
     git = GitRepository(path=repository)
     try:
         git.validate_application_candidate(
-            run_id=run_id, base=evidence.contract.base_sha, candidate=candidate
+            run_id=run_id,
+            base=evidence.contract.base_sha,
+            candidate=candidate,
+            attempt_id=evidence.attempt.attempt_id
+            if evidence.attempt and FileRunStore(root=root).selected_number(run_id)
+            else None,
         )
         previous = git.preflight_application(branch=branch, candidate=candidate)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
