@@ -1,6 +1,6 @@
 # Shipyard Architecture
 
-This document describes the **Shipyard execution core** and the authorized Phase 10 local background control plane. Broader Product infrastructure remains out of scope.
+This document describes the **Shipyard execution core** and the completed Phase 10 local background control plane. Broader Product infrastructure remains out of scope.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -31,7 +31,7 @@ flowchart TB
 
 ## Technology choices
 
-The PoC intentionally uses a small local stack:
+The local MVP uses a small stack:
 
 - Python 3.14
 - `uv` for dependency and environment management
@@ -47,7 +47,7 @@ The execution core uses no web framework, database or cloud infrastructure. Phas
 
 ## Architecture Invariants
 
-1. The PoC has one playbook: `bounded-repository-change`.
+1. The execution core has one playbook: `bounded-repository-change`.
 2. Its stages are `INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE`.
 3. DESIGN, PLAN, BUILD, and REVIEW use fresh native-agent invocations.
 4. `spec.md` is the correctness contract; `plan.md` is implementation guidance.
@@ -246,7 +246,9 @@ The owner authorized background execution on 2026-10-31. A filesystem queue
 and one local service wrap the synchronous executor without changing verification
 invariants. Interrupted claims are never retried. See the
 [service contract](docs/background-control-plane.md) and specifications 050–057.
-Phase 9 evaluation remains outstanding as recorded in the validation audit.
+Phase 9 is complete by owner decision on 2026-11-04, accepting the retained
+PoC evidence and waiving the planned matched direct-Codex comparison as an exit
+requirement. See the Phase 9 status in the PRD.
 
 
 The Phase 10 browser monitor (`shipyard web`, specification 058) is a separate,

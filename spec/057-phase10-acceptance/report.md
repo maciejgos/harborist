@@ -1,6 +1,26 @@
 # Phase 10 acceptance — 2026-10-31
 
+> Status update — 2026-11-04: Phase 9 is completed by owner decision. The owner accepted the retained PoC evidence and waived the matched direct-Codex comparison as an exit requirement. Outstanding Phase 9 statements below describe the historical assessment.
+
 All eight slices are implemented, with separate specifications and commits.
+
+## Closure — 2026-11-04
+
+**Phase 10: Completed.** The original eight slices and browser/history follow-ups
+(specifications 058–060) satisfy the local background control-plane scope.
+
+Closure validation on the current checkout:
+
+- Full `uv run pytest -q`, with local socket/process access enabled: **894 passed**, 78.11 seconds. The seven permission-related failures from the restricted run did not recur.
+- Ruff: clean. Pyright: zero errors/warnings. `git diff --check`: clean.
+- README, architecture, service guide and roadmap now record completion.
+- AGENTS.md now describes the local single-user MVP, synchronous execution core, serial background service, read-only browser monitor and filesystem persistence. Exact-revision verification rules remain in force.
+
+This closure changes documentation only; it adds no execution behavior. Existing
+browser acceptance is recorded in specifications 058–060 and was not rerun for
+this documentation update. Live paid-agent calls, recovery/rework and GitHub
+publication are not required for Phase 10 closure. Phase 11 is next.
+
 
 | Slice | Acceptance evidence |
 | --- | --- |

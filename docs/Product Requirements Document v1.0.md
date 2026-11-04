@@ -3486,13 +3486,23 @@ PACKAGE remains available after execution budget exhaustion.
 
 ## Phase 9 — PoC validation
 
-Run baseline evaluation against direct Codex.
+**Status: Completed — owner decision, 2026-11-04.**
 
-Do not begin broad Product expansion until the PoC trust hypothesis has evidence.
+The owner accepts the [retained PoC validation evidence](validation/2026-10-30-run-audit.md)
+as sufficient to establish PoC success and proceed to MVP. The originally planned
+matched baseline evaluation against direct Codex is waived as an exit requirement;
+no comparative evaluation is claimed. Known acceptance and measurement gaps in
+the audit remain follow-up work and do not reopen this phase.
 
 ---
 
 ## Phase 10 — Background control plane
+
+**Status: Completed — 2026-11-04.**
+
+The local service, durable filesystem queue, CLI client, web read model and
+read-only browser monitor are implemented. Detached-execution acceptance and
+closure validation are recorded in the [Phase 10 acceptance report](../spec/057-phase10-acceptance/report.md).
 
 Build:
 

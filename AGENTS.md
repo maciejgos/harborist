@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Shipyard is currently a synchronous, CLI-first PoC. Read `ARCHITECTURE.md` before making structural changes.
+Shipyard is a local, single-user MVP with a background execution service, CLI client and read-only browser monitor. The execution core remains synchronous. Phase 10 is complete; rework/recovery and GitHub publication remain later phases. Read `ARCHITECTURE.md` before making structural changes.
 
 ## Commands
 
@@ -63,7 +63,7 @@ uv run pyright
 
 ## Architecture rules
 
-- Keep the PoC local and synchronous. Do not introduce FastAPI, databases, background workers, web UI, or other MVP/Product infrastructure unless explicitly requested.
+- Keep execution local: one background service runs one Run at a time through the synchronous execution core. Preserve explicit foreground compatibility and the read-only browser adapter. Do not introduce databases, remote workers, team access or other broader infrastructure unless explicitly requested.
 - Preserve the canonical flow: `INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE`.
 - `DESIGN`, `PLAN`, `BUILD`, and `REVIEW` use fresh native-agent invocations. Do not rely on agent-session continuity.
 - `TEST` is trusted Shipyard-controlled execution, not an agent decision. A failed mandatory check prevents `REVIEW`.
@@ -71,7 +71,7 @@ uv run pyright
 - `spec.md` is the acceptance contract. `BUILD` may update `plan.md`, but must not silently change `spec.md`.
 - Verification belongs to an exact Git commit SHA. Never transfer verification to changed code.
 - Workflow state comes from validated machine-readable results, never inferred from prose.
-- Keep persistence filesystem-based for the PoC.
+- Keep persistence filesystem-based for the current MVP. Queue delivery state and observational UI progress must remain distinct from validated Run lifecycle/outcome and exact-revision verification.
 
 ## Integration boundaries
 
@@ -82,4 +82,4 @@ uv run pyright
 
 ## Scope
 
-Prefer the smallest change that preserves these boundaries. Do not implement future MVP or Product Milestone 1 architecture unless the task explicitly requires it.
+Prefer the smallest change that preserves these boundaries. Phase 10 covers the local background control plane and read-only monitor. Do not implement Phase 11 rework/recovery, Phase 12 publication or Product Milestone 1 infrastructure unless the task explicitly requires it.

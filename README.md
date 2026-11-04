@@ -2,10 +2,10 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 10 local background control plane implemented around the
+> **Status:** Phase 10 local background control plane completed on 2026-11-04 around the
 > synchronous, revision-bound execution core, including a lightweight browser
-> execution monitor. Phase 9 baseline evaluation remains
-> outstanding; see the [service guide](docs/background-control-plane.md).
+> execution monitor. Phase 9 PoC validation is complete by owner decision
+> on 2026-11-04; see the [service guide](docs/background-control-plane.md).
 
 ## Quick start
 

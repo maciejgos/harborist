@@ -2,10 +2,15 @@
 
 ## Decision and scope
 
+**Phase 10 status: Completed — 2026-11-04.** See the
+[acceptance and closure record](../spec/057-phase10-acceptance/report.md).
+
 Phase 10 is authorized by the owner on 2026-10-31. This authorizes a local
-background service, queue, CLI client and web read model. It does not declare
-Phase 9's matched direct-Codex comparison or trust evaluation complete; that
-work remains tracked in the 2026-10-30 validation audit.
+background service, queue, CLI client and web read model. On 2026-11-04, the
+owner marked Phase 9 complete, accepting the retained PoC evidence and approving
+the transition to MVP. The planned matched direct-Codex comparison was waived
+as an exit requirement; it was not performed. The 2026-10-30 validation audit
+remains the historical evidence record.
 
 The execution core remains synchronous. One service executes one Run at a time
 through execute_run, with the existing NativeAgent, Git, TEST and RunStore
