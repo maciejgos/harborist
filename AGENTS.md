@@ -80,6 +80,10 @@ uv run pyright
 - Use subprocess execution for external tools and deterministic checks.
 - Keep provider-specific and CLI-specific details outside the domain model.
 
+## Changelog
+
+Update `CHANGELOG.md` only when introducing a new package version in `pyproject.toml`. Add one entry for that version summarizing the changes since the previous version. Track phase progress and proposed versions in `ROADMAP.md`.
+
 ## Scope
 
 Prefer the smallest change that preserves these boundaries. Phases 10–11 cover the local background control plane, read-only monitor and explicit rework/recovery Attempts. Do not implement Phase 12 publication or Product Milestone 1 infrastructure unless the task explicitly requires it.
