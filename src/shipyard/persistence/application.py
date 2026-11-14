@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
+
 from shipyard.domain.application import ApplicationReceipt
 
 
@@ -21,9 +23,9 @@ def _sync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _directory(path: Path) -> None:
+def ensure_record_directory(path: Path) -> None:
     if not path.exists():
-        _directory(path.parent)
+        ensure_record_directory(path.parent)
         try:
             path.mkdir()
         except FileExistsError:
@@ -45,7 +47,7 @@ def _read(path: Path) -> ApplicationReceipt | None:
     return ApplicationReceipt.model_validate_json(path.read_bytes())
 
 
-def _publish(path: Path, receipt: ApplicationReceipt) -> None:
+def write_new_record(path: Path, receipt: BaseModel) -> None:
     staged = path.with_name(f".{path.name}.{uuid4()}.staged")
     try:
         with staged.open("xb") as stream:
@@ -90,7 +92,7 @@ class ApplicationStore:
 
     @contextmanager
     def reserve(self) -> Generator[None]:
-        _directory(self.directory)
+        ensure_record_directory(self.directory)
         descriptor = os.open(self.lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             if not stat.S_ISREG(os.fstat(descriptor).st_mode):
@@ -128,7 +130,7 @@ class ApplicationStore:
         # Catch an obstructed/conflicting final path before touching Git.
         self._load(self.path, receipt.candidate_sha)
         if previous is None:
-            _publish(self.preparation, receipt)
+            write_new_record(self.preparation, receipt)
             return receipt
         _sync_directory(self.directory)
         return previous
@@ -136,7 +138,7 @@ class ApplicationStore:
     def confirm(self, receipt: ApplicationReceipt) -> None:
         existing = self._load(self.confirmation, receipt.candidate_sha)
         if existing is None:
-            _publish(self.confirmation, receipt)
+            write_new_record(self.confirmation, receipt)
         elif existing != receipt:
             raise ValueError(
                 f"Conflicting advancement confirmation: {self.confirmation}"
@@ -146,4 +148,4 @@ class ApplicationStore:
         return self._load(self.confirmation, candidate)
 
     def publish(self, receipt: ApplicationReceipt) -> None:
-        _publish(self.path, receipt)
+        write_new_record(self.path, receipt)
