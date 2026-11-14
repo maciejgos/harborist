@@ -13,6 +13,7 @@ from typing import BinaryIO, Self
 from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
+from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
 from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
@@ -105,6 +106,10 @@ class ControlService:
             return {
                 "runs": [item.model_dump(mode="json") for item in self.history.list()]
             }
+        if method == "GET" and (attempt := ATTEMPTS.fullmatch(path)):
+            return attempt_evidence(
+                self.history.get(UUID(attempt[1])), attempt[2], attempt[3]
+            )
         if method == "GET" and "/artifacts/" in path:
             parts = path.strip("/").split("/")
             if (

@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from shipyard.control.client import ControlClient
+from shipyard.control.evidence_reads import ATTEMPTS
 
 
 class WebApplication:
@@ -50,6 +51,12 @@ class WebApplication:
                     parts[2] == "artifacts"
                     and parts[3] in ("report.md", "evidence.json")
                 )
+            if attempt := ATTEMPTS.fullmatch(api):
+                try:
+                    UUID(attempt[1])
+                except ValueError:
+                    return 404, "text/plain", b"Unknown Run"
+                allowed = True
             if not allowed:
                 return 404, "text/plain", b"Unknown route"
             try:

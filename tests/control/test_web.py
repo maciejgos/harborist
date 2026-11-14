@@ -133,3 +133,27 @@ def test_workspace_deep_link_serves_packaged_react_assets(
         status, _, content = app.respond("GET", route)
         assert status == 200 and content
     assert app.respond("GET", "/runs/invalid")[0] == 404
+
+
+def test_attempt_evidence_is_read_through_the_selected_attempt(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    queue = QueueStore(tmp_path / "control")
+    queue.submit(
+        Submission(
+            run_id=contract.run_id,
+            repository=repo.checkout_root(),
+            runs_root=store.directory(contract.run_id).parent,
+        )
+    )
+    service = ControlService(queue, agent=FakeAgent(), history_root=tmp_path / "runs")
+    service.worker.execute_next()
+    prefix = f"/runs/{contract.run_id}/attempts"
+    assert service.dispatch("GET", prefix, b"") == {"attempts": [0]}
+    view = service.dispatch("GET", prefix + "/0", b"")
+    assert view["attempt_number"] == 0
+    assert view["candidate_sha"]
+    assert service.dispatch("GET", prefix + "/0/artifacts/report.md", b"")["content"]
+    with pytest.raises(ValueError, match="Unknown Attempt"):
+        service.dispatch("GET", prefix + "/1", b"")

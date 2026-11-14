@@ -49,14 +49,14 @@ class RunView(BaseModel):
 
 
 def read_record(record: QueueRecord) -> RunView:
-    return _project(RunView.model_validate(record.model_dump()))
+    return project(RunView.model_validate(record.model_dump()))
 
 
 def read_saved(root: Path, run_id: UUID) -> RunView:
     try:
         directory = FileRunStore(root=root).directory(run_id)
     except ValueError, OSError:
-        return _project(
+        return project(
             RunView(
                 submission=SavedRunLocation(run_id=run_id, runs_root=root),
                 source="saved",
@@ -70,7 +70,7 @@ def read_saved(root: Path, run_id: UUID) -> RunView:
             )
         except OSError:
             pass
-    return _project(
+    return project(
         RunView(
             submission=SavedRunLocation(run_id=run_id, runs_root=root),
             source="saved",
@@ -80,11 +80,11 @@ def read_saved(root: Path, run_id: UUID) -> RunView:
     )
 
 
-def _project(view: RunView) -> RunView:
+def project(view: RunView, *, number: int | None = None) -> RunView:
     submission = view.submission
     store = FileRunStore(root=submission.runs_root)
     try:
-        store = store.pinned(submission.run_id)
+        store = store.pinned(submission.run_id, number)
         directory = store.directory(submission.run_id)
         contract = store.load(submission.run_id)
         run = store.load_state(submission.run_id)

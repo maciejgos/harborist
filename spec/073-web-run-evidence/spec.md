@@ -14,3 +14,10 @@ the shared workspace design from specification 072.
   accessible views. Identify unavailable and truncated evidence explicitly.
 - Keep the selected Run, Attempt, and evidence view stable across live updates.
   An interrupted connection is visible and refreshing restores current data.
+
+## Implementation
+
+The detail pane follows the latest Attempt by default and can select an
+earlier one. The read boundary pins each evidence request to that Attempt.
+The browser shows failed checks with bounded stdout and stderr, including
+capture truncation, alongside the recorded timeline and named artifacts.

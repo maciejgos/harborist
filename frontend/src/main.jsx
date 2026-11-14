@@ -27,28 +27,52 @@ function selection() {
   return location.pathname.match(/^\/runs\/([^/]+)$/)?.[1] || location.hash.slice(1);
 }
 
-function Artifact({ id, name }) {
+function Artifact({ id, name, attempt, title = name }) {
   const [open, setOpen] = useState(false);
-  const resource = useResource(open ? `/runs/${id}/artifacts/${name}` : null);
-  return <Dialog open={open} onOpenChange={setOpen} title={name}
-    trigger={<Button className="artifact" variant="outline"><FileText size={15} />{name}<ChevronRight size={14} /></Button>}>
+  const resource = useResource(open ? `/runs/${id}/attempts/${attempt}/artifacts/${name}` : null);
+  return <Dialog open={open} onOpenChange={setOpen} title={title}
+    trigger={<Button className="artifact" variant="outline"><FileText size={15} />{title}<ChevronRight size={14} /></Button>}>
     {resource.error ? <p role="alert">{resource.error}</p> :
       resource.data ? <pre tabIndex={0}>{resource.data.content}</pre> : <p role="status">Loading evidence…</p>}
   </Dialog>;
 }
 
-function RunDetail({ record, id, close }) {
+function RunDetail({ record: latest, id, close }) {
+  const [attempt, setAttempt] = useState(null);
+  const number = attempt ?? latest?.attempt_number;
+  const prefix = `/runs/${id}/attempts`;
+  const attempts = useResource(latest ? prefix : null, true);
+  const evidence = useResource(number == null ? null : `${prefix}/${number}`, true);
+  const record = evidence.data || (attempt == null ? latest : null);
+  const failed = (evidence.data?.checks || []).map((check, index) => ({ ...check, index })).filter(check => !check.passed);
   return <aside className="detail" aria-label="Run detail">
     <header className="detail-header">
       <span className="muted">Run detail</span>
       <Button aria-label="Close Run detail" variant="ghost" asChild><a href="/" onClick={close}><X size={17} /></a></Button>
     </header>
+    {latest && <label className="attempt-picker">Attempt
+      <select className="input" value={attempt ?? ""} onChange={event => setAttempt(event.target.value === "" ? null : Number(event.target.value))}>
+        <option value="">Latest · {latest.attempt_number + 1}</option>
+        {(attempts.data?.attempts || []).filter(value => value < latest.attempt_number).map(value => <option key={value} value={value}>Attempt {value + 1}</option>)}
+      </select>
+    </label>}
+    {evidence.error && <p className="notice" role="alert">{evidence.error}</p>}
     {record ? <>
       <div className="detail-heading">
         <Status record={record} />
         <h2>{record.title || "Untitled request"}</h2>
         <p className="mono muted">{id}</p>
       </div>
+      {failed.length > 0 && <section>
+        <h3>Failed checks</h3>
+        {failed.map(check => <div className="notice" key={check.id}>
+          <strong>{check.id}</strong><p>{check.error || (check.timed_out ? "Timed out" : `Exit code ${check.returncode}`)}</p>
+          <div className="artifact-list">{["stdout", "stderr"].map(stream =>
+            <Artifact key={stream} id={id} attempt={number}
+              name={`test-${String(check.index).padStart(4, "0")}-${stream}`}
+              title={`${stream}${check[stream + "_truncated"] ? " · truncated" : ""}`} />)}</div>
+        </div>)}
+      </section>}
       <section>
         <h3>Execution</h3>
         <dl>
@@ -77,10 +101,11 @@ function RunDetail({ record, id, close }) {
       <section>
         <h3>Evidence</h3>
         <div className="artifact-list">{["report.md", "evidence.json"].filter(name => record.artifacts?.[name]).map(name =>
-          <Artifact key={name} id={id} name={name} />)}</div>
-        {!Object.values(record.artifacts || {}).some(Boolean) && <p className="muted">No terminal evidence available.</p>}
+          <Artifact key={name} id={id} attempt={number} name={name} />)}
+        {evidence.data?.has_specification && <Artifact id={id} attempt={number} name="spec.md" />}</div>
+        {!evidence.data?.has_specification && !Object.values(record.artifacts || {}).some(Boolean) && <p className="muted">No terminal evidence available.</p>}
       </section>
-    </> : <p className="notice">This Run is unavailable in the current history.</p>}
+    </> : <p className="notice">{latest && !evidence.error ? "Loading Attempt…" : "This Run is unavailable in the current history."}</p>}
   </aside>;
 }
 
