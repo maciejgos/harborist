@@ -1,5 +1,6 @@
 """Explicit authorization for fresh attempts; never session resumption."""
 
+from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -10,6 +11,13 @@ from shipyard.domain.candidate import Candidate
 from shipyard.domain.run import FailureReason, Run, RunLifecycle, RunOutcome
 
 
+class GitHubFeedbackSelection(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    observation: Path
+    ids: tuple[str, ...] = Field(min_length=1, max_length=32)
+
+
 class ContinuationRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -17,6 +25,7 @@ class ContinuationRequest(BaseModel):
     action: Literal["rework", "recover"]
     expected_attempt_id: UUID
     feedback: str = Field(default="", max_length=32768)
+    github_feedback: GitHubFeedbackSelection | None = None
     additional_seconds: int = Field(default=0, ge=0, strict=True)
 
 
@@ -35,10 +44,10 @@ def authorize_continuation(
     if candidate is not None and candidate.attempt_id != previous.attempt_id:
         raise ValueError("Previous candidate belongs to another Attempt")
     if request.action == "rework":
-        if run.lifecycle != RunLifecycle.COMPLETED or run.outcome not in {
-            RunOutcome.CHANGES_REQUIRED,
-            RunOutcome.TEST_FAILED,
-        }:
+        outcomes = {RunOutcome.CHANGES_REQUIRED, RunOutcome.TEST_FAILED}
+        if request.github_feedback:
+            outcomes.add(RunOutcome.VERIFIED)
+        if run.lifecycle != RunLifecycle.COMPLETED or run.outcome not in outcomes:
             raise ValueError("Rework requires TEST_FAILED or CHANGES_REQUIRED")
         if candidate is None:
             raise ValueError("Rework requires an exact previous candidate")

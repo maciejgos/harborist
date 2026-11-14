@@ -232,10 +232,26 @@ def prepare_continuation(
             raise ValueError(
                 "Insufficient remaining budget; explicitly grant additional seconds"
             )
+        feedback = request.feedback
+        if request.github_feedback is not None:
+            from shipyard.application.collaboration import prepare_feedback
+
+            selection = request.github_feedback
+            selected_feedback = prepare_feedback(
+                store.original_directory(run_id).parent,
+                run_id,
+                selection.observation,
+                selection.ids,
+            )
+            feedback = "\n\n".join(filter(None, (feedback, selected_feedback)))
+            if len(feedback) > 32768:
+                raise ValueError(
+                    "Selected GitHub feedback exceeds the continuation limit"
+                )
         # Bound optional history, keeping the full original evidence at its locator.
         context = {
             "policy": "The supplied spec is frozen. Plan fixes against it. If feedback requires changing acceptance criteria, return needs_rescoping; a new Run is required.",
-            "feedback": request.feedback,
+            "feedback": feedback,
             "previous_candidate": candidate.model_dump(mode="json")
             if candidate
             else None,

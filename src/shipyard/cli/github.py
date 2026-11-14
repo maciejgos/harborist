@@ -36,3 +36,21 @@ def publish(
         typer.echo(f"Publication failed: {error}", err=True)
         raise typer.Exit(1) from error
     typer.echo(pull.html_url)
+
+
+def github_status(
+    run_id: UUID,
+    runs_dir: Annotated[Path | None, typer.Option()] = None,
+) -> None:
+    """Capture a published PR's current GitHub evidence."""
+    from shipyard.application.collaboration import observe_pull
+    from shipyard.application.context import resolve_context
+
+    try:
+        _, root = resolve_context(run_id=run_id, repo=None, runs_dir=runs_dir)
+        observation, path = observe_pull(root, run_id)
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        typer.echo(f"GitHub evidence capture failed: {error}", err=True)
+        raise typer.Exit(1) from error
+    typer.echo(observation.model_dump_json(indent=2))
+    typer.echo(f"Observation: {path}", err=True)

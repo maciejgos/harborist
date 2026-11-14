@@ -17,7 +17,7 @@ from shipyard.control.client import ControlClient
 from shipyard.control.queue import Submission
 from shipyard.domain import RunLifecycle, RunOutcome
 from shipyard.domain.attempt import Attempt
-from shipyard.domain.continuation import ContinuationRequest
+from shipyard.domain.continuation import ContinuationRequest, GitHubFeedbackSelection
 from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import prepare_continuation
@@ -36,6 +36,8 @@ def _continue(
     control_dir: Path | None,
     json_output: bool,
     expected_attempt: UUID | None,
+    observation: Path | None = None,
+    feedback_ids: list[str] | None = None,
 ) -> None:
     try:
         repository, root = resolve_context(
@@ -46,10 +48,18 @@ def _continue(
         previous = Attempt.model_validate_json(
             (store.directory(run_id) / "attempt.json").read_bytes()
         )
+        selection = None
+        if observation is not None or feedback_ids:
+            if observation is None or not feedback_ids:
+                raise ValueError("Supply both --observation and --feedback-id")
+            selection = GitHubFeedbackSelection(
+                observation=observation.resolve(), ids=tuple(feedback_ids)
+            )
         request = ContinuationRequest(
             action=action,
             expected_attempt_id=expected_attempt or previous.attempt_id,
             feedback=feedback,
+            github_feedback=selection,
             additional_seconds=additional_seconds,
         )
         if not foreground:
@@ -138,6 +148,13 @@ def rework(
     expected_attempt: Annotated[
         UUID | None, typer.Option(help="Reject if the latest Attempt changed.")
     ] = None,
+    observation: Annotated[
+        Path | None, typer.Option(help="Saved GitHub PR observation.")
+    ] = None,
+    feedback_id: Annotated[
+        list[str] | None,
+        typer.Option(help="Explicit review or comment ID, repeatable."),
+    ] = None,
 ) -> None:
     """Create a fresh PLAN → BUILD → TEST → REVIEW Attempt after rejected software."""
     _continue(
@@ -153,6 +170,8 @@ def rework(
         control_dir,
         json_output,
         expected_attempt,
+        observation,
+        feedback_id,
     )
 
 
