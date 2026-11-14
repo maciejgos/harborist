@@ -303,3 +303,17 @@ at a time. The monitor remains read-only and attributes observations to the
 current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
 [storage rules](docs/storage-and-recovery.md#phase-11-attempt-persistence) and the
 [acceptance audit](spec/065-phase11-acceptance/report.md).
+
+
+## Phase 12 GitHub delivery
+
+Publication is an explicit synchronous CLI operation outside the execution
+workflow. It validates packaged verification and the Run-owned Git ref under
+the Run lock before pushing an approved SHA to a dedicated GitHub branch.
+Expected-head Git leases protect branch updates, and verification summaries
+for later publications are appended to the PR conversation.
+
+GitHub collaboration snapshots and publication receipts live beside Run
+storage. Snapshots describe the observed PR head, GitHub checks, feedback
+and merge result. Selected feedback is resolved during Attempt admission
+and frozen into PLAN context. See [GitHub delivery usage](docs/usage.md#publish-a-verified-candidate-to-github).

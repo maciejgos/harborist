@@ -380,3 +380,33 @@ are `<runs-root-parent>/workspaces/<run-id>/<attempt-id>`; use `--workspace` for
 custom placement. The original execution-context locator stays at the Run root.
 `shipyard apply` validates and applies only the latest VERIFIED candidate.
 Rework/recovery does not publish to GitHub or apply code automatically.
+
+## Publish a verified candidate to GitHub
+
+Use authenticated GitHub CLI for PR operations and a Git credential for HTTPS
+pushes. Supply the exact candidate SHA printed by Shipyard, the destination
+repository, and an existing PR base branch.
+
+```sh
+shipyard publish RUN_ID --approve CANDIDATE_SHA --destination OWNER/REPO --base main
+shipyard github-status RUN_ID
+```
+
+For a later verified Attempt, add `--expect-head PREVIOUSLY_PUBLISHED_SHA`.
+Shipyard uses a dedicated branch for the Run and checks that the previous head
+is still current and is an ancestor of the approved candidate. If a push or PR
+creation fails midway, retry with the same arguments. Publication records and
+observations live under `publications/RUN_ID/` in Runs storage.
+
+`github-status` saves a dated snapshot and shows its path. CI and merge evidence
+come from GitHub and remain separate from the original TEST and REVIEW. To act
+on specific feedback, pass that path and one or more feedback IDs from the
+snapshot.
+
+```sh
+shipyard rework RUN_ID --observation SNAPSHOT_PATH --feedback-id review:123
+```
+
+The new Attempt starts from the local verified candidate, uses the frozen spec,
+and runs fresh TEST and REVIEW. Commits added by humans to the PR branch are
+never imported implicitly.
