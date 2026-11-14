@@ -357,3 +357,11 @@ through shared application entry points. The service owns admission, current
 Run and Attempt validation, and queue changes. The browser refreshes state
 after each action and presents service rejections in context. See the
 [browser Run operations spec](spec/074-web-run-operations/spec.md).
+
+Browser publication invokes the same application operation as the CLI, outside
+the execution workflow. The trusted operation revalidates the approved SHA
+under the Run lock and applies the existing expected-head protection.
+Collaboration views display the recorded GitHub observations and publication
+receipts through the control plane. Feedback selected in the browser is
+resolved by the same Attempt admission rules as CLI feedback. See the
+[browser GitHub delivery spec](spec/075-web-github-delivery/spec.md).

@@ -36,6 +36,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Web workspace and Run inbox | Build the React and shadcn/ui workspace, shared interaction patterns, and searchable Run inbox. | Todo | [Workspace spec](spec/072-web-workspace/spec.md) |
 | Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Todo | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
 | Browser Run submission and control | Submit from Markdown or GitHub and use approved cancellation, supersession, rework, and recovery flows. | Todo | [Browser Run operations spec](spec/074-web-run-operations/spec.md) |
+| Browser GitHub delivery and MVP acceptance | Approve the exact verified commit, inspect PR evidence, and validate the packaged browser experience across every screen. | Todo | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 
