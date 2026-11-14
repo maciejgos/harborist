@@ -243,3 +243,79 @@ def test_publication_rejects_wrong_approval_and_moved_candidate_ref(
             base="main",
             runs_dir=root,
         )
+
+
+def test_selected_github_review_starts_fresh_verification(
+    packaged: tuple[Path, Path, RunContract, str],
+) -> None:
+    from datetime import UTC, datetime
+
+    from shipyard.application.collaboration import Observation
+    from shipyard.application.publication import publication_directory
+    from shipyard.domain import RunOutcome
+    from shipyard.domain.continuation import (
+        ContinuationRequest,
+        GitHubFeedbackSelection,
+    )
+    from shipyard.git.repository import GitRepository
+    from shipyard.github.collaboration import CheckPage, Feedback, StatusPage
+    from shipyard.persistence import FileRunStore
+    from shipyard.persistence.continuation import prepare_continuation
+
+    root, repo, contract, candidate = packaged
+    run_id = contract.run_id
+    store = FileRunStore(root=root)
+    verification = store.load_state(run_id).verification
+    assert verification is not None
+    directory = publication_directory(root, run_id) / "observations"
+    directory.mkdir(parents=True)
+    path = directory / "example.json"
+    path.write_text(
+        Observation(
+            run_id=run_id,
+            repository="owner/repo",
+            observed_at=datetime.now(UTC),
+            pull=1,
+            url="https://github.com/owner/repo/pull/1",
+            state="open",
+            head="a" * 40,
+            verified_candidate=candidate,
+            head_verified=False,
+            merged_at=None,
+            merge_commit_sha=None,
+            checks=CheckPage(total_count=0, check_runs=()),
+            statuses=StatusPage(state="pending", total_count=0, statuses=()),
+            feedback=(
+                Feedback(key="review:1", author="reviewer", body="Selected feedback"),
+                Feedback(key="review:2", author="reviewer", body="Excluded feedback"),
+            ),
+        ).model_dump_json()
+    )
+    selected, record = prepare_continuation(
+        store=store,
+        run_id=run_id,
+        request=ContinuationRequest(
+            action="rework",
+            expected_attempt_id=verification.attempt.attempt_id,
+            github_feedback=GitHubFeedbackSelection(
+                observation=path, ids=("review:1",)
+            ),
+        ),
+    )
+    assert record.attempt.start_sha == candidate
+    assert record.attempt.attempt_id != verification.attempt.attempt_id
+    context = json.loads(
+        (selected.directory(run_id) / "continuation-context.json").read_text()
+    )
+    assert "Selected feedback" in context["feedback"]
+    assert "Excluded feedback" not in context["feedback"]
+    evidence = execute_run(
+        store=selected,
+        run_id=run_id,
+        repository=GitRepository(path=repo),
+        workspace=root.parent / "rework",
+        agent=FakeAgent(),
+    )
+    assert evidence.run.outcome == RunOutcome.VERIFIED
+    assert evidence.attempt == record.attempt
+    assert evidence.test is not None
