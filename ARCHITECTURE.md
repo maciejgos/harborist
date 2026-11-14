@@ -348,3 +348,12 @@ are separate fields. The browser attributes evidence to the selected Attempt
 and displays verification only for the candidate SHA identified by the service.
 Artifact reads use bounded, named evidence endpoints. See the
 [Run evidence spec](spec/073-web-run-evidence/spec.md).
+
+Browser actions extend the adapter with explicit write routes for supported
+operations. The loopback HTTP boundary validates Host and same-origin writes,
+applies cross-site request forgery protection, and maps bounded, typed inputs
+to shared application commands. Reuse the CLI's intake and approval semantics
+through shared application entry points. The service owns admission, current
+Run and Attempt validation, and queue changes. The browser refreshes state
+after each action and presents service rejections in context. See the
+[browser Run operations spec](spec/074-web-run-operations/spec.md).
