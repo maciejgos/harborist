@@ -23,6 +23,13 @@ class WebApplication:
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
         }
+        if route.startswith("/runs/"):
+            run_id = route.removeprefix("/runs/")
+            try:
+                UUID(run_id)
+            except ValueError:
+                return 404, "text/plain", b"Unknown Run"
+            route = "/"
         if route in static:
             name, mime = static[route]
             return (

@@ -117,3 +117,19 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         server.shutdown()
         thread.join(5)
         server.server_close()
+
+
+def test_workspace_deep_link_serves_packaged_react_assets(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.control.client import ControlClient
+
+    app = WebApplication(ControlClient(tmp_path))
+    status, _, html = app.respond("GET", f"/runs/{frozen_contract.run_id}")
+    assert status == 200
+    assert b'id="root"' in html
+    assert b'src="/app.js"' in html
+    for route in ("/app.js", "/style.css"):
+        status, _, content = app.respond("GET", route)
+        assert status == 200 and content
+    assert app.respond("GET", "/runs/invalid")[0] == 404

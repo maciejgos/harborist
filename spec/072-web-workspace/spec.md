@@ -21,3 +21,12 @@ patterns, and keyboard ergonomics.
 - Development builds the React frontend into assets packaged with Shipyard.
   The installed browser workspace runs locally without a frontend dev server
   or runtime downloads. Existing monitor reads remain available during rollout.
+
+## Implementation
+
+The React source lives in `frontend/`. Run `npm ci` and `npm run build`
+there to regenerate the checked-in assets served by `shipyard web`.
+The initial workspace ships the grouped inbox, search and filters, deep
+links, live refresh, disconnected state, and the original evidence reads.
+Browser smoke testing confirmed the packaged application renders and the
+Active filter responds with the service disconnected.
