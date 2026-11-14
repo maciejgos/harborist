@@ -21,12 +21,12 @@ introduced. The explicit foreground mode remains available for compatibility.
 
 A control directory owns an advisory process lock, an owner-only Unix HTTP
 socket, an atomic filesystem queue and a stop signal in service memory. The
-socket is local-only; HTTP JSON is also the web read model. A separate read-only
-browser adapter serves the dashboard on 127.0.0.1. Remote authentication and
+socket is local-only. A separate browser adapter serves the workspace on
+127.0.0.1. Remote authentication and
 team access remain outside this slice.
 
 POST /runs accepts versioned execution locators for an already captured Run.
-Intake remains a CLI operation and freezes inputs before submission. Run UUID is
+Intake freezes inputs before submission. Run UUID is
 the initial-submission idempotency key within this control directory. Repeating an identical
 submission returns the existing record; conflicting locators fail. Requests
 must name resolved absolute paths. Initial submissions require CREATED Runs. Phase 11 submissions can carry an
@@ -101,8 +101,7 @@ under ~/.shipyard/runs and submissions in the selected service.
 (0 VERIFIED, 2 other software outcomes, 1 execution failure, 130 cancellation).
 Scripts relying on synchronous behavior must add `--foreground`. Source intake
 and saved UUID execution options remain available. `inspect`, `methodology` and
-`apply` remain explicit local operations; the web interface is read-only apart
-from submission and graceful service-stop endpoints.
+`apply` remain explicit CLI operations.
 
 A missing service produces a start command and retains the capture. Submit its
 UUID after starting the service rather than recapturing the request. Delivery
@@ -142,7 +141,7 @@ Submission JSON has `version: 1`, `run_id`, `repository`, `runs_root` and option
 record. POST `/stop` returns `{"stopping": true}`. Unsupported routes, malformed
 bodies and invalid records return explicit JSON errors. Request bodies are
 limited to 64 KiB. No arbitrary artifact downloads are exposed. The execution service stays on
-its Unix socket; the browser adapter is loopback-only and read-only.
+its Unix socket, and the browser adapter is loopback-only.
 `package_available` means both terminal files are present; it does not rehash
 artifacts or grant verification. Explicit apply continues to validate evidence.
 
@@ -156,9 +155,9 @@ They do not exercise live paid agent calls, OS boot/login supervision or power
 loss. The service is supported on local Unix systems with flock and Unix sockets.
 
 
-## Browser execution monitor
+## Browser workspace
 
-Start (or upgrade and restart) the service, then launch the monitor in another
+Start (or upgrade and restart) the service, then launch the workspace in another
 terminal:
 
 ```bash
@@ -166,18 +165,17 @@ uv run shipyard service start
 uv run shipyard web
 ```
 
-Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Submit work from another
-terminal with `shipyard run`. The dashboard shows submitted Run history,
-search, selected Run details, the seven-stage timeline, lifecycle/outcome,
-Attempt ID, verified candidate SHA and report/evidence viewers. It polls every
-two seconds. Closing the browser or stopping `shipyard web` leaves the execution
-service and active Runs running.
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Use **New Run**
+to submit a Markdown file or GitHub issue. The inbox shows delivery state
+and the validated Run outcome. Open a Run to inspect its stage timeline,
+earlier Attempts, check output, and the exact verified commit. The workspace
+updates every two seconds. Closing it leaves the local service running.
 
-The monitor is a thin adapter over the canonical control plane. Browser GETs
-under `/api` proxy only health, Run listing/detail and the two named artifacts.
-No submission, shutdown, apply or recovery mutations are exposed by the web
-adapter. Its loopback binding and Host validation keep it local. No framework,
-Node build, hosted service or separate state store is required.
+The Run page offers explicit cancellation, replacement, rework, recovery,
+and GitHub publication when applicable. Browser writes require the local
+origin and pass through the same application rules as the CLI. The installed
+package includes the React assets. Frontend development uses `npm ci` and
+`npm run build` from `frontend/`.
 
 Use `shipyard web --control-dir PATH --port 8766` to select another service or
 port. The control directory must match `service start` and `run`. An unavailable

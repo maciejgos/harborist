@@ -204,3 +204,55 @@ def test_browser_capture_retry_reuses_the_same_run(
         service.dispatch(
             "POST", "/workspace/runs", json.dumps({**payload, "ref": "other"}).encode()
         )
+
+
+def test_browser_publication_uses_verified_application_operation(
+    tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shipyard.application import publication
+    from shipyard.application.publication import Branch, PullRequest
+
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    queue = QueueStore(tmp_path / "control")
+    root = store.directory(contract.run_id).parent
+    queue.submit(
+        Submission(
+            run_id=contract.run_id, repository=repo.checkout_root(), runs_root=root
+        )
+    )
+    service = ControlService(queue, agent=FakeAgent(), history_root=root)
+    service.worker.execute_next()
+    verification = store.load_state(contract.run_id).verification
+    assert verification is not None
+    sha = verification.candidate.candidate_sha
+
+    def publish(run_id: object, **options: object) -> PullRequest:
+        assert run_id == contract.run_id
+        assert options["approve"] == sha
+        assert options["expected_attempt"] == verification.attempt.attempt_id
+        assert options["runs_dir"] == root
+        return PullRequest(
+            number=1,
+            html_url="https://github.com/example/project/pull/1",
+            state="open",
+            head=Branch(ref="shipyard", sha=sha),
+            base=Branch(ref="main", sha=sha),
+            body=None,
+        )
+
+    monkeypatch.setattr(publication, "publish_run", publish)
+    path = f"/workspace/runs/{contract.run_id}/publish"
+    response = service.dispatch(
+        "POST",
+        path,
+        json.dumps(
+            {
+                "approve": sha,
+                "expected_attempt": str(verification.attempt.attempt_id),
+                "destination": "example/project",
+                "base": "main",
+            }
+        ).encode(),
+    )
+    assert response["run_id"] == str(contract.run_id)
+    assert response["pull"]

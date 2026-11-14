@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, Anchor, ChevronRight, Circle, FileText, GitBranch, Inbox, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
+import { GitHubDelivery } from "./github-delivery";
 import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
 import "./style.css";
@@ -11,7 +12,7 @@ const filters = ["All", "Active", "Queued", "Needs attention"];
 const groups = [...filters.slice(1), "History"];
 const label = value => value?.toLowerCase().replaceAll("_", " ") || "Unavailable";
 const runId = record => record.submission.run_id;
-const repo = record => record.submission.repository?.split("/").filter(Boolean).at(-1) || "Unavailable";
+const repo = record => (record.repository || record.submission.repository)?.split("/").filter(Boolean).at(-1) || "Unavailable";
 const lastStage = record => record.progress?.stage || stages.findLast(stage => record.stages?.[stage]);
 const status = record => record.retirement ? (record.retirement.replacement ? "SUPERSEDED" : "CANCELLED") : record.run?.outcome || record.run?.failure_reason || record.state || record.run?.lifecycle;
 
@@ -95,11 +96,18 @@ function RunDetail({ record: latest, id, close, onDone, onError, disabled }) {
           const observation = record.stages?.[stage];
           let state = observation?.state || (stage === "intake" && record.run ? "completed" : "not recorded");
           if (state === "started") state = record.state === "RUNNING" ? "running" : "interrupted";
-          if (observation?.reason && ["TEST_FAILED", "CHANGES_REQUIRED", "NEEDS_CLARIFICATION", "NEEDS_RESCOPING"].includes(observation.reason)) state = label(observation.reason);
+          if (state !== "skipped" && observation?.reason && ["TEST_FAILED", "CHANGES_REQUIRED", "NEEDS_CLARIFICATION", "NEEDS_RESCOPING"].includes(observation.reason)) state = label(observation.reason);
           return <li key={stage}><Circle size={13} data-stage-status={state} /><span>{stage.toUpperCase()}</span>
             <span className="muted">{state}</span>{record.stage_errors?.[stage] && <small>{record.stage_errors[stage]}</small>}</li>;
         })}</ol>
       </section>
+      {record.run?.verification && <section>
+        <h3>Verification</h3>
+        <ul className="github-checks">{record.run.verification.checks.map(check =>
+          <li key={check.id}>{check.id}<Badge>TEST passed</Badge></li>)}
+          {record.run.verification.review.criteria.map(criterion =>
+            <li key={criterion.criterion_id}>{criterion.criterion_id}<Badge>REVIEW passed</Badge></li>)}</ul>
+      </section>}
       <section>
         <h3>Evidence</h3>
         <div className="artifact-list">{["report.md", "evidence.json"].filter(name => record.artifacts?.[name]).map(name =>
@@ -107,6 +115,7 @@ function RunDetail({ record: latest, id, close, onDone, onError, disabled }) {
         {evidence.data?.has_specification && <Artifact id={id} attempt={number} name="spec.md" />}</div>
         {!evidence.data?.has_specification && !Object.values(record.artifacts || {}).some(Boolean) && <p className="muted">No terminal evidence available.</p>}
       </section>
+      {attempt == null && <GitHubDelivery record={latest} id={id} disabled={disabled} onDone={onDone} onError={onError} />}
     </> : <p className="notice">{latest && !evidence.error ? "Loading Attempt…" : "This Run is unavailable in the current history."}</p>}
   </aside>;
 }
@@ -187,7 +196,7 @@ function Workspace() {
           return rows.length > 0 && <section key={name} className="run-group" aria-label={name}>
             <h2>{name} <Badge>{rows.length}</Badge></h2>
             {rows.map(record => <a key={runId(record)} href={`/runs/${runId(record)}`} className="run-row" aria-current={selected === runId(record) ? "page" : undefined} onClick={event => navigate(event, runId(record))}>
-              <span className="run-title"><strong>{record.title || "Untitled request"}</strong><small className="mono">{runId(record).slice(0, 8)}</small></span>
+              <span className="run-title"><strong>{record.title || "Untitled request"}</strong><small className="mono">{runId(record).slice(0, 8)}{record.state && record.state !== status(record) ? ` · ${label(record.state)}` : ""}</small></span>
               <span className="repo"><GitBranch size={13} />{repo(record)}</span>
               <span className="run-stage">{lastStage(record)?.toUpperCase() || "—"}</span>
               <Status record={record} />

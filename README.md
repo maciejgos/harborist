@@ -4,7 +4,7 @@ Shipyard is a local, evidence-driven delivery harness for native coding agents. 
 
 > **Status:** Phase 11 rework and recovery is complete (2026-11-04), with fresh
 > Attempts, frozen-spec reuse and cumulative budgets. The local background service
-> and read-only browser monitor wrap the synchronous execution core. See the
+> and local browser workspace wrap the synchronous execution core. See the
 > [Phase 11 acceptance report](spec/065-phase11-acceptance/report.md).
 
 ## Quick start

@@ -121,3 +121,11 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .field input, .field textarea { width: 100%; }
+.approval { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.github-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.github-delivery a { color: var(--accent); }
+.github-checks { list-style: none; padding: 0; }
+.github-checks li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.feedback-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.feedback-item > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.feedback-item small { color: var(--muted); }

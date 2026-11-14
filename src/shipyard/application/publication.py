@@ -71,6 +71,7 @@ def publish_run(
     base: str,
     expect_head: str | None = None,
     runs_dir: Path | None = None,
+    expected_attempt: UUID | None = None,
 ) -> PullRequest:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+", destination):
         raise ValueError("Expected a GitHub destination in owner/repository form")
@@ -82,6 +83,8 @@ def publish_run(
         assert evidence.candidate and evidence.attempt and evidence.test
         candidate = evidence.candidate.candidate_sha
         attempt = evidence.attempt.attempt_id
+        if expected_attempt is not None and attempt != expected_attempt:
+            raise ValueError("Approval belongs to a previous Attempt")
         if candidate != approve:
             raise ValueError("Approval must match the full VERIFIED candidate SHA")
         GitRepository(path=repository).validate_application_candidate(

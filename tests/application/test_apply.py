@@ -234,6 +234,15 @@ def test_publication_rejects_wrong_approval_and_moved_candidate_ref(
             base="main",
             runs_dir=root,
         )
+    with pytest.raises(ValueError, match="previous Attempt"):
+        publication.publish_run(
+            run_id,
+            approve=candidate,
+            expected_attempt=run_id,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
     git(repo, "update-ref", f"refs/shipyard/runs/{run_id}/candidate", contract.base_sha)
     with pytest.raises(ValueError, match="candidate ref does not match"):
         publication.publish_run(

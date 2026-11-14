@@ -33,10 +33,10 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Phase 12 · GitHub collaboration evidence | Track PR status, CI results, review feedback, changes to the head, and what was merged. Let operators choose which feedback to use in an approved rework Attempt. | Done | [Collaboration spec](spec/069-github-collaboration/spec.md) |
 | Run cancellation | Foreground Runs can already be interrupted and marked cancelled. Add operator cancellation through the background service and define how cancellation affects publication. | Done | [Cancellation spec](spec/070-run-cancellation/spec.md) |
 | Run supersession | Let an operator replace a Run. Freeze a separate contract for the replacement and keep the original Run's evidence. | Done | [Supersession spec](spec/071-run-supersession/spec.md) |
-| Web workspace and Run inbox | Build the React and shadcn/ui workspace, shared interaction patterns, and searchable Run inbox. | Todo | [Workspace spec](spec/072-web-workspace/spec.md) |
-| Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Todo | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
-| Browser Run submission and control | Submit from Markdown or GitHub and use approved cancellation, supersession, rework, and recovery flows. | Todo | [Browser Run operations spec](spec/074-web-run-operations/spec.md) |
-| Browser GitHub delivery and MVP acceptance | Approve the exact verified commit, inspect PR evidence, and validate the packaged browser experience across every screen. | Todo | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
+| Web workspace and Run inbox | Build the React and shadcn/ui workspace, shared interaction patterns, and searchable Run inbox. | Done | [Workspace spec](spec/072-web-workspace/spec.md) |
+| Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Done | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
+| Browser Run submission and control | Submit from Markdown or GitHub and use approved cancellation, supersession, rework, and recovery flows. | Done | [Browser Run operations spec](spec/074-web-run-operations/spec.md) |
+| Browser GitHub delivery and MVP acceptance | Approve the exact verified commit, inspect PR evidence, and validate the packaged browser experience across every screen. | Implemented, local verification | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 

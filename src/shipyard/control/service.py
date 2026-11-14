@@ -14,6 +14,7 @@ from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
 from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
+from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
@@ -116,6 +117,10 @@ class ControlService:
             return {
                 "runs": [item.model_dump(mode="json") for item in self.history.list()]
             }
+        if method == "GET" and (
+            delivery := re.fullmatch(r"/runs/([^/]+)/github", path)
+        ):
+            return read_delivery(self.history.get(UUID(delivery[1])))
         if method == "GET" and (attempt := ATTEMPTS.fullmatch(path)):
             return attempt_evidence(
                 self.history.get(UUID(attempt[1])), attempt[2], attempt[3]
@@ -172,13 +177,15 @@ class ControlService:
             self.dispatch("POST", "/runs", submission.model_dump_json().encode())
             return run_id_response(submission.run_id)
         match = re.fullmatch(
-            r"/workspace/runs/([^/]+)/(continue|cancel|supersede)", path
+            r"/workspace/runs/([^/]+)/(continue|cancel|supersede|publish|observe)", path
         )
         if match is None:
             raise ValueError("Unknown workspace command")
         run_id = UUID(match[1])
         record = self.history.get(run_id)
         root = record.submission.runs_root
+        if match[2] in ("publish", "observe"):
+            return github_command(record, match[2], body)
         if match[2] == "continue":
             continuation = ContinuationRequest.model_validate_json(body)
             submission = continuation_submission(record, continuation)

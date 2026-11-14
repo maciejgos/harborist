@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shipyard.application.context import load_context
 from shipyard.control.queue import DeliveryState, Progress, QueueRecord, Submission
 from shipyard.control.stage_history import read_stage_history
 from shipyard.domain import Run, RunLifecycle
@@ -38,6 +39,7 @@ class RunView(BaseModel):
     progress: Progress | None = None
     error: str | None = None
     title: str = ""
+    repository: Path | None = None
     candidate_sha: str | None = None
     run: Run | None = None
     run_error: str | None = None
@@ -120,6 +122,19 @@ def project(view: RunView, *, number: int | None = None) -> RunView:
             if attempt is not None
             else None
         )
+        repository = (
+            submission.repository if isinstance(submission, Submission) else None
+        )
+        context_path = (
+            store.original_directory(submission.run_id) / "execution-context.json"
+        )
+        if repository is None and context_path.is_file():
+            try:
+                context = load_context(path=context_path, run_id=submission.run_id)
+                if context.runs_root == submission.runs_root:
+                    repository = context.repository
+            except ValueError:
+                pass
         number = store.selected_number(submission.run_id)
         observations = view.stages
         progress = view.progress
@@ -137,7 +152,8 @@ def project(view: RunView, *, number: int | None = None) -> RunView:
                 "attempt_number": number,
                 "retirement": load_retirement(submission.runs_root, submission.run_id),
                 "progress": progress,
-                "stages": {**(history.stages if history else {}), **observations},
+                "stages": {**observations, **(history.stages if history else {})},
+                "repository": repository,
                 "stage_errors": history.errors if history else {},
                 "run": run,
                 "title": next(

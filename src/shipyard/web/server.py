@@ -14,7 +14,7 @@ from shipyard.control.evidence_reads import ATTEMPTS
 from shipyard.control.service import MAX_REQUEST
 
 COMMAND = re.compile(
-    r"/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede))?"
+    r"/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
 )
 
 
@@ -62,14 +62,19 @@ class WebApplication:
             api = route.removeprefix("/api")
             parts = api.strip("/").split("/")
             allowed = api in ("/health", "/runs")
-            if len(parts) in (2, 4) and parts[0] == "runs":
+            if len(parts) in (2, 3, 4) and parts[0] == "runs":
                 try:
                     UUID(parts[1])
                 except ValueError:
                     return 404, "text/plain", b"Unknown Run"
-                allowed = len(parts) == 2 or (
-                    parts[2] == "artifacts"
-                    and parts[3] in ("report.md", "evidence.json")
+                allowed = (
+                    len(parts) == 2
+                    or (len(parts) == 3 and parts[2] == "github")
+                    or (
+                        len(parts) == 4
+                        and parts[2] == "artifacts"
+                        and parts[3] in ("report.md", "evidence.json")
+                    )
                 )
             if attempt := ATTEMPTS.fullmatch(api):
                 try:

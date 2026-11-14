@@ -136,7 +136,7 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point, service client and presentation
 ├── control/        # local queue, service ownership, execution and read model
-├── web/            # read-only loopback browser adapter and packaged static assets
+├── web/            # loopback browser adapter and packaged static assets
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
 ├── application/    # durable intake, synchronous Run executor and native stages
 ├── intake/         # local Markdown and authenticated gh capture
@@ -299,8 +299,7 @@ ref remains intact. Explicit application validates the selected Attempt's ref.
 The queue retains earlier delivery snapshots under `deliveries/<run>/` and uses a
 continuation request UUID plus expected predecessor for idempotency. It rechecks
 admission at execution, never resumes interrupted claims and still runs one Run
-at a time. The monitor remains read-only and attributes observations to the
-current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
+at a time. The Phase 11 monitor attributes observations to the current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
 [storage rules](docs/storage-and-recovery.md#phase-11-attempt-persistence) and the
 [acceptance audit](spec/065-phase11-acceptance/report.md).
 
@@ -327,7 +326,7 @@ interrupts active execution, including bounded child-process capture.
 Supersession links the original to a new capture and submits it through the
 same serial queue. Run status exposes the link and historical Attempt outcome.
 
-## Planned local MVP web workspace
+## Local MVP web workspace
 
 The browser workspace extends the loopback adapter described in Phase 10.
 React and shadcn/ui own presentation, navigation, and local interaction state.
