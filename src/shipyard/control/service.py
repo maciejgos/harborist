@@ -3,6 +3,7 @@
 import fcntl
 import json
 import os
+import re
 import stat
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -14,7 +15,7 @@ from uuid import UUID
 from shipyard.agents.base import NativeAgent
 from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
-from shipyard.control.retirement import retire_run
+from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.worker import Worker
 from shipyard.domain import RunLifecycle
 from shipyard.paths import runs_root
@@ -75,16 +76,25 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
-        if method == "POST" and path.startswith("/runs/") and path.endswith("/cancel"):
-            run_id = UUID(path.split("/")[2])
+        disposition = re.fullmatch(r"/runs/([^/]+)/(cancel|supersede)", path)
+        if method == "POST" and disposition:
+            run_id = UUID(disposition[1])
             request = RetirementRequest.model_validate_json(body)
-            if request.replacement is not None:
-                raise ValueError("Use the supersede route for a replacement")
             with self.gate:
                 root = self.run_root(run_id, request)
-                return retire_run(
-                    self.queue, root, run_id, request, self.active
-                ).model_dump(mode="json")
+                if disposition[2] == "supersede":
+                    if self.stopping.is_set():
+                        raise ValueError(
+                            "Service is stopping; replacement was not accepted"
+                        )
+                    result = supersede_run(
+                        self.queue, root, run_id, request, self.active
+                    )
+                else:
+                    if request.replacement is not None:
+                        raise ValueError("Use the supersede route for a replacement")
+                    result = retire_run(self.queue, root, run_id, request, self.active)
+                return result.model_dump(mode="json")
         if method == "POST" and path == "/runs":
             submission = Submission.model_validate_json(body)
             with self.gate:

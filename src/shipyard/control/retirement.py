@@ -1,9 +1,10 @@
 """Apply explicit operator disposition without rewriting historical evidence."""
 
-import getpass
+import os
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
+from pwd import getpwuid
 from uuid import UUID
 
 from shipyard.control.queue import QueueRecord, QueueStore
@@ -28,9 +29,11 @@ def retire_run(
 ) -> Retirement:
     store = FileRunStore(root=root)
     with ExitStack() as stack:
+        locked = True
         try:
             stack.enter_context(execution_lock(store, run_id))
         except RunPersistenceError:
+            locked = False
             if active is None or active.submission.run_id != run_id:
                 raise
             if store.load_state(run_id).lifecycle != "RUNNING":
@@ -43,6 +46,7 @@ def retire_run(
                 request.replacement,
             ):
                 raise ValueError("Run already has a terminal operator disposition")
+            queue.cancel_delivery(run_id)
             return existing
         record = next(
             (item for item in queue.list() if item.submission.run_id == run_id), None
@@ -55,7 +59,7 @@ def retire_run(
         )
         retirement = Retirement(
             run_id=run_id,
-            actor=getpass.getuser(),
+            actor=getpwuid(os.getuid()).pw_name,
             timestamp=datetime.now(UTC),
             reason=request.reason,
             replacement=request.replacement,
@@ -63,9 +67,49 @@ def retire_run(
             stage=record.progress.stage if record and record.progress else None,
         )
         record_retirement(root, retirement)
-        if store.load_state(run_id).lifecycle == "CREATED" and (
-            active is None or active.submission.run_id != run_id
-        ):
+        if locked and store.load_state(run_id).lifecycle == "CREATED":
             store.cancel_pending(run_id)
         queue.cancel_delivery(run_id)
         return retirement
+
+
+def supersede_run(
+    queue: QueueStore,
+    root: Path,
+    run_id: UUID,
+    request: RetirementRequest,
+    active: QueueRecord | None,
+) -> Retirement:
+    from shipyard.application.context import load_context
+    from shipyard.control.queue import Submission
+    from shipyard.persistence.retirement import require_live_run
+
+    replacement = request.replacement
+    if replacement is None or replacement == run_id:
+        raise ValueError("Supersession requires a distinct replacement Run")
+    store = FileRunStore(root=root)
+    store.load(replacement)
+    context = load_context(
+        path=store.original_directory(replacement) / "execution-context.json",
+        run_id=replacement,
+    )
+    existing = load_retirement(root, run_id)
+    if existing is None:
+        require_live_run(root, replacement)
+        if (
+            store.selected_number(replacement)
+            or store.load_state(replacement).lifecycle != "CREATED"
+        ):
+            raise ValueError("Replacement must be a fresh captured Run")
+        if any(record.submission.run_id == replacement for record in queue.list()):
+            raise ValueError("Replacement already has a service delivery")
+    retirement = retire_run(queue, root, run_id, request, active)
+    if not any(record.submission.run_id == replacement for record in queue.list()):
+        queue.submit(
+            Submission(
+                run_id=replacement,
+                repository=context.repository,
+                runs_root=context.runs_root,
+            )
+        )
+    return retirement

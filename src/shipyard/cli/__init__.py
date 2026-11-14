@@ -8,7 +8,7 @@ from shipyard.cli.github import github_status, publish
 from shipyard.cli.inspection import inspect, methodology
 from shipyard.cli.intake import intake
 from shipyard.cli.monitoring import runs, status
-from shipyard.cli.retirement import cancel
+from shipyard.cli.retirement import cancel, supersede
 from shipyard.cli.run import run_command
 from shipyard.cli.service import service_app
 from shipyard.cli.web import web
@@ -34,3 +34,4 @@ app.command("web")(web)
 app.command()(publish)
 app.command()(github_status)
 app.command()(cancel)
+app.command()(supersede)
