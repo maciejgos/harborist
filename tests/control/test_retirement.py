@@ -36,6 +36,7 @@ def test_supersede_active_run_stops_execution_and_queues_fresh_contract(
     from shipyard.application.context import ExecutionContext
     from shipyard.application.intake import create_run
     from shipyard.control.queue import DeliveryState
+    from shipyard.persistence.retirement import RetirementRequest
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     run_id = contract.run_id
@@ -57,21 +58,18 @@ def test_supersede_active_run_stops_execution_and_queues_fresh_contract(
     ).save()
     queue = QueueStore(tmp_path / "control")
 
+    body = (
+        RetirementRequest(reason="Updated request", replacement=replacement.run_id)
+        .model_dump_json()
+        .encode()
+    )
+    route = f"/runs/{run_id}/supersede"
+
     class SupersedingAgent(FakeAgent):
         def execute(self, request: AgentRequest) -> AgentResponse:
-            result = service.dispatch(
-                "POST",
-                f"/runs/{run_id}/supersede",
-                RetirementRequest(
-                    reason="Updated request", replacement=replacement.run_id
-                )
-                .model_dump_json()
-                .encode(),
-            )
+            result = service.dispatch("POST", route, body)
             assert result["replacement"] == str(replacement.run_id)
             return super().execute(request)
-
-    from shipyard.persistence.retirement import RetirementRequest
 
     service = ControlService(queue, agent=SupersedingAgent(), history_root=root)
     queue.submit(
@@ -86,6 +84,10 @@ def test_supersede_active_run_stops_execution_and_queues_fresh_contract(
     replacement_state = store.load_state(replacement.run_id)
     assert replacement_state.lifecycle == "CREATED"
     assert replacement_state.verification is None
+    assert service.dispatch("POST", route, body)["replacement"] == str(
+        replacement.run_id
+    )
+    assert len(queue.list()) == 2
 
 
 def test_cancel_completed_candidate_preserves_evidence_and_blocks_publication(

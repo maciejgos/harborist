@@ -259,6 +259,11 @@ class QueueStore:
         with self._locked():
             for record in self._records():
                 if record.state == DeliveryState.RUNNING:
+                    if load_retirement(
+                        record.submission.runs_root, record.submission.run_id
+                    ):
+                        self._change(record, state=DeliveryState.CANCELLED)
+                        continue
                     self._change(
                         record,
                         state=DeliveryState.INTERRUPTED,

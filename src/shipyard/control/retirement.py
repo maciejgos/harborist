@@ -93,6 +93,8 @@ def supersede_run(
         path=store.original_directory(replacement) / "execution-context.json",
         run_id=replacement,
     )
+    if context.runs_root != root:
+        raise ValueError("Replacement context must use the original Runs root")
     existing = load_retirement(root, run_id)
     if existing is None:
         require_live_run(root, replacement)
