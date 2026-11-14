@@ -111,11 +111,12 @@ def publish_run(
         if expect_head != previous:
             raise ValueError("Expected head must match the previous publication")
         if pending and (
+            pending.attempt,
             pending.repository,
             pending.base,
             pending.candidate,
             pending.previous,
-        ) != (destination, base, candidate, previous):
+        ) != (attempt, destination, base, candidate, previous):
             raise ValueError("Approval conflicts with prepared publication")
         pull = find_pull(destination, branch)
         remote = (
@@ -155,10 +156,12 @@ def publish_run(
                 timestamp=datetime.now(UTC),
             )
             write_new_record(pending_path, pending)
+        if prior and prior.attempt == attempt and pull:
+            if not already_pushed:
+                raise ValueError("GitHub head changed after the completed publication")
+            return pull
         if not already_pushed:
             push_candidate(repository, url, ref, candidate, previous)
-        if prior and prior.attempt == attempt and pull:
-            return pull
         summary = (
             run_git(repository, "show", "-s", "--format=%B", candidate).decode().strip()
         )
@@ -170,11 +173,16 @@ def publish_run(
         limitations = (
             "\n".join(evidence.unverified)[:4000] or "No unverified areas recorded."
         )
+        checks = "\n".join(
+            f"- {check.id}: {'passed' if check.passed else 'failed'}"
+            for check in evidence.test.collection.checks[:128]
+        )[:6000]
         body = (
+            f"<!-- shipyard-publication:{attempt} -->\n\n"
             f"## Request\n\n{evidence.contract.intent.markdown[:8000]}\n\n"
             f"## Implementation\n\n{summary[:4000]}\n\n"
             f"Base: `{evidence.contract.base_sha}`\n\nCandidate: `{candidate}`\n\n"
-            f"## TEST\n\nAll mandatory checks passed.\n\n## REVIEW\n\n{(review or '')[:8000]}\n\n"
+            f"## TEST\n\n{checks}\n\n## REVIEW\n\n{(review or '')[:8000]}\n\n"
             f"## Limitations\n\n{limitations}\n\n"
             f"Full local evidence: Run `{run_id}`, Attempt `{attempt}` (`evidence.json`)."
         )

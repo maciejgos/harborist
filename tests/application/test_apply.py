@@ -209,3 +209,37 @@ def test_unindexed_context_and_repository_conflict_are_rejected(
         )
     assert git(repo, "rev-parse", "main") == contract.base_sha
     assert candidate != contract.base_sha
+
+
+def test_publication_rejects_wrong_approval_and_moved_candidate_ref(
+    packaged: tuple[Path, Path, RunContract, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shipyard.application import publication
+
+    root, repo, contract, candidate = packaged
+    run_id = contract.run_id
+    monkeypatch.chdir(repo)
+
+    def unexpected_api(endpoint: str) -> object:
+        pytest.fail(
+            f"Publication contacted GitHub before validating evidence: {endpoint}"
+        )
+
+    monkeypatch.setattr(publication, "api", unexpected_api)
+    with pytest.raises(ValueError, match="Approval must match"):
+        publication.publish_run(
+            run_id,
+            approve=contract.base_sha,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+    git(repo, "update-ref", f"refs/shipyard/runs/{run_id}/candidate", contract.base_sha)
+    with pytest.raises(ValueError, match="candidate ref does not match"):
+        publication.publish_run(
+            run_id,
+            approve=candidate,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
