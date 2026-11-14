@@ -341,3 +341,10 @@ Use [Linear](https://linear.app/) as the reference for navigation, compact
 information hierarchy, and keyboard interaction. Shared layout, design tokens,
 and component conventions cover every screen and its alternate states.
 See the [workspace spec](spec/072-web-workspace/spec.md).
+
+Run and Attempt detail use canonical read models for live and historical data.
+Delivery status, observed stage progress, validated outcome, and verification
+are separate fields. The browser attributes evidence to the selected Attempt
+and displays verification only for the candidate SHA identified by the service.
+Artifact reads use bounded, named evidence endpoints. See the
+[Run evidence spec](spec/073-web-run-evidence/spec.md).

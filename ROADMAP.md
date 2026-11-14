@@ -34,6 +34,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Run cancellation | Foreground Runs can already be interrupted and marked cancelled. Add operator cancellation through the background service and define how cancellation affects publication. | Done | [Cancellation spec](spec/070-run-cancellation/spec.md) |
 | Run supersession | Let an operator replace a Run. Freeze a separate contract for the replacement and keep the original Run's evidence. | Done | [Supersession spec](spec/071-run-supersession/spec.md) |
 | Web workspace and Run inbox | Build the React and shadcn/ui workspace, shared interaction patterns, and searchable Run inbox. | Todo | [Workspace spec](spec/072-web-workspace/spec.md) |
+| Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Todo | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 
