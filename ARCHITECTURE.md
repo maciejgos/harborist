@@ -326,3 +326,18 @@ while retaining historical verification. The local worker cooperatively
 interrupts active execution, including bounded child-process capture.
 Supersession links the original to a new capture and submits it through the
 same serial queue. Run status exposes the link and historical Attempt outcome.
+
+## Planned local MVP web workspace
+
+The browser workspace extends the loopback adapter described in Phase 10.
+React and shadcn/ui own presentation, navigation, and local interaction state.
+A frontend build produces static assets packaged with Shipyard and served by
+`shipyard web`. The Python adapter serves assets and forwards allowlisted
+requests through ControlClient to the local service. The critical execution
+path remains synchronous and the service continues to process one Run at a
+time. The filesystem remains the source of durable state.
+
+Use [Linear](https://linear.app/) as the reference for navigation, compact
+information hierarchy, and keyboard interaction. Shared layout, design tokens,
+and component conventions cover every screen and its alternate states.
+See the [workspace spec](spec/072-web-workspace/spec.md).
