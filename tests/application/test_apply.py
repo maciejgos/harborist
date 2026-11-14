@@ -319,3 +319,69 @@ def test_selected_github_review_starts_fresh_verification(
     assert evidence.run.outcome == RunOutcome.VERIFIED
     assert evidence.attempt == record.attempt
     assert evidence.test is not None
+
+
+def test_publication_pushes_exact_candidate_and_reconciles_retry(
+    packaged: tuple[Path, Path, RunContract, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shipyard.application import publication
+    from shipyard.git.publication import push_candidate
+
+    root, repo, contract, candidate = packaged
+    monkeypatch.chdir(repo)
+    remote = root.parent / "remote.git"
+    remote.mkdir()
+    git(remote, "init", "--bare")
+    git(repo, "push", str(remote), f"{contract.base_sha}:refs/heads/main")
+    branch = f"shipyard/{contract.run_id}"
+    ref = f"refs/heads/{branch}"
+    run_git = publication.run_git
+    pulls: list[dict[str, object]] = []
+
+    def redirected_git(path: Path, *args: str) -> bytes:
+        return run_git(
+            path,
+            *(
+                str(remote) if arg == "https://github.com/owner/repo.git" else arg
+                for arg in args
+            ),
+        )
+
+    def redirected_push(
+        path: Path, url: str, ref: str, candidate: str, previous: str | None
+    ) -> None:
+        assert url == "https://github.com/owner/repo.git"
+        push_candidate(path, str(remote), ref, candidate, previous)
+
+    def api(endpoint: str, *, payload: dict[str, str] | None = None) -> object:
+        assert endpoint.startswith("repos/owner/repo/pulls")
+        if payload is None:
+            return pulls
+        assert git(remote, "rev-parse", ref) == candidate
+        assert candidate in payload["body"]
+        pulls.append(
+            {
+                "number": 17,
+                "html_url": "https://github.com/owner/repo/pull/17",
+                "state": "open",
+                "head": {"ref": branch, "sha": candidate},
+                "base": {"ref": "main", "sha": contract.base_sha},
+                "body": payload["body"],
+            }
+        )
+        return pulls[-1]
+
+    monkeypatch.setattr(publication, "run_git", redirected_git)
+    monkeypatch.setattr(publication, "push_candidate", redirected_push)
+    monkeypatch.setattr(publication, "api", api)
+    for _ in range(2):
+        result = publication.publish_run(
+            contract.run_id,
+            approve=candidate,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+        assert result.number == 17
+    assert len(pulls) == 1
