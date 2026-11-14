@@ -30,3 +30,7 @@ request header, and bounded JSON. The service reuses the application capture
 function and existing queue admission and retirement commands. Create-only
 receipts bind capture retries to their original inputs and Run ID. Continuation
 uses the expected predecessor and existing request ID semantics.
+
+The existing CLI tests for frozen intake now patch the shared capture module.
+They still verify that execution uses the retained contract after changes to
+live settings.

@@ -190,8 +190,8 @@ def test_discovery_freezes_local_settings_and_base_checks_for_execution(
 ) -> None:
     import shipyard.configuration.execution as settings_module
     from shipyard.agents.base import AgentRequest, AgentResponse
+    from shipyard.application import capture as application_capture
     from shipyard.application.execution import execute_run
-    from shipyard.cli import capture as cli_capture
 
     path = conventional(target)
     base = git(target, "rev-parse", "HEAD")
@@ -216,7 +216,7 @@ def test_discovery_freezes_local_settings_and_base_checks_for_execution(
     def forbidden(**kwargs: object) -> None:
         pytest.fail("Execution must not reload live settings")
 
-    monkeypatch.setattr(cli_capture, "load_execution_settings", forbidden)
+    monkeypatch.setattr(application_capture, "load_execution_settings", forbidden)
     monkeypatch.setattr(settings_module, "load_execution_settings", forbidden)
 
     class FrozenAgent(FakeAgent):
