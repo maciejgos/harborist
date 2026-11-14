@@ -410,3 +410,20 @@ shipyard rework RUN_ID --observation SNAPSHOT_PATH --feedback-id review:123
 The new Attempt starts from the local verified candidate, uses the frozen spec,
 and runs fresh TEST and REVIEW. Commits added by humans to the PR branch are
 never imported implicitly.
+
+## Cancel or replace a Run
+
+```sh
+shipyard cancel RUN_ID --reason "Request withdrawn"
+shipyard supersede RUN_ID file:./updated-request.md --reason "Requirements changed"
+```
+
+Both commands use the local service. Active execution stops at a cancellation
+checkpoint, including while native tools and checks are running. The original
+Run's packaged artifacts stay available, and its unpublished candidates
+become ineligible for GitHub publication. Existing pull requests remain
+available for human handling.
+
+Supersession captures and queues a new Run. Status on the original shows the
+replacement ID. If the service request fails after capture, retry with
+`shipyard supersede RUN_ID --replacement REPLACEMENT_ID --reason "Requirements changed"`.

@@ -2,7 +2,7 @@
 
 Shipyard can already take a request from a Markdown file or GitHub issue, run it in a separate Git worktree, and verify the exact commit it produces. The local service runs one job at a time in the background. You can follow it from the CLI or browser, and Phase 11 added a way to rework or recover a Run without starting over.
 
-The next milestone is the local MVP. An operator can approve a verified commit for publication and follow what happens to the pull request afterward. The MVP also needs a way to cancel a Run from the background service or explicitly replace it when the request changes.
+The next milestone is the local MVP. An operator can approve a verified commit for publication and follow what happens to the pull request afterward. An operator can also cancel a Run through the background service or explicitly replace it when the request changes.
 
 Team features come after the local MVP. The first product milestone is to get a real engineering team using Shipyard repeatedly across several repositories.
 
@@ -31,8 +31,8 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Phase 11 · Rework and recovery | Start a linked Attempt with explicit approval. Reuse earlier stage results after validation, carry forward time already spent, record any extra time granted, and verify the new candidate by its exact SHA. | Done | [Continuation acceptance spec](spec/065-phase11-acceptance/spec.md) |
 | Phase 12 · GitHub publication | Require explicit approval to publish the exact VERIFIED commit. Protect PR updates if the head has changed. | Done | [Publication spec](spec/068-github-publication/spec.md) |
 | Phase 12 · GitHub collaboration evidence | Track PR status, CI results, review feedback, changes to the head, and what was merged. Let operators choose which feedback to use in an approved rework Attempt. | Done | [Collaboration spec](spec/069-github-collaboration/spec.md) |
-| Run cancellation | Foreground Runs can already be interrupted and marked cancelled. Add operator cancellation through the background service and define how cancellation affects publication. | In progress | [Cancellation spec](spec/066-mvp-github-and-run-control/spec.md#run-cancellation) |
-| Run supersession | Let an operator replace a Run. Freeze a separate contract for the replacement and keep the original Run's evidence. | Todo | [Supersession spec](spec/066-mvp-github-and-run-control/spec.md#run-supersession) |
+| Run cancellation | Foreground Runs can already be interrupted and marked cancelled. Add operator cancellation through the background service and define how cancellation affects publication. | Done | [Cancellation spec](spec/070-run-cancellation/spec.md) |
+| Run supersession | Let an operator replace a Run. Freeze a separate contract for the replacement and keep the original Run's evidence. | Done | [Supersession spec](spec/071-run-supersession/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 

@@ -317,3 +317,12 @@ GitHub collaboration snapshots and publication receipts live beside Run
 storage. Snapshots describe the observed PR head, GitHub checks, feedback
 and merge result. Selected feedback is resolved during Attempt admission
 and frozen into PLAN context. See [GitHub delivery usage](docs/usage.md#publish-a-verified-candidate-to-github).
+
+## Run cancellation and supersession
+
+A create-only Run-level disposition records cancellation or supersession
+beside the Attempt history. It blocks execution, continuation, and publication
+while retaining historical verification. The local worker cooperatively
+interrupts active execution, including bounded child-process capture.
+Supersession links the original to a new capture and submits it through the
+same serial queue. Run status exposes the link and historical Attempt outcome.
