@@ -112,6 +112,21 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         response = connection.getresponse()
         assert response.status == 405
         response.read()
+        origin = f"http://127.0.0.1:{server.server_port}"
+        headers = {"Content-Type": "application/json", "X-Shipyard-Workspace": "1"}
+        for value in ("https://other.example", "null"):
+            connection.request(
+                "POST", "/api/workspace/runs", "{}", {**headers, "Origin": value}
+            )
+            response = connection.getresponse()
+            assert response.status == 403
+            response.read()
+        connection.request(
+            "POST", "/api/workspace/runs", "{}", {**headers, "Origin": origin}
+        )
+        response = connection.getresponse()
+        assert response.status == 400
+        assert "error" in json.loads(response.read())
         connection.close()
     finally:
         server.shutdown()
@@ -157,3 +172,35 @@ def test_attempt_evidence_is_read_through_the_selected_attempt(
     assert service.dispatch("GET", prefix + "/0/artifacts/report.md", b"")["content"]
     with pytest.raises(ValueError, match="Unknown Attempt"):
         service.dispatch("GET", prefix + "/1", b"")
+
+
+def test_browser_capture_retry_reuses_the_same_run(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from uuid import uuid4
+
+    _, repo, _ = capture(tmp_path, frozen_contract)
+    root = repo.checkout_root()
+    request = tmp_path / "request.md"
+    request.write_text("# Browser request\n")
+    settings = Path("shipyard.settings.yaml").resolve()
+    service = ControlService(
+        QueueStore(tmp_path / "control"),
+        agent=FakeAgent(),
+        history_root=tmp_path / "web-runs",
+    )
+    payload = {
+        "request_id": str(uuid4()),
+        "source": f"file:{request}",
+        "repository": str(root),
+        "settings": str(settings),
+    }
+    body = json.dumps(payload).encode()
+    first = service.dispatch("POST", "/workspace/runs", body)
+    second = service.dispatch("POST", "/workspace/runs", body)
+    assert first == second == {"run_id": payload["request_id"]}
+    assert len(service.queue.list()) == 1
+    with pytest.raises(ValueError, match="different inputs"):
+        service.dispatch(
+            "POST", "/workspace/runs", json.dumps({**payload, "ref": "other"}).encode()
+        )

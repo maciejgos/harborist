@@ -51,8 +51,8 @@ def supersede(
     verification_reserve: Annotated[int, typer.Option(min=1)] = 300,
 ) -> None:
     """Freeze a replacement request and supersede the original Run."""
+    from shipyard.application.capture import capture_run
     from shipyard.application.context import resolve_context
-    from shipyard.cli.capture import capture_run
     from shipyard.persistence.retirement import RetirementRequest
 
     try:

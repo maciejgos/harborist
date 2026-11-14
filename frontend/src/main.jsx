@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, Anchor, ChevronRight, Circle, FileText, GitBranch, Inbox, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
+import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
 import "./style.css";
 
@@ -37,7 +38,7 @@ function Artifact({ id, name, attempt, title = name }) {
   </Dialog>;
 }
 
-function RunDetail({ record: latest, id, close }) {
+function RunDetail({ record: latest, id, close, onDone, onError, disabled }) {
   const [attempt, setAttempt] = useState(null);
   const number = attempt ?? latest?.attempt_number;
   const prefix = `/runs/${id}/attempts`;
@@ -63,6 +64,7 @@ function RunDetail({ record: latest, id, close }) {
         <h2>{record.title || "Untitled request"}</h2>
         <p className="mono muted">{id}</p>
       </div>
+      {attempt == null && <RunActions record={latest} id={id} onDone={onDone} onError={onError} disabled={disabled} />}
       {failed.length > 0 && <section>
         <h3>Failed checks</h3>
         {failed.map(check => <div className="notice" key={check.id}>
@@ -146,6 +148,16 @@ function Workspace() {
     setSelected(id);
   }
 
+  function onDone(result) {
+    history.refresh();
+    setQuery("");
+    setFilter("All");
+    if (result.run_id && result.run_id !== selected) {
+      window.history.pushState(null, "", `/runs/${result.run_id}`);
+      setSelected(result.run_id);
+    }
+  }
+
   const records = history.data?.runs.toReversed() || [];
   const matched = records.filter(record => [record.title, runId(record), repo(record), status(record), record.state, lastStage(record), record.candidate_sha]
     .join(" ").toLowerCase().includes(query.trim().toLowerCase()));
@@ -160,7 +172,7 @@ function Workspace() {
     </aside>
     <main>
       <header className="topbar"><Activity size={15} /><span>Runs</span><Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button></header>
-      <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span></div>
+      <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
       <div className="toolbar">
         <div className="search"><Search size={15} /><Input type="search" ref={search} aria-label="Search Runs" placeholder="Search runs…" value={query} onChange={event => setQuery(event.target.value)} /><kbd>⌘ K</kbd></div>
         <div className="filters" aria-label="Filter Runs">{filters.map(value =>
@@ -184,7 +196,7 @@ function Workspace() {
         })}
       </div>
     </main>
-    {selected && <RunDetail key={selected} id={selected} record={details} close={event => navigate(event, "")} />}
+    {selected && <RunDetail key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
   </div>;
 }
 

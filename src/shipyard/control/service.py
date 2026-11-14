@@ -18,7 +18,15 @@ from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.worker import Worker
+from shipyard.control.workspace import (
+    CaptureRequest,
+    SupersedeRequest,
+    capture_submission,
+    continuation_submission,
+    run_id_response,
+)
 from shipyard.domain import RunLifecycle
+from shipyard.domain.continuation import ContinuationRequest
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.retirement import RetirementRequest
@@ -77,6 +85,8 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
+        if method == "POST" and path.startswith("/workspace/runs"):
+            return self.workspace_command(path, body)
         disposition = re.fullmatch(r"/runs/([^/]+)/(cancel|supersede)", path)
         if method == "POST" and disposition:
             run_id = UUID(disposition[1])
@@ -150,6 +160,47 @@ class ControlService:
                 mode="json"
             )
         raise ValueError("Unknown service route or method")
+
+    def workspace_command(self, path: str, body: bytes) -> dict[str, object]:
+        if path == "/workspace/runs":
+            request = CaptureRequest.model_validate_json(body)
+            submission = capture_submission(
+                request,
+                self.history.root,
+                receipts=self.queue.root / "workspace-requests",
+            )
+            self.dispatch("POST", "/runs", submission.model_dump_json().encode())
+            return run_id_response(submission.run_id)
+        match = re.fullmatch(
+            r"/workspace/runs/([^/]+)/(continue|cancel|supersede)", path
+        )
+        if match is None:
+            raise ValueError("Unknown workspace command")
+        run_id = UUID(match[1])
+        record = self.history.get(run_id)
+        root = record.submission.runs_root
+        if match[2] == "continue":
+            continuation = ContinuationRequest.model_validate_json(body)
+            submission = continuation_submission(record, continuation)
+            self.dispatch("POST", "/runs", submission.model_dump_json().encode())
+            return run_id_response(run_id)
+        if match[2] == "cancel":
+            request_data = RetirementRequest.model_validate_json(body)
+            retirement = RetirementRequest(reason=request_data.reason, runs_root=root)
+        else:
+            replacement = SupersedeRequest.model_validate_json(body)
+            submission = capture_submission(
+                replacement,
+                root,
+                receipts=self.queue.root / "workspace-requests" / str(run_id),
+            )
+            retirement = RetirementRequest(
+                reason=replacement.reason, runs_root=root, replacement=submission.run_id
+            )
+        self.dispatch(
+            "POST", f"/runs/{run_id}/{match[2]}", retirement.model_dump_json().encode()
+        )
+        return run_id_response(retirement.replacement or run_id)
 
     def run_root(self, run_id: UUID, request: RetirementRequest) -> Path:
         record = next(

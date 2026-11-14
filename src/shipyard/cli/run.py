@@ -8,8 +8,9 @@ from uuid import UUID
 
 import typer
 
+from shipyard.application.capture import capture_run
 from shipyard.application.context import resolve_context
-from shipyard.cli.capture import capture_run, execution_command
+from shipyard.cli.capture import execution_command
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitWorkspaceError
 from shipyard.intake.github import parse_github_selector

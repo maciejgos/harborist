@@ -1,4 +1,4 @@
-"""Explicit local continuation commands; the browser remains read-only."""
+"""Explicit local continuation commands."""
 
 import json
 from pathlib import Path

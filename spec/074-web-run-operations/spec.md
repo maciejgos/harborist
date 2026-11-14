@@ -21,3 +21,12 @@ counterpart.
 - In a packaged browser build, submit a Run, inspect a failed mandatory
   check, and start an eligible rework Attempt. Exercise recovery from an
   eligible execution failure separately.
+
+## Implementation
+
+The workspace offers New Run, Cancel Run, Supersede, Rework, and Recover
+dialogs. Writes require the loopback Host, matching Origin, a workspace
+request header, and bounded JSON. The service reuses the application capture
+function and existing queue admission and retirement commands. Create-only
+receipts bind capture retries to their original inputs and Run ID. Continuation
+uses the expected predecessor and existing request ID semantics.
