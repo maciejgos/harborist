@@ -1,6 +1,6 @@
 'use strict';
 const stages = ['intake', 'design', 'plan', 'build', 'test', 'review', 'package'];
-const terminal = new Set(['FINISHED', 'FAILED', 'INTERRUPTED']);
+const terminal = new Set(['FINISHED', 'FAILED', 'INTERRUPTED', 'CANCELLED']);
 const finished = record => terminal.has(record.state) || ['COMPLETED', 'FAILED', 'CANCELLED'].includes(record.run?.lifecycle);
 const $ = id => document.getElementById(id);
 let records = [], selected = location.hash.slice(1), busy = false, timer, lastSuccess = null, artifactRequest = 0;
@@ -69,6 +69,11 @@ function renderDetail() {
   const execution = text('section', ''); execution.append(text('h3', 'Execution'));
   const fields = text('dl', '');
   pair(fields, 'Status', record.run?.lifecycle, tone(record.run?.lifecycle));
+  if (record.retirement) {
+    pair(fields, 'Disposition', record.retirement.replacement ? 'SUPERSEDED' : 'CANCELLED', 'warning');
+    pair(fields, 'Reason', record.retirement.reason);
+    if (record.retirement.replacement) pair(fields, 'Replacement Run', record.retirement.replacement, 'mono');
+  }
   pair(fields, 'Attempt', record.attempt_id, 'mono');
   if (record.state) pair(fields, 'Delivery', record.state, tone(record.state));
   pair(fields, 'Verified candidate', record.candidate_sha, 'mono');
@@ -89,6 +94,9 @@ function renderDetail() {
   let message = record.state === 'QUEUED' ? 'Waiting for the execution service.' : record.state === 'INTERRUPTED' ? 'The service stopped during this execution. The Run will not be retried automatically.' : record.state === 'FAILED' ? 'Execution could not finish. Inspect the error below and retained Run records.' : record.state === 'FINISHED' ? 'Execution has finished. Review the outcome and evidence above.' : record.progress?.state === 'started' ? `${record.progress.stage.toUpperCase()} is running. Progress is observational; validated Run state is authoritative.` : 'Waiting for the next recorded stage update.';
   if (record.source === 'saved') {
     message = !record.run ? 'This saved Run could not be read. Inspect the error below.' : record.run.lifecycle === 'COMPLETED' ? 'Execution has finished. Review the outcome and evidence above.' : record.run.lifecycle === 'FAILED' ? 'Execution failed. Review the failure and retained evidence.' : record.run.lifecycle === 'CANCELLED' ? 'Execution was cancelled.' : record.run.lifecycle === 'CREATED' ? 'This request was captured but has not started execution.' : 'The saved records report RUNNING. No background-service progress is recorded for this Run.';
+  }
+  if (record.retirement) {
+    message = record.state === 'RUNNING' ? 'Stopping active execution.' : record.retirement.replacement ? 'A replacement Run was requested.' : 'The Run was cancelled.';
   }
   current.append(text('p', message, 'notice'));
   for (const error of [record.error, record.run_error]) if (error) current.append(text('p', error, 'notice error'));

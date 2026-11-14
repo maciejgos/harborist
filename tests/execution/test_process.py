@@ -29,3 +29,29 @@ def test_detached_descendant_cannot_keep_capture_open(tmp_path: Path) -> None:
             os.kill(int(result.stdout), signal.SIGKILL)
         except ProcessLookupError:
             pass
+
+
+def test_cancel_stops_running_process_group(tmp_path: Path) -> None:
+    import pytest
+
+    from shipyard.execution.cancellation import cancellation_check
+
+    marker = tmp_path / "started"
+    token = cancellation_check.set(marker.exists)
+    started = time.monotonic()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            capture_process(
+                [
+                    sys.executable,
+                    "-c",
+                    f"from pathlib import Path; import time; Path({str(marker)!r}).touch(); time.sleep(10)",
+                ],
+                cwd=tmp_path,
+                timeout=10,
+                limit=100,
+            )
+    finally:
+        cancellation_check.reset(token)
+    assert marker.exists()
+    assert time.monotonic() - started < 5
