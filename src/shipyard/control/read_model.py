@@ -13,6 +13,7 @@ from shipyard.domain import Run, RunLifecycle
 from shipyard.domain.attempt import Attempt
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import load_continuation
+from shipyard.persistence.retirement import Retirement, load_retirement
 
 
 class SavedRunLocation(BaseModel):
@@ -42,6 +43,7 @@ class RunView(BaseModel):
     run_error: str | None = None
     attempt_id: UUID | None = None
     attempt_number: int = 0
+    retirement: Retirement | None = None
     package_available: bool = False
     artifacts: dict[str, str] = Field(default_factory=dict)
 
@@ -133,6 +135,7 @@ def _project(view: RunView) -> RunView:
             {
                 **view.model_dump(),
                 "attempt_number": number,
+                "retirement": load_retirement(submission.runs_root, submission.run_id),
                 "progress": progress,
                 "stages": {**(history.stages if history else {}), **observations},
                 "stage_errors": history.errors if history else {},

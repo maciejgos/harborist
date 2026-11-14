@@ -17,6 +17,7 @@ from shipyard.domain import RunLifecycle
 from shipyard.domain.continuation import ContinuationRequest
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import prepare_continuation
+from shipyard.persistence.retirement import load_retirement, require_live_run
 
 
 class Submission(BaseModel):
@@ -38,6 +39,7 @@ class Submission(BaseModel):
 
 
 class DeliveryState(StrEnum):
+    CANCELLED = "CANCELLED"
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -129,6 +131,7 @@ class QueueStore:
 
     def submit(self, submission: Submission) -> QueueRecord:
         with self._locked():
+            require_live_run(submission.runs_root, submission.run_id)
             existing = (
                 self._read(submission.run_id)
                 if self._path(submission.run_id).exists()
@@ -199,6 +202,11 @@ class QueueStore:
                 return None
             for record in records:
                 if record.state == DeliveryState.QUEUED:
+                    if load_retirement(
+                        record.submission.runs_root, record.submission.run_id
+                    ):
+                        self._change(record, state=DeliveryState.CANCELLED)
+                        continue
                     return self._change(record, state=DeliveryState.RUNNING)
             return None
 
@@ -220,18 +228,31 @@ class QueueStore:
                 stages={**record.stages, progress.stage: progress},
             )
 
-    def finish(self, run_id: UUID, *, error: str | None = None) -> QueueRecord:
+    def finish(
+        self, run_id: UUID, *, error: str | None = None, cancelled: bool = False
+    ) -> QueueRecord:
         with self._locked():
             record = self._read(run_id)
             if record.state != DeliveryState.RUNNING:
                 raise ValueError("Completion requires an active claim")
             return self._change(
                 record,
-                state=DeliveryState.FAILED
-                if error is not None
-                else DeliveryState.FINISHED,
+                state=DeliveryState.CANCELLED
+                if cancelled
+                else (
+                    DeliveryState.FAILED
+                    if error is not None
+                    else DeliveryState.FINISHED
+                ),
                 error=error[:4096] if error is not None else None,
             )
+
+    def cancel_delivery(self, run_id: UUID) -> None:
+        with self._locked():
+            if self._path(run_id).exists():
+                record = self._read(run_id)
+                if record.state == DeliveryState.QUEUED:
+                    self._change(record, state=DeliveryState.CANCELLED)
 
     def interrupt_claims(self) -> None:
         """Only the exclusive service owner may call this on startup."""

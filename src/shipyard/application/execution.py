@@ -22,11 +22,13 @@ from shipyard.domain.playbook_execution import (
 )
 from shipyard.domain.stage_result import AgentStage, InvalidStageOutput, StageStatus
 from shipyard.evidence.package import RunEvidence, package_run
+from shipyard.execution.cancellation import check_cancellation
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitReadError, GitWorkspaceError
 from shipyard.paths import legacy_run_workspace
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import execution_lock, load_continuation
+from shipyard.persistence.retirement import require_live_run
 from shipyard.persistence.workspace import (
     WorkspaceSelection,
     load_layout,
@@ -47,6 +49,7 @@ def execute_run(
 ) -> RunEvidence:
     """Execute one fresh Attempt under the local Run execution lock."""
     with execution_lock(store, run_id):
+        require_live_run(store.original_directory(run_id).parent, run_id)
         return _execute_run(
             store=store.pinned(run_id),
             run_id=run_id,
@@ -149,6 +152,7 @@ def _execute_run(
                     run_id=run_id, attempt_id=attempt.attempt_id, path=workspace
                 ).model_dump_json()
             )
+        check_cancellation()
         try:
             methodology = compile_methodology(contract.execution)
         except ValueError:
@@ -172,6 +176,7 @@ def _execute_run(
             AgentStage.BUILD,
             AgentStage.REVIEW,
         ):
+            check_cancellation()
             if stage == AgentStage.DESIGN and "spec.md" in upstream:
                 updates.emit(ArtifactStage.DESIGN, "skipped", "FROZEN_SPEC_REUSED")
                 continue
@@ -212,6 +217,7 @@ def _execute_run(
                     else None,
                 )
                 stages.append(execution)
+                check_cancellation()
                 # A late response cannot consume another stage's allowance.
                 clock.allowance(artifact_stage, admission=False)
                 if execution.review_decision is not None:
@@ -281,6 +287,7 @@ def _execute_run(
                         total_timeout_seconds=allowance,
                         cleanup_workspace=isolated.clean_ignored_files,
                     )
+                    check_cancellation()
                     clock.allowance(ArtifactStage.TEST, admission=False)
                     routing = routing.accept(test.receipt)
                     if test.receipt.outcome == StepOutcome.TEST_FAILED:

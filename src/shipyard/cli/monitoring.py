@@ -17,7 +17,7 @@ ControlDirectory = Annotated[
 JsonOutput = Annotated[
     bool, typer.Option("--json", help="Print the service JSON response.")
 ]
-TERMINAL = {"FINISHED", "FAILED", "INTERRUPTED"}
+TERMINAL = {"FINISHED", "FAILED", "INTERRUPTED", "CANCELLED"}
 
 
 def _fields(value: object) -> dict[str, object]:
@@ -30,6 +30,13 @@ def render_record(record: dict[str, object]) -> str:
         f"Run: {run_id}",
         f"Delivery: {record.get('state') or 'Not submitted to service'}",
     ]
+    retirement = _fields(record.get("retirement"))
+    if retirement:
+        replacement = retirement.get("replacement")
+        lines.append(f"Disposition: {'SUPERSEDED' if replacement else 'CANCELLED'}")
+        lines.append(f"Reason: {retirement.get('reason')}")
+        if replacement:
+            lines.append(f"Replacement Run: {replacement}")
     run = _fields(record.get("run"))
     for label, key in (
         ("Status", "lifecycle"),

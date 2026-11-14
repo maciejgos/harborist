@@ -16,6 +16,7 @@ from shipyard.domain.continuation import ContinuationRequest, authorize_continua
 from shipyard.domain.stage_result import AgentStage, StageStatus
 from shipyard.evidence.index import load_index
 from shipyard.evidence.reuse import load_durable_spec
+from shipyard.persistence.retirement import require_live_run
 from shipyard.persistence.run import FileRunStore, RunPersistenceError
 
 
@@ -144,6 +145,7 @@ def prepare_continuation(
     dry_run: bool = False,
 ) -> tuple[FileRunStore, ContinuationRecord]:
     with execution_lock(store, run_id):
+        require_live_run(store.original_directory(run_id).parent, run_id)
         previous_store = store.pinned(run_id)
         directory = previous_store.directory(run_id)
         contract = previous_store.load(run_id)

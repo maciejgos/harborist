@@ -13,11 +13,13 @@ from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
 from shipyard.control.history import RunHistory
-from shipyard.control.queue import QueueStore, Submission
+from shipyard.control.queue import QueueRecord, QueueStore, Submission
+from shipyard.control.retirement import retire_run
 from shipyard.control.worker import Worker
 from shipyard.domain import RunLifecycle
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.retirement import RetirementRequest
 
 MAX_REQUEST = 64 * 1024
 
@@ -61,6 +63,7 @@ class ControlService:
         self.stopping = Event()
         self.ready = Event()
         self.gate = RLock()
+        self.active: QueueRecord | None = None
 
     def stop(self) -> None:
         with self.gate:
@@ -72,6 +75,16 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
+        if method == "POST" and path.startswith("/runs/") and path.endswith("/cancel"):
+            run_id = UUID(path.split("/")[2])
+            request = RetirementRequest.model_validate_json(body)
+            if request.replacement is not None:
+                raise ValueError("Use the supersede route for a replacement")
+            with self.gate:
+                root = self.run_root(run_id, request)
+                return retire_run(
+                    self.queue, root, run_id, request, self.active
+                ).model_dump(mode="json")
         if method == "POST" and path == "/runs":
             submission = Submission.model_validate_json(body)
             with self.gate:
@@ -122,6 +135,18 @@ class ControlService:
                 mode="json"
             )
         raise ValueError("Unknown service route or method")
+
+    def run_root(self, run_id: UUID, request: RetirementRequest) -> Path:
+        record = next(
+            (item for item in self.queue.list() if item.submission.run_id == run_id),
+            None,
+        )
+        if record is not None:
+            root = record.submission.runs_root
+            if request.runs_root and request.runs_root.resolve() != root:
+                raise ValueError("Runs root conflicts with the service delivery")
+            return root
+        return request.runs_root.resolve() if request.runs_root else self.history.root
 
     def serve(self) -> None:
         service = self
@@ -191,10 +216,15 @@ class ControlService:
                             record = (
                                 None if self.stopping.is_set() else self.queue.claim()
                             )
+                            self.active = record
                         if record is None:
                             self.stopping.wait(0.1)
                         else:
-                            self.worker.execute(record)
+                            try:
+                                self.worker.execute(record)
+                            finally:
+                                with self.gate:
+                                    self.active = None
                 finally:
                     self.stopping.set()
                     server.shutdown()

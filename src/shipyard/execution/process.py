@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from shipyard.execution.cancellation import check_cancellation
+
 
 @dataclass(frozen=True)
 class ProcessCapture:
@@ -34,6 +36,7 @@ def capture_process(
         raise ValueError(
             "Log limit must be nonnegative and timeout finite and positive"
         )
+    check_cancellation()
     buffers = [bytearray(), bytearray()]
     truncated = [False, False]
     deadline = time.monotonic() + timeout
@@ -65,6 +68,7 @@ def capture_process(
             timed_out = False
             try:
                 while True:
+                    check_cancellation()
                     exited = process.poll() is not None
                     remaining = deadline - time.monotonic()
                     if remaining <= 0 and not exited:

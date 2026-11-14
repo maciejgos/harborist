@@ -229,15 +229,7 @@ class FileRunStore:
         directory = self.directory(run_id)
         try:
             (directory / ".execution").mkdir()
-            with (directory / "events.jsonl").open("x", encoding="utf-8") as output:
-                output.write(
-                    RunEvent.create(
-                        event_type=RunEventType.RUN_CREATED,
-                        run=state,
-                        occurred_at=datetime.now(UTC),
-                    ).model_dump_json()
-                    + "\n"
-                )
+            self._create_journal(directory, state)
             self._write_transition(state.start(), RunEventType.RUN_STARTED)
         except OSError as error:
             raise RunPersistenceError(
@@ -245,6 +237,29 @@ class FileRunStore:
                 "check directory access and retained execution records"
             ) from error
         return state.start()
+
+    @staticmethod
+    def _create_journal(directory: Path, state: Run) -> None:
+        with (directory / "events.jsonl").open("x", encoding="utf-8") as output:
+            output.write(
+                RunEvent.create(
+                    event_type=RunEventType.RUN_CREATED,
+                    run=state,
+                    occurred_at=datetime.now(UTC),
+                ).model_dump_json()
+                + "\n"
+            )
+
+    def cancel_pending(self, run_id: UUID) -> None:
+        state = self.load_state(run_id)
+        if state.lifecycle != RunLifecycle.CREATED:
+            raise RunPersistenceError(
+                "Only pending execution may be cancelled before admission"
+            )
+        directory = self.directory(run_id)
+        if not (directory / "events.jsonl").exists():
+            self._create_journal(directory, state)
+        self._write_transition(state.cancel(), RunEventType.RUN_CANCELLED)
 
     def finish(self, run: Run) -> None:
         contract = self.load(run.run_id)

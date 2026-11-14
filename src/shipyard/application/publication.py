@@ -17,6 +17,7 @@ from shipyard.github.cli import api
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.application import ensure_record_directory, write_new_record
 from shipyard.persistence.continuation import execution_lock
+from shipyard.persistence.retirement import require_live_run
 
 
 class Branch(BaseModel):
@@ -76,6 +77,7 @@ def publish_run(
     repository, root = resolve_context(run_id=run_id, repo=None, runs_dir=runs_dir)
     store = FileRunStore(root=root)
     with execution_lock(store, run_id):
+        require_live_run(root, run_id)
         evidence = load_application_evidence(root=root, run_id=run_id)
         assert evidence.candidate and evidence.attempt and evidence.test
         candidate = evidence.candidate.candidate_sha
