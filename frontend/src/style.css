@@ -130,3 +130,14 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .feedback-item > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .feedback-item small { color: var(--muted); }
 .advanced summary { cursor: pointer; margin-bottom: 10px; } .advanced > .field { margin-bottom: 10px; }
+.sidebar nav { display: grid; gap: 4px; }
+.nav-link:not([aria-current]) { background: transparent; color: var(--muted); }
+.nav-link:hover { background: var(--raised); }
+.settings-list { padding: 18px 22px; }
+.settings-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 13px; padding: 16px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.settings-row p { margin: 4px 0 0; }
+.settings-notice { margin-top: 15px; }
+@media (max-width: 720px) {
+  .sidebar { flex-wrap: wrap; }
+  .sidebar nav { order: 3; display: flex; width: 100%; }
+}

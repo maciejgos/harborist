@@ -4,7 +4,11 @@ import { api } from "./api";
 import { Button, Dialog, Input } from "./ui";
 
 export function command(path, payload) {
-  return api("/workspace/runs" + path, {
+  return write("/workspace/runs" + path, payload);
+}
+
+export function write(path, payload) {
+  return api(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shipyard-Workspace": "1" },
     body: JSON.stringify(payload),
@@ -16,22 +20,22 @@ export function Field({ label, ...props }) {
   return <label className="field"><span>{label}</span><Input {...props} /></label>;
 }
 
-function CaptureFields({ repository }) {
+function CaptureFields({ repository, workspace }) {
   return <>
-    <Field label="Repository path" name="repository" defaultValue={repository} placeholder="~/Code/my-repository" required />
+    {!workspace && <Field label="Repository path" name="repository" defaultValue={repository} placeholder="~/Code/my-repository" required />} 
     <Field label="Markdown path or GitHub issue" name="source" placeholder="https://github.com/owner/repo/issues/123 or ~/request.md" required />
-    <details className="advanced"><summary>Advanced</summary>
+    {!workspace && <details className="advanced"><summary>Advanced</summary>
     <Field label="Settings path (optional)" name="settings" placeholder="Defaults to shipyard.settings.yaml in the repository" />
     <Field label="Base Git ref" name="ref" defaultValue="HEAD" required />
     <div className="field-pair">
       <Field label="Total time (seconds)" name="timeout" type="number" min="1" defaultValue="1800" required />
       <Field label="Verification reserve (seconds)" name="verification_reserve" type="number" min="1" defaultValue="300" required />
     </div>
-    </details>
+    </details>}
   </>;
 }
 
-export function CommandDialog({ title, trigger, description, submitLabel, prepare, onDone, onError, children }) {
+export function CommandDialog({ title, trigger, description, submitLabel, prepare, onDone, onError, children, send = command }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,7 +52,7 @@ export function CommandDialog({ title, trigger, description, submitLabel, prepar
     setError("");
     try {
       const [path, data] = prepare(fields, id);
-      const result = await command(path, data);
+      const result = await send(path, data);
       setOpen(false);
       setRequest(null);
       onDone(result);
@@ -72,7 +76,7 @@ export function CommandDialog({ title, trigger, description, submitLabel, prepar
   </Dialog>;
 }
 
-function capturePayload(fields, request_id) {
+export function capturePayload(fields, request_id) {
   return {
     request_id,
     source: fields.source.trim(),
@@ -84,11 +88,24 @@ function capturePayload(fields, request_id) {
   };
 }
 
-export function NewRun({ onDone, disabled }) {
-  return <CommandDialog title="New Run" description="Review the source and execution settings before adding this Run to the local queue."
+export function NewRun({ onDone, disabled, workspaces }) {
+  const [selection, setSelection] = useState("");
+  const workspace = workspaces.find(item => item.id === selection);
+  return <CommandDialog title="New Run" description="Choose a Workspace and enter a request to queue a Run."
     trigger={<Button disabled={disabled}><Plus size={15} /> New Run</Button>} submitLabel="Queue Run"
-    prepare={(fields, id) => ["", capturePayload(fields, id)]} onDone={onDone}>
-    <CaptureFields />
+    prepare={(fields, id) => ["", workspace ? {
+      request_id: id, source: fields.source.trim(), repository: workspace.repository,
+      settings: workspace.settings, ref: workspace.ref, timeout: workspace.timeout,
+      verification_reserve: workspace.verification_reserve,
+    } : capturePayload(fields, id)]} onDone={onDone}>
+    <label className="field">Workspace
+      <select className="input" name="workspace" value={selection} onChange={event => setSelection(event.target.value)}>
+        <option value="">Enter repository manually</option>
+        {workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+    </label>
+    {workspace && <p className="mono muted">{workspace.repository} · {workspace.ref}</p>}
+    <CaptureFields workspace={workspace} />
   </CommandDialog>;
 }
 

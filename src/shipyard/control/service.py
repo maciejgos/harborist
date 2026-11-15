@@ -18,6 +18,7 @@ from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
+from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
 from shipyard.control.worker import Worker
 from shipyard.control.workspace import (
     CaptureRequest,
@@ -70,6 +71,7 @@ class ControlService:
             queue, root=history_root if history_root is not None else runs_root()
         )
         self.queue = queue
+        self.workspaces = WorkspaceStore(queue.root / "workspaces")
         self.worker = Worker(queue, agent=agent)
         self.stopping = Event()
         self.ready = Event()
@@ -86,6 +88,18 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
+        if path == "/workspaces":
+            if method == "GET":
+                return {
+                    "workspaces": [
+                        item.model_dump(mode="json") for item in self.workspaces.list()
+                    ]
+                }
+            if method == "POST":
+                saved = self.workspaces.save(
+                    WorkspaceSettings.model_validate_json(body)
+                )
+                return saved.model_dump(mode="json")
         if method == "POST" and path.startswith("/workspace/runs"):
             return self.workspace_command(path, body)
         disposition = re.fullmatch(r"/runs/([^/]+)/(cancel|supersede)", path)

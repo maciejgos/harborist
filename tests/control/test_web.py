@@ -272,3 +272,25 @@ def test_browser_accepts_pasted_issue_and_home_paths() -> None:
     assert normalize_source("~/request.md") == f"file:{Path.home() / 'request.md'}"
     with pytest.raises(ValueError, match="Source"):
         normalize_source("https://example.com/example/repo/issues/6")
+
+
+def test_saved_workspace_validates_and_reloads_checkout(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from uuid import uuid4
+    from shipyard.control.saved_workspaces import WorkspaceStore, WorkspaceSettings
+
+    _, repo, _ = capture(tmp_path, frozen_contract)
+    workspace = WorkspaceSettings(
+        id=uuid4(),
+        name="Shipyard",
+        repository=repo.checkout_root(),
+        settings=Path("shipyard.settings.yaml").resolve(),
+    )
+    root = tmp_path / "workspaces"
+    saved = WorkspaceStore(root).save(workspace)
+    assert WorkspaceStore(root).list() == [saved]
+    assert saved.repository == repo.checkout_root()
+    with pytest.raises(ValueError):
+        WorkspaceStore(root).save(workspace.model_copy(update={"ref": "unknown-ref"}))
+    assert WorkspaceStore(root).list() == [saved]

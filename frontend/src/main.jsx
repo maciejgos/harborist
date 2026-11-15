@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Anchor, ChevronRight, Circle, FileText, GitBranch, Inbox, RefreshCw, Search, X } from "lucide-react";
+import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Inbox, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
 import { GitHubDelivery } from "./github-delivery";
+import { Workspaces } from "./workspaces";
 import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
 import "./style.css";
@@ -127,6 +128,8 @@ function Status({ record }) {
 }
 
 function Workspace() {
+  const workspacePage = location.pathname === "/workspaces";
+  const workspaces = useResource("/workspaces");
   const history = useResource("/runs", true);
   const [selected, setSelected] = useState(selection);
   const [query, setQuery] = useState("");
@@ -175,13 +178,13 @@ function Workspace() {
 
   return <div className="workspace" data-detail={Boolean(selected)}>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/" onClick={event => navigate(event, "")}><span><Anchor size={16} /></span>Shipyard</a>
-      <nav><a className="nav-link" href="/" onClick={event => navigate(event, "")} aria-current="page"><Inbox size={16} /> Runs</a></nav>
+      <a className="brand" href="/"><span><Anchor size={16} /></span>Shipyard</a>
+      <nav><a className="nav-link" href="/" aria-current={!workspacePage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a></nav>
       <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
     </aside>
-    <main>
+    {workspacePage ? <Workspaces resource={workspaces} /> : <main>
       <header className="topbar"><Activity size={15} /><span>Runs</span><Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button></header>
-      <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
+      <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun workspaces={workspaces.data?.workspaces || []} onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
       <div className="toolbar">
         <div className="search"><Search size={15} /><Input type="search" ref={search} aria-label="Search Runs" placeholder="Search runs…" value={query} onChange={event => setQuery(event.target.value)} /><kbd>⌘ K</kbd></div>
         <div className="filters" aria-label="Filter Runs">{filters.map(value =>
@@ -204,8 +207,8 @@ function Workspace() {
           </section>;
         })}
       </div>
-    </main>
-    {selected && <RunDetail key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
+    </main>}
+    {!workspacePage && selected && <RunDetail key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
   </div>;
 }
 

@@ -14,7 +14,7 @@ from shipyard.control.evidence_reads import ATTEMPTS
 from shipyard.control.service import MAX_REQUEST
 
 COMMAND = re.compile(
-    r"/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
+    r"/workspaces|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
 )
 
 
@@ -44,6 +44,8 @@ class WebApplication:
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
         }
+        if route == "/workspaces":
+            route = "/"
         if route.startswith("/runs/"):
             run_id = route.removeprefix("/runs/")
             try:
@@ -61,7 +63,7 @@ class WebApplication:
         if route.startswith("/api/"):
             api = route.removeprefix("/api")
             parts = api.strip("/").split("/")
-            allowed = api in ("/health", "/runs")
+            allowed = api in ("/health", "/runs", "/workspaces")
             if len(parts) in (2, 3, 4) and parts[0] == "runs":
                 try:
                     UUID(parts[1])
