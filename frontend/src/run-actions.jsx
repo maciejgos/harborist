@@ -22,7 +22,7 @@ export function Field({ label, ...props }) {
 
 function CaptureFields({ repository, workspace }) {
   return <>
-    {!workspace && <Field label="Repository path" name="repository" defaultValue={repository} placeholder="~/Code/my-repository" required />} 
+    {!workspace && <Field label="Repository path" name="repository" defaultValue={repository} placeholder="~/Code/my-repository" required />}
     <Field label="Markdown path or GitHub issue" name="source" placeholder="https://github.com/owner/repo/issues/123 or ~/request.md" required />
     {!workspace && <details className="advanced"><summary>Advanced</summary>
     <Field label="Settings path (optional)" name="settings" placeholder="Defaults to shipyard.settings.yaml in the repository" />
@@ -89,8 +89,8 @@ export function capturePayload(fields, request_id) {
 }
 
 export function NewRun({ onDone, disabled, workspaces }) {
-  const [selection, setSelection] = useState("");
-  const workspace = workspaces.find(item => item.id === selection);
+  const [selection, setSelection] = useState(null);
+  const workspace = workspaces.find(item => item.id === (selection ?? workspaces[0]?.id));
   return <CommandDialog title="New Run" description="Choose a Workspace and enter a request to queue a Run."
     trigger={<Button disabled={disabled}><Plus size={15} /> New Run</Button>} submitLabel="Queue Run"
     prepare={(fields, id) => ["", workspace ? {
@@ -99,7 +99,7 @@ export function NewRun({ onDone, disabled, workspaces }) {
       verification_reserve: workspace.verification_reserve,
     } : capturePayload(fields, id)]} onDone={onDone}>
     <label className="field">Workspace
-      <select className="input" name="workspace" value={selection} onChange={event => setSelection(event.target.value)}>
+      <select className="input" name="workspace" value={workspace?.id || ""} onChange={event => setSelection(event.target.value)}>
         <option value="">Enter repository manually</option>
         {workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>

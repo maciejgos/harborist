@@ -4,7 +4,7 @@ import { useResource } from "./api";
 import { CommandDialog, ContinuationAction, Field, command } from "./run-actions";
 import { Badge, Button } from "./ui";
 
-function Publish({ id, record, receipt, disabled, refresh }) {
+function Publish({ id, record, receipt, disabled, refresh, destination }) {
   return <CommandDialog title="Approve GitHub publication"
     description={`Publish the verified commit from Attempt ${record.attempt_number + 1} to a GitHub pull request.`}
     trigger={<Button variant="outline" disabled={disabled}><Upload size={15} /> Publish…</Button>}
@@ -22,7 +22,7 @@ function Publish({ id, record, receipt, disabled, refresh }) {
       {receipt?.pull && <><dt>Existing PR</dt><dd>#{receipt.pull}</dd>
         <dt>Expected head</dt><dd className="mono">{receipt.candidate}</dd></>}
     </dl>
-    <Field label="Destination repository" name="destination" placeholder="owner/repository" defaultValue={receipt?.repository} readOnly={Boolean(receipt)} required />
+    <Field label="Destination repository" name="destination" placeholder="owner/repository" defaultValue={receipt?.repository || destination} readOnly={Boolean(receipt)} required />
     <Field label="Base branch" name="base" placeholder="main" defaultValue={receipt?.base} readOnly={Boolean(receipt)} required />
   </CommandDialog>;
 }
@@ -66,7 +66,7 @@ function Collaboration({ id, record, data, disabled, onDone, onError }) {
   </>;
 }
 
-export function GitHubDelivery({ record, id, disabled, onDone, onError }) {
+export function GitHubDelivery({ record, id, disabled, onDone, onError, destination }) {
   const resource = useResource(`/runs/${id}/github`);
   const [error, setError] = useState("");
   const [observing, setObserving] = useState(false);
@@ -106,7 +106,7 @@ export function GitHubDelivery({ record, id, disabled, onDone, onError }) {
       {receipt.pull && <><dt>Pull request</dt><dd><a href={`https://github.com/${receipt.repository}/pull/${receipt.pull}`} target="_blank" rel="noreferrer">#{receipt.pull} <ExternalLink size={13} /></a></dd></>}
     </dl>}
     <div className="github-actions">
-      {canPublish && resource.data && !resource.error && <Publish key={record.attempt_id} id={id} record={record} receipt={receipt} disabled={disabled} refresh={refresh} />}
+      {canPublish && resource.data && !resource.error && <Publish destination={destination} key={record.attempt_id} id={id} record={record} receipt={receipt} disabled={disabled} refresh={refresh} />}
       {receipt?.pull && <Button variant="outline" disabled={disabled || observing} onClick={observe}><RefreshCw size={14} />{observing ? "Refreshing…" : "Refresh PR evidence"}</Button>}
     </div>
     {observation && <Collaboration key={resource.data.observation_path} id={id} record={record} data={resource.data}

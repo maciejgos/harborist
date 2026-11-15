@@ -278,7 +278,8 @@ def test_saved_workspace_validates_and_reloads_checkout(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
     from uuid import uuid4
-    from shipyard.control.saved_workspaces import WorkspaceStore, WorkspaceSettings
+
+    from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
 
     _, repo, _ = capture(tmp_path, frozen_contract)
     workspace = WorkspaceSettings(
@@ -294,3 +295,19 @@ def test_saved_workspace_validates_and_reloads_checkout(
     with pytest.raises(ValueError):
         WorkspaceStore(root).save(workspace.model_copy(update={"ref": "unknown-ref"}))
     assert WorkspaceStore(root).list() == [saved]
+
+
+def test_github_integration_distinguishes_login_and_repository_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from shipyard.control import integrations
+
+    def run(args: list[str], **_: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(args, 0 if args[1] == "auth" else 1)
+
+    monkeypatch.setattr(integrations.subprocess, "run", run)
+    result = integrations.check_github("example/repository")
+    assert result["status"] == "repository_unavailable"
+    assert integrations.check_github(None)["status"] == "connected"

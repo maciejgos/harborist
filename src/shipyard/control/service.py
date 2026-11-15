@@ -16,6 +16,7 @@ from shipyard.agents.base import NativeAgent
 from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
 from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
+from shipyard.control.integrations import GitHubCheck, check_github
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
@@ -88,6 +89,17 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
+        if method == "POST" and path == "/integrations/github":
+            request = GitHubCheck.model_validate_json(body)
+            repository = None
+            if request.workspace_id:
+                workspace = self.workspaces.get(request.workspace_id)
+                repository = workspace.github_repository
+                if repository is None:
+                    raise ValueError(
+                        "Set a GitHub repository in this Workspace before checking access"
+                    )
+            return check_github(repository)
         if path == "/workspaces":
             if method == "GET":
                 return {

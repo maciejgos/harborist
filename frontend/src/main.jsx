@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Inbox, RefreshCw, Search, X } from "lucide-react";
+import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Github, Inbox, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
 import { GitHubDelivery } from "./github-delivery";
+import { Integrations } from "./integrations";
 import { Workspaces } from "./workspaces";
 import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
@@ -40,7 +41,7 @@ function Artifact({ id, name, attempt, title = name }) {
   </Dialog>;
 }
 
-function RunDetail({ record: latest, id, close, onDone, onError, disabled }) {
+function RunDetail({ record: latest, id, close, onDone, onError, disabled, destination }) {
   const [attempt, setAttempt] = useState(null);
   const number = attempt ?? latest?.attempt_number;
   const prefix = `/runs/${id}/attempts`;
@@ -116,7 +117,7 @@ function RunDetail({ record: latest, id, close, onDone, onError, disabled }) {
         {evidence.data?.has_specification && <Artifact id={id} attempt={number} name="spec.md" />}</div>
         {!evidence.data?.has_specification && !Object.values(record.artifacts || {}).some(Boolean) && <p className="muted">No terminal evidence available.</p>}
       </section>
-      {attempt == null && <GitHubDelivery record={latest} id={id} disabled={disabled} onDone={onDone} onError={onError} />}
+      {attempt == null && <GitHubDelivery destination={destination} record={latest} id={id} disabled={disabled} onDone={onDone} onError={onError} />}
     </> : <p className="notice">{latest && !evidence.error ? "Loading Attempt…" : "This Run is unavailable in the current history."}</p>}
   </aside>;
 }
@@ -128,7 +129,11 @@ function Status({ record }) {
 }
 
 function Workspace() {
+  const integrationsPage = location.pathname === "/integrations";
   const workspacePage = location.pathname === "/workspaces";
+  useEffect(() => {
+    document.title = `Shipyard · ${integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs"}`;
+  }, [integrationsPage, workspacePage]);
   const workspaces = useResource("/workspaces");
   const history = useResource("/runs", true);
   const [selected, setSelected] = useState(selection);
@@ -176,13 +181,19 @@ function Workspace() {
   const visible = filter === "All" ? matched : matched.filter(record => group(record) === filter);
   const details = selected && records.find(record => runId(record) === selected);
 
+  const checkout = details && (details.repository || details.submission.repository);
+  const destinations = [...new Set((workspaces.data?.workspaces || [])
+    .filter(item => item.repository === checkout && item.github_repository)
+    .map(item => item.github_repository))];
+  const destination = destinations.length === 1 ? destinations[0] : undefined;
+
   return <div className="workspace" data-detail={Boolean(selected)}>
     <aside className="sidebar" aria-label="Workspace">
       <a className="brand" href="/"><span><Anchor size={16} /></span>Shipyard</a>
-      <nav><a className="nav-link" href="/" aria-current={!workspacePage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a></nav>
+      <nav><a className="nav-link" href="/" aria-current={!workspacePage && !integrationsPage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Github size={16} /> Integrations</a></nav>
       <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
     </aside>
-    {workspacePage ? <Workspaces resource={workspaces} /> : <main>
+    {integrationsPage ? <Integrations resource={workspaces} /> : workspacePage ? <Workspaces resource={workspaces} /> : <main>
       <header className="topbar"><Activity size={15} /><span>Runs</span><Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button></header>
       <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun workspaces={workspaces.data?.workspaces || []} onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
       <div className="toolbar">
@@ -208,7 +219,7 @@ function Workspace() {
         })}
       </div>
     </main>}
-    {!workspacePage && selected && <RunDetail key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
+    {!integrationsPage && !workspacePage && selected && <RunDetail destination={destination} key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
   </div>;
 }
 

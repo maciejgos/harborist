@@ -364,3 +364,11 @@ Collaboration views display the recorded GitHub observations and publication
 receipts through the control plane. Feedback selected in the browser is
 resolved by the same Attempt admission rules as CLI feedback. See the
 [browser GitHub delivery spec](spec/075-web-github-delivery/spec.md).
+
+Local Workspaces persist named checkout defaults under the control directory.
+The browser supplies the selected defaults at intake, where the existing
+capture operation freezes the Run contract. Editing a Workspace affects
+future submissions. GitHub integration checks use the service's existing
+GitHub CLI environment and return diagnostic status. See the
+[Workspaces spec](spec/077-local-workspaces/spec.md) and
+[Integrations spec](spec/078-github-integrations/spec.md).

@@ -1,6 +1,7 @@
 """Local saved checkout and execution defaults."""
 
 import re
+import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from uuid import UUID
@@ -11,11 +12,24 @@ from shipyard.configuration import load_execution_settings
 from shipyard.control.workspace import normalize_path
 from shipyard.domain import ExecutionBudget
 from shipyard.git import GitRepository
+from shipyard.git.command import run_git
 from shipyard.persistence.application import ensure_record_directory
 from shipyard.skills import compile_methodology
 from shipyard.verification import load_verification_config
 
 GITHUB_REPOSITORY = r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+"
+
+
+def github_origin(checkout: Path) -> str | None:
+    try:
+        remote = run_git(checkout, "remote", "get-url", "origin").decode().strip()
+    except OSError, subprocess.SubprocessError, ValueError:
+        return None
+    match = re.fullmatch(
+        rf"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)({GITHUB_REPOSITORY})/?",
+        remote,
+    )
+    return match[1].removesuffix(".git") if match else None
 
 
 class WorkspaceSettings(BaseModel):
@@ -79,7 +93,14 @@ class WorkspaceStore:
             GITHUB_REPOSITORY, workspace.github_repository
         ):
             raise ValueError("GitHub repository: enter owner/repository")
-        saved = workspace.model_copy(update={"repository": checkout, "settings": path})
+        saved = workspace.model_copy(
+            update={
+                "repository": checkout,
+                "settings": path,
+                "github_repository": workspace.github_repository
+                or github_origin(checkout),
+            }
+        )
         ensure_record_directory(self.directory)
         with NamedTemporaryFile(dir=self.directory, delete=False) as stream:
             pending = Path(stream.name)

@@ -141,3 +141,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .sidebar { flex-wrap: wrap; }
   .sidebar nav { order: 3; display: flex; width: 100%; }
 }
+.integration-panel { max-width: 560px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+.integration-panel form { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.integration-panel form .field { flex: 1; }
+.integration-connected { color: var(--success); }

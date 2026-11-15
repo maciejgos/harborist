@@ -37,6 +37,9 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Done | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
 | Browser Run submission and control | Submit from Markdown or GitHub and use approved cancellation, supersession, rework, and recovery flows. | Done | [Browser Run operations spec](spec/074-web-run-operations/spec.md) |
 | Browser GitHub delivery and MVP acceptance | Approve the exact verified commit, inspect PR evidence, and validate the packaged browser experience across every screen. | Implemented, local verification | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
+| Browser-friendly intake | Accept pasted issue links and home-relative paths. | Done | [Intake spec](spec/076-browser-friendly-intake/spec.md) |
+| Local Workspaces | Save local checkout and execution defaults for repeated Runs. | Done | [Workspaces spec](spec/077-local-workspaces/spec.md) |
+| GitHub Integrations | Check local GitHub CLI login and Workspace repository access. | Done | [Integrations spec](spec/078-github-integrations/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 
