@@ -41,6 +41,9 @@ Application requires the branch to be eligible for advancement. See
 
 ## Commands
 
+See the complete [CLI command reference](COMMANDS.md) for syntax, options, defaults
+and operational requirements.
+
 | Command | Purpose |
 | --- | --- |
 | `shipyard run <source>` | Capture and submit a request. |
@@ -48,12 +51,16 @@ Application requires the branch to be eligible for advancement. See
 | `shipyard run <run-id>` | Submit a saved CREATED Run. |
 | `shipyard rework <run-id> --feedback "..."` | Start a fresh Attempt after rejected software. |
 | `shipyard recover <run-id>` | Explicitly recover an eligible execution failure. |
-| `shipyard service start/status/stop` | Manage background execution. |
+| `shipyard service serve/start/status/stop` | Manage background execution. |
 | `shipyard runs` / `shipyard status <run-id> --wait` | Inspect saved history and service delivery/results. |
-| `shipyard web` | Watch execution at http://127.0.0.1:8765. |
+| `shipyard web` | Operate the local workspace at http://127.0.0.1:8765. |
 | `shipyard inspect <run-id>` | Validate and print the frozen contract. |
 | `shipyard methodology <run-id>` | Preview frozen playbook and skills. |
 | `shipyard apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate. |
+| `shipyard publish <run-id> --approve <sha> --destination <owner/repo> --base <branch>` | Explicitly publish a VERIFIED candidate to GitHub. |
+| `shipyard github-status <run-id>` | Fetch and save published PR evidence. |
+| `shipyard cancel <run-id> --reason "..."` | Record Run cancellation through the service. |
+| `shipyard supersede <run-id> <source> --reason "..."` | Capture and queue a replacement request. |
 
 Sources accept `file:path/to/issue.md` or `'github:owner/repo#42'`.
 Prefix commands with `uv run` from the development checkout. Use
