@@ -256,3 +256,19 @@ def test_browser_publication_uses_verified_application_operation(
     )
     assert response["run_id"] == str(contract.run_id)
     assert response["pull"]
+
+
+def test_browser_accepts_pasted_issue_and_home_paths() -> None:
+    from shipyard.control.workspace import normalize_path, normalize_source
+
+    assert (
+        normalize_path(Path("~/Code/shipyard"), "Repository path")
+        == Path.home() / "Code/shipyard"
+    )
+    assert (
+        normalize_source("https://github.com/example/repo/issues/6?foo=bar")
+        == "github:example/repo#6"
+    )
+    assert normalize_source("~/request.md") == f"file:{Path.home() / 'request.md'}"
+    with pytest.raises(ValueError, match="Source"):
+        normalize_source("https://example.com/example/repo/issues/6")

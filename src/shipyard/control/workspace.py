@@ -1,6 +1,8 @@
 """Typed commands for the local browser workspace."""
 
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field
@@ -10,6 +12,7 @@ from shipyard.application.context import ExecutionContext, load_context, resolve
 from shipyard.control.queue import Submission
 from shipyard.control.read_model import RunView
 from shipyard.domain.continuation import ContinuationRequest
+from shipyard.intake.github import parse_github_selector
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.application import ensure_record_directory, write_new_record
 
@@ -30,16 +33,38 @@ class SupersedeRequest(CaptureRequest):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+def normalize_path(path: Path, label: str) -> Path:
+    if str(path) == "~" or str(path).startswith("~/"):
+        path = path.expanduser()
+    if not path.is_absolute():
+        raise ValueError(f"{label}: enter an absolute path or a path starting with ~/")
+    return path
+
+
+def normalize_source(source: str) -> str:
+    if source.startswith("https://"):
+        parsed = urlsplit(source)
+        match = re.fullmatch(r"/([^/]+/[^/]+)/issues/([1-9][0-9]*)/?", parsed.path)
+        if parsed.netloc.lower() != "github.com" or not match:
+            raise ValueError(
+                "Source: paste a github.com issue URL or enter a Markdown path"
+            )
+        source = f"github:{match[1]}#{match[2]}"
+    if source.startswith("github:"):
+        parse_github_selector(source)
+        return source
+    path = normalize_path(Path(source.removeprefix("file:")), "Source")
+    return f"file:{path}"
+
+
 def capture_submission(
     request: CaptureRequest, root: Path, *, receipts: Path
 ) -> Submission:
-    source = request.source
-    if not request.repository.is_absolute() or (
-        request.settings is not None and not request.settings.is_absolute()
-    ):
-        raise ValueError("Use absolute paths for the repository and settings")
-    if source.startswith("file:") and not Path(source[5:]).is_absolute():
-        raise ValueError("Use an absolute path for the Markdown source")
+    source = normalize_source(request.source)
+    repository_path = normalize_path(request.repository, "Repository path")
+    settings = (
+        normalize_path(request.settings, "Settings path") if request.settings else None
+    )
     if request.timeout <= request.verification_reserve:
         raise ValueError("Total time must exceed the verification reserve")
     ensure_record_directory(receipts)
@@ -62,7 +87,7 @@ def capture_submission(
             ExecutionContext(
                 version=1,
                 run_id=request.request_id,
-                repository=GitRepository(path=request.repository).checkout_root(),
+                repository=GitRepository(path=repository_path).checkout_root(),
                 runs_root=root,
             ).save()
         context = load_context(path=context_path, run_id=request.request_id)
@@ -72,8 +97,8 @@ def capture_submission(
     else:
         _, repository, _ = capture_run(
             source=source,
-            settings=request.settings,
-            repo=request.repository,
+            settings=settings,
+            repo=repository_path,
             ref=request.ref,
             runs_dir=root,
             timeout=request.timeout,
