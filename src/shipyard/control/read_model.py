@@ -7,11 +7,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shipyard.application.context import load_context
 from shipyard.control.queue import DeliveryState, Progress, QueueRecord, Submission
 from shipyard.control.stage_history import read_stage_history
 from shipyard.domain import Run, RunLifecycle
 from shipyard.domain.attempt import Attempt
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.continuation import load_continuation
+from shipyard.persistence.retirement import Retirement, load_retirement
 
 
 class SavedRunLocation(BaseModel):
@@ -36,20 +39,31 @@ class RunView(BaseModel):
     progress: Progress | None = None
     error: str | None = None
     title: str = ""
+    repository: Path | None = None
     candidate_sha: str | None = None
     run: Run | None = None
     run_error: str | None = None
     attempt_id: UUID | None = None
+    attempt_number: int = 0
+    retirement: Retirement | None = None
     package_available: bool = False
     artifacts: dict[str, str] = Field(default_factory=dict)
 
 
 def read_record(record: QueueRecord) -> RunView:
-    return _project(RunView.model_validate(record.model_dump()))
+    return project(RunView.model_validate(record.model_dump()))
 
 
 def read_saved(root: Path, run_id: UUID) -> RunView:
-    directory = root / str(run_id)
+    try:
+        directory = FileRunStore(root=root).directory(run_id)
+    except ValueError, OSError:
+        return project(
+            RunView(
+                submission=SavedRunLocation(run_id=run_id, runs_root=root),
+                source="saved",
+            )
+        )
     timestamps: dict[str, datetime] = {}
     for field, name in (("recorded_at", "contract.json"), ("updated_at", "run.json")):
         try:
@@ -58,7 +72,7 @@ def read_saved(root: Path, run_id: UUID) -> RunView:
             )
         except OSError:
             pass
-    return _project(
+    return project(
         RunView(
             submission=SavedRunLocation(run_id=run_id, runs_root=root),
             source="saved",
@@ -68,11 +82,12 @@ def read_saved(root: Path, run_id: UUID) -> RunView:
     )
 
 
-def _project(view: RunView) -> RunView:
+def project(view: RunView, *, number: int | None = None) -> RunView:
     submission = view.submission
     store = FileRunStore(root=submission.runs_root)
-    directory = store.directory(submission.run_id)
     try:
+        store = store.pinned(submission.run_id, number)
+        directory = store.directory(submission.run_id)
         contract = store.load(submission.run_id)
         run = store.load_state(submission.run_id)
         attempt_id: UUID | None = None
@@ -83,7 +98,8 @@ def _project(view: RunView) -> RunView:
             )
             if (
                 attempt.run_id != submission.run_id
-                or attempt.start_sha != contract.base_sha
+                or attempt.start_sha
+                != store.attempt_start(submission.run_id, contract.base_sha)
             ):
                 raise ValueError("Attempt identity mismatch")
             if run.verification is not None and run.verification.attempt != attempt:
@@ -106,10 +122,38 @@ def _project(view: RunView) -> RunView:
             if attempt is not None
             else None
         )
+        repository = (
+            submission.repository if isinstance(submission, Submission) else None
+        )
+        context_path = (
+            store.original_directory(submission.run_id) / "execution-context.json"
+        )
+        if repository is None and context_path.is_file():
+            try:
+                context = load_context(path=context_path, run_id=submission.run_id)
+                if context.runs_root == submission.runs_root:
+                    repository = context.repository
+            except ValueError:
+                pass
+        number = store.selected_number(submission.run_id)
+        observations = view.stages
+        progress = view.progress
+        if number and (
+            not isinstance(submission, Submission)
+            or submission.continuation is None
+            or submission.continuation.request_id
+            != load_continuation(store, submission.run_id).request.request_id
+        ):
+            observations = {}
+            progress = None
         return RunView.model_validate(
             {
                 **view.model_dump(),
-                "stages": {**(history.stages if history else {}), **view.stages},
+                "attempt_number": number,
+                "retirement": load_retirement(submission.runs_root, submission.run_id),
+                "progress": progress,
+                "stages": {**observations, **(history.stages if history else {})},
+                "repository": repository,
                 "stage_errors": history.errors if history else {},
                 "run": run,
                 "title": next(

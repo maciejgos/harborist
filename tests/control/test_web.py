@@ -112,8 +112,202 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         response = connection.getresponse()
         assert response.status == 405
         response.read()
+        origin = f"http://127.0.0.1:{server.server_port}"
+        headers = {"Content-Type": "application/json", "X-Shipyard-Workspace": "1"}
+        for value in ("https://other.example", "null"):
+            connection.request(
+                "POST", "/api/workspace/runs", "{}", {**headers, "Origin": value}
+            )
+            response = connection.getresponse()
+            assert response.status == 403
+            response.read()
+        connection.request(
+            "POST", "/api/workspace/runs", "{}", {**headers, "Origin": origin}
+        )
+        response = connection.getresponse()
+        assert response.status == 400
+        assert "error" in json.loads(response.read())
         connection.close()
     finally:
         server.shutdown()
         thread.join(5)
         server.server_close()
+
+
+def test_workspace_deep_link_serves_packaged_react_assets(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from shipyard.control.client import ControlClient
+
+    app = WebApplication(ControlClient(tmp_path))
+    status, _, html = app.respond("GET", f"/runs/{frozen_contract.run_id}")
+    assert status == 200
+    assert b'id="root"' in html
+    assert b'src="/app.js"' in html
+    for route in ("/app.js", "/style.css"):
+        status, _, content = app.respond("GET", route)
+        assert status == 200 and content
+    assert app.respond("GET", "/runs/invalid")[0] == 404
+
+
+def test_attempt_evidence_is_read_through_the_selected_attempt(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    queue = QueueStore(tmp_path / "control")
+    queue.submit(
+        Submission(
+            run_id=contract.run_id,
+            repository=repo.checkout_root(),
+            runs_root=store.directory(contract.run_id).parent,
+        )
+    )
+    service = ControlService(queue, agent=FakeAgent(), history_root=tmp_path / "runs")
+    service.worker.execute_next()
+    prefix = f"/runs/{contract.run_id}/attempts"
+    assert service.dispatch("GET", prefix, b"") == {"attempts": [0]}
+    view = service.dispatch("GET", prefix + "/0", b"")
+    assert view["attempt_number"] == 0
+    assert view["candidate_sha"]
+    assert service.dispatch("GET", prefix + "/0/artifacts/report.md", b"")["content"]
+    with pytest.raises(ValueError, match="Unknown Attempt"):
+        service.dispatch("GET", prefix + "/1", b"")
+
+
+def test_browser_capture_retry_reuses_the_same_run(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from uuid import uuid4
+
+    _, repo, _ = capture(tmp_path, frozen_contract)
+    root = repo.checkout_root()
+    request = tmp_path / "request.md"
+    request.write_text("# Browser request\n")
+    settings = Path("shipyard.settings.yaml").resolve()
+    service = ControlService(
+        QueueStore(tmp_path / "control"),
+        agent=FakeAgent(),
+        history_root=tmp_path / "web-runs",
+    )
+    payload = {
+        "request_id": str(uuid4()),
+        "source": f"file:{request}",
+        "repository": str(root),
+        "settings": str(settings),
+    }
+    body = json.dumps(payload).encode()
+    first = service.dispatch("POST", "/workspace/runs", body)
+    second = service.dispatch("POST", "/workspace/runs", body)
+    assert first == second == {"run_id": payload["request_id"]}
+    assert len(service.queue.list()) == 1
+    with pytest.raises(ValueError, match="different inputs"):
+        service.dispatch(
+            "POST", "/workspace/runs", json.dumps({**payload, "ref": "other"}).encode()
+        )
+
+
+def test_browser_publication_uses_verified_application_operation(
+    tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shipyard.application import publication
+    from shipyard.application.publication import Branch, PullRequest
+
+    store, repo, contract = capture(tmp_path, frozen_contract)
+    queue = QueueStore(tmp_path / "control")
+    root = store.directory(contract.run_id).parent
+    queue.submit(
+        Submission(
+            run_id=contract.run_id, repository=repo.checkout_root(), runs_root=root
+        )
+    )
+    service = ControlService(queue, agent=FakeAgent(), history_root=root)
+    service.worker.execute_next()
+    verification = store.load_state(contract.run_id).verification
+    assert verification is not None
+    sha = verification.candidate.candidate_sha
+
+    def publish(run_id: object, **options: object) -> PullRequest:
+        assert run_id == contract.run_id
+        assert options["approve"] == sha
+        assert options["expected_attempt"] == verification.attempt.attempt_id
+        assert options["runs_dir"] == root
+        return PullRequest(
+            number=1,
+            html_url="https://github.com/example/project/pull/1",
+            state="open",
+            head=Branch(ref="shipyard", sha=sha),
+            base=Branch(ref="main", sha=sha),
+            body=None,
+        )
+
+    monkeypatch.setattr(publication, "publish_run", publish)
+    path = f"/workspace/runs/{contract.run_id}/publish"
+    response = service.dispatch(
+        "POST",
+        path,
+        json.dumps(
+            {
+                "approve": sha,
+                "expected_attempt": str(verification.attempt.attempt_id),
+                "destination": "example/project",
+                "base": "main",
+            }
+        ).encode(),
+    )
+    assert response["run_id"] == str(contract.run_id)
+    assert response["pull"]
+
+
+def test_browser_accepts_pasted_issue_and_home_paths() -> None:
+    from shipyard.control.workspace import normalize_path, normalize_source
+
+    assert (
+        normalize_path(Path("~/Code/shipyard"), "Repository path")
+        == Path.home() / "Code/shipyard"
+    )
+    assert (
+        normalize_source("https://github.com/example/repo/issues/6?foo=bar")
+        == "github:example/repo#6"
+    )
+    assert normalize_source("~/request.md") == f"file:{Path.home() / 'request.md'}"
+    with pytest.raises(ValueError, match="Source"):
+        normalize_source("https://example.com/example/repo/issues/6")
+
+
+def test_saved_workspace_validates_and_reloads_checkout(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from uuid import uuid4
+
+    from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
+
+    _, repo, _ = capture(tmp_path, frozen_contract)
+    workspace = WorkspaceSettings(
+        id=uuid4(),
+        name="Shipyard",
+        repository=repo.checkout_root(),
+        settings=Path("shipyard.settings.yaml").resolve(),
+    )
+    root = tmp_path / "workspaces"
+    saved = WorkspaceStore(root).save(workspace)
+    assert WorkspaceStore(root).list() == [saved]
+    assert saved.repository == repo.checkout_root()
+    with pytest.raises(ValueError):
+        WorkspaceStore(root).save(workspace.model_copy(update={"ref": "unknown-ref"}))
+    assert WorkspaceStore(root).list() == [saved]
+
+
+def test_github_integration_distinguishes_login_and_repository_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from shipyard.control import integrations
+
+    def run(args: list[str], **_: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(args, 0 if args[1] == "auth" else 1)
+
+    monkeypatch.setattr(integrations.subprocess, "run", run)
+    result = integrations.check_github("example/repository")
+    assert result["status"] == "repository_unavailable"
+    assert integrations.check_github(None)["status"] == "connected"

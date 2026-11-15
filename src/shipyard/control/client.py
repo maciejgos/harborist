@@ -8,13 +8,14 @@ from typing import cast
 
 
 class UnixConnection(http.client.HTTPConnection):
-    def __init__(self, path: Path) -> None:
-        super().__init__("localhost", timeout=10)
+    def __init__(self, path: Path, *, timeout: float) -> None:
+        super().__init__("localhost", timeout=timeout)
         self.path = path
+        self.timeout = timeout
 
     def connect(self) -> None:
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(10)
+        self.sock.settimeout(self.timeout)
         self.sock.connect(str(self.path))
 
 
@@ -23,9 +24,14 @@ class ControlClient:
         self.root = root.resolve()
 
     def request(
-        self, method: str, path: str, payload: dict[str, object] | None = None
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, object] | None = None,
+        *,
+        timeout: float = 10,
     ) -> dict[str, object]:
-        connection = UnixConnection(self.root / "service.sock")
+        connection = UnixConnection(self.root / "service.sock", timeout=timeout)
         try:
             connection.request(
                 method,

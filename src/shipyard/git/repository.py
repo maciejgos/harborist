@@ -173,11 +173,11 @@ class GitRepository:
             raise GitReadError("Cannot inspect candidate workspace") from error
 
     def validate_application_candidate(
-        self, *, run_id: UUID, base: str, candidate: str
+        self, *, run_id: UUID, base: str, candidate: str, attempt_id: UUID | None = None
     ) -> None:
         """Require original commit objects and the durable Run-owned ref."""
         self._application().validate_application_candidate(
-            run_id=run_id, base=base, candidate=candidate
+            run_id=run_id, base=base, candidate=candidate, attempt_id=attempt_id
         )
 
     def branch_sha(self, branch: str) -> str:
@@ -232,7 +232,9 @@ class GitWorkspace:
                 "Cannot clean ignored files in isolated workspace"
             ) from error
 
-    def publish_candidate(self, *, message: str) -> Candidate:
+    def publish_candidate(
+        self, *, message: str, attempt_scoped: bool = False
+    ) -> Candidate:
         """Commit BUILD changes and publish a create-only candidate ref.
 
         Caller must stop BUILD before calling; concurrent workspace writers are
@@ -270,7 +272,12 @@ class GitWorkspace:
             )
             sha = repository.resolve_base()
             repository.require_clean_revision(commit_sha=sha)
-            _run_git(self.path, "update-ref", self.candidate_ref, sha, "0" * len(sha))
+            ref = (
+                f"refs/shipyard/runs/{self.attempt.run_id}/attempts/{self.attempt.attempt_id}/candidate"
+                if attempt_scoped
+                else self.candidate_ref
+            )
+            _run_git(self.path, "update-ref", ref, sha, "0" * len(sha))
             return self.attempt.create_candidate(sha)
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             raise GitWorkspaceError(

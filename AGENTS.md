@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Shipyard is a local, single-user MVP with a background execution service, CLI client and read-only browser monitor. The execution core remains synchronous. Phase 10 is complete; rework/recovery and GitHub publication remain later phases. Read `ARCHITECTURE.md` before making structural changes.
+Shipyard is a local, single-user MVP with a background execution service, CLI client and read-only browser monitor. The execution core remains synchronous. Phase 11 rework/recovery is complete; GitHub publication remains a later phase. Read `ARCHITECTURE.md` before making structural changes.
 
 ## Commands
 
@@ -80,6 +80,10 @@ uv run pyright
 - Use subprocess execution for external tools and deterministic checks.
 - Keep provider-specific and CLI-specific details outside the domain model.
 
+## Changelog
+
+Update `CHANGELOG.md` only when introducing a new package version in `pyproject.toml`. Add one entry for that version summarizing the changes since the previous version. Track phase progress and proposed versions in `ROADMAP.md`.
+
 ## Scope
 
-Prefer the smallest change that preserves these boundaries. Phase 10 covers the local background control plane and read-only monitor. Do not implement Phase 11 rework/recovery, Phase 12 publication or Product Milestone 1 infrastructure unless the task explicitly requires it.
+Prefer the smallest change that preserves these boundaries. Phases 10–11 cover the local background control plane, read-only monitor and explicit rework/recovery Attempts. Do not implement Phase 12 publication or Product Milestone 1 infrastructure unless the task explicitly requires it.

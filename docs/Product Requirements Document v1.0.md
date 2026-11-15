@@ -3520,6 +3520,14 @@ Closing the CLI does not stop the Run.
 
 ## Phase 11 — Rework and recovery
 
+**Status: Completed — 2026-11-04.**
+
+Explicit local rework/recovery, immutable linked Attempts, frozen upstream reuse,
+cumulative remaining budgets and recorded additional-time grants are implemented.
+Both background and foreground paths use fresh invocations and fresh exact-SHA
+verification. See the [Phase 11 acceptance report](../spec/065-phase11-acceptance/report.md).
+GitHub feedback/publication integration remains Phase 12.
+
 Build:
 
 - Attempts;

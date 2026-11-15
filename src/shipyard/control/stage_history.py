@@ -31,6 +31,26 @@ def read_stage_history(
     captures: dict[AgentStage, StageExecution] = {}
     test: TestExecution | None = None
     stopped: str | None = None
+    if (directory / "continuation.json").exists():
+        try:
+            from shipyard.persistence import FileRunStore
+            from shipyard.persistence.continuation import load_continuation
+
+            record = load_continuation(
+                FileRunStore(
+                    root=directory.parent.parent.parent,
+                    attempt_number=int(directory.name),
+                ),
+                run.run_id,
+            )
+            if record.attempt != attempt:
+                raise ValueError("Reused specification belongs to another Attempt")
+            if record.spec_digest is not None:
+                stages["design"] = Progress(
+                    stage="design", state="skipped", reason="FROZEN_SPEC_REUSED"
+                )
+        except (ValueError, OSError) as error:
+            errors["design"] = str(error)[:1024]
 
     for stage in AgentStage:
         path = directory / stage.value / "manifest.json"

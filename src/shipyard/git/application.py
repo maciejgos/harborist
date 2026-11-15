@@ -32,7 +32,7 @@ class GitApplication:
         self._run = run
 
     def validate_application_candidate(
-        self, *, run_id: UUID, base: str, candidate: str
+        self, *, run_id: UUID, base: str, candidate: str, attempt_id: UUID | None = None
     ) -> None:
         """Require original commit objects and the durable Run-owned ref."""
         try:
@@ -44,7 +44,13 @@ class GitApplication:
                     raise ValueError("Replacement objects cannot authorize application")
             if (
                 self._run(
-                    "rev-parse", "--verify", f"refs/shipyard/runs/{run_id}/candidate"
+                    "rev-parse",
+                    "--verify",
+                    (
+                        f"refs/shipyard/runs/{run_id}/attempts/{attempt_id}/candidate"
+                        if attempt_id is not None
+                        else f"refs/shipyard/runs/{run_id}/candidate"
+                    ),
                 )
                 .decode()
                 .strip()

@@ -31,15 +31,16 @@ _RUN_ID_ADAPTER = TypeAdapter(UUID)
 class FileIntentStore:
     """Persist intent under an explicit Runs root without advancing domain state."""
 
-    def __init__(self, *, root: Path) -> None:
+    def __init__(self, *, root: Path, directory: Path | None = None) -> None:
         self._root = root
+        self._directory = directory
 
     def save(self, snapshot: IntentSnapshot) -> None:
         snapshot = IntentSnapshot.model_validate(snapshot.model_dump())
         metadata = _IntentMetadata(
             source_ref=snapshot.source_ref, artifact=snapshot.artifact
         )
-        directory = self._root / str(snapshot.run_id)
+        directory = self._directory or self._root / str(snapshot.run_id)
         files = (
             (directory / "intent.md", snapshot.markdown.encode("utf-8")),
             (
@@ -71,7 +72,7 @@ class FileIntentStore:
 
     def load(self, run_id: UUID) -> IntentSnapshot:
         run_id = _RUN_ID_ADAPTER.validate_python(run_id)
-        directory = self._root / str(run_id)
+        directory = self._directory or self._root / str(run_id)
         path = directory / "intent.json"
         try:
             metadata = _IntentMetadata.model_validate_json(path.read_bytes())

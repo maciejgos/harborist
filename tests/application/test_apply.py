@@ -209,3 +209,188 @@ def test_unindexed_context_and_repository_conflict_are_rejected(
         )
     assert git(repo, "rev-parse", "main") == contract.base_sha
     assert candidate != contract.base_sha
+
+
+def test_publication_rejects_wrong_approval_and_moved_candidate_ref(
+    packaged: tuple[Path, Path, RunContract, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shipyard.application import publication
+
+    root, repo, contract, candidate = packaged
+    run_id = contract.run_id
+    monkeypatch.chdir(repo)
+
+    def unexpected_api(endpoint: str) -> object:
+        pytest.fail(
+            f"Publication contacted GitHub before validating evidence: {endpoint}"
+        )
+
+    monkeypatch.setattr(publication, "api", unexpected_api)
+    with pytest.raises(ValueError, match="Approval must match"):
+        publication.publish_run(
+            run_id,
+            approve=contract.base_sha,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+    with pytest.raises(ValueError, match="previous Attempt"):
+        publication.publish_run(
+            run_id,
+            approve=candidate,
+            expected_attempt=run_id,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+    git(repo, "update-ref", f"refs/shipyard/runs/{run_id}/candidate", contract.base_sha)
+    with pytest.raises(ValueError, match="candidate ref does not match"):
+        publication.publish_run(
+            run_id,
+            approve=candidate,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+
+
+def test_selected_github_review_starts_fresh_verification(
+    packaged: tuple[Path, Path, RunContract, str],
+) -> None:
+    from datetime import UTC, datetime
+
+    from shipyard.application.collaboration import Observation
+    from shipyard.application.publication import publication_directory
+    from shipyard.domain import RunOutcome
+    from shipyard.domain.continuation import (
+        ContinuationRequest,
+        GitHubFeedbackSelection,
+    )
+    from shipyard.git.repository import GitRepository
+    from shipyard.github.collaboration import CheckPage, Feedback, StatusPage
+    from shipyard.persistence import FileRunStore
+    from shipyard.persistence.continuation import prepare_continuation
+
+    root, repo, contract, candidate = packaged
+    run_id = contract.run_id
+    store = FileRunStore(root=root)
+    verification = store.load_state(run_id).verification
+    assert verification is not None
+    directory = publication_directory(root, run_id) / "observations"
+    directory.mkdir(parents=True)
+    path = directory / "example.json"
+    path.write_text(
+        Observation(
+            run_id=run_id,
+            repository="owner/repo",
+            observed_at=datetime.now(UTC),
+            pull=1,
+            url="https://github.com/owner/repo/pull/1",
+            state="open",
+            head="a" * 40,
+            verified_candidate=candidate,
+            head_verified=False,
+            merged_at=None,
+            merge_commit_sha=None,
+            checks=CheckPage(total_count=0, check_runs=()),
+            statuses=StatusPage(state="pending", total_count=0, statuses=()),
+            feedback=(
+                Feedback(key="review:1", author="reviewer", body="Selected feedback"),
+                Feedback(key="review:2", author="reviewer", body="Excluded feedback"),
+            ),
+        ).model_dump_json()
+    )
+    selected, record = prepare_continuation(
+        store=store,
+        run_id=run_id,
+        request=ContinuationRequest(
+            action="rework",
+            expected_attempt_id=verification.attempt.attempt_id,
+            github_feedback=GitHubFeedbackSelection(
+                observation=path, ids=("review:1",)
+            ),
+        ),
+    )
+    assert record.attempt.start_sha == candidate
+    assert record.attempt.attempt_id != verification.attempt.attempt_id
+    context = json.loads(
+        (selected.directory(run_id) / "continuation-context.json").read_text()
+    )
+    assert "Selected feedback" in context["feedback"]
+    assert "Excluded feedback" not in context["feedback"]
+    evidence = execute_run(
+        store=selected,
+        run_id=run_id,
+        repository=GitRepository(path=repo),
+        workspace=root.parent / "rework",
+        agent=FakeAgent(),
+    )
+    assert evidence.run.outcome == RunOutcome.VERIFIED
+    assert evidence.attempt == record.attempt
+    assert evidence.test is not None
+
+
+def test_publication_pushes_exact_candidate_and_reconciles_retry(
+    packaged: tuple[Path, Path, RunContract, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shipyard.application import publication
+    from shipyard.git.publication import push_candidate
+
+    root, repo, contract, candidate = packaged
+    monkeypatch.chdir(repo)
+    remote = root.parent / "remote.git"
+    remote.mkdir()
+    git(remote, "init", "--bare")
+    git(repo, "push", str(remote), f"{contract.base_sha}:refs/heads/main")
+    branch = f"shipyard/{contract.run_id}"
+    ref = f"refs/heads/{branch}"
+    run_git = publication.run_git
+    pulls: list[dict[str, object]] = []
+
+    def redirected_git(path: Path, *args: str) -> bytes:
+        return run_git(
+            path,
+            *(
+                str(remote) if arg == "https://github.com/owner/repo.git" else arg
+                for arg in args
+            ),
+        )
+
+    def redirected_push(
+        path: Path, url: str, ref: str, candidate: str, previous: str | None
+    ) -> None:
+        assert url == "https://github.com/owner/repo.git"
+        push_candidate(path, str(remote), ref, candidate, previous)
+
+    def api(endpoint: str, *, payload: dict[str, str] | None = None) -> object:
+        assert endpoint.startswith("repos/owner/repo/pulls")
+        if payload is None:
+            return pulls
+        assert git(remote, "rev-parse", ref) == candidate
+        assert candidate in payload["body"]
+        pulls.append(
+            {
+                "number": 17,
+                "html_url": "https://github.com/owner/repo/pull/17",
+                "state": "open",
+                "head": {"ref": branch, "sha": candidate},
+                "base": {"ref": "main", "sha": contract.base_sha},
+                "body": payload["body"],
+            }
+        )
+        return pulls[-1]
+
+    monkeypatch.setattr(publication, "run_git", redirected_git)
+    monkeypatch.setattr(publication, "push_candidate", redirected_push)
+    monkeypatch.setattr(publication, "api", api)
+    for _ in range(2):
+        result = publication.publish_run(
+            contract.run_id,
+            approve=candidate,
+            destination="owner/repo",
+            base="main",
+            runs_dir=root,
+        )
+        assert result.number == 17
+    assert len(pulls) == 1

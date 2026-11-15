@@ -31,7 +31,12 @@ REQUIRED_INPUTS: dict[AgentStage, frozenset[str]] = {
 class AgentInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     name: Literal[
-        "intent.md", "spec.md", "plan.md", "test-evidence.json", "build-process.json"
+        "intent.md",
+        "spec.md",
+        "plan.md",
+        "test-evidence.json",
+        "build-process.json",
+        "continuation-context.json",
     ]
     content: Annotated[str, Field(strict=True)]
 
@@ -61,6 +66,8 @@ class AgentRequest(BaseModel):
             raise ValueError("Missing or duplicate upstream artifacts")
         if self.guidance.stage != self.stage:
             raise ValueError("Guidance must match requested stage")
+        if "continuation-context.json" in names and self.stage != AgentStage.PLAN:
+            raise ValueError("Only PLAN consumes continuation context")
         if "build-process.json" in names and self.stage != AgentStage.REVIEW:
             raise ValueError("Only REVIEW consumes BUILD process evidence")
         if (self.stage == AgentStage.REVIEW) != (self.candidate is not None):

@@ -1,28 +1,58 @@
-"""Loopback static UI and allowlisted GET proxy; no execution authority."""
+"""Loopback workspace with allowlisted requests to the local service."""
 
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from shipyard.control.client import ControlClient
+from shipyard.control.evidence_reads import ATTEMPTS
+from shipyard.control.service import MAX_REQUEST
+
+COMMAND = re.compile(
+    r"/workspaces|/integrations/github|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
+)
 
 
 class WebApplication:
     def __init__(self, client: ControlClient) -> None:
         self.client = client
 
+    def command(self, path: str, raw: bytes) -> tuple[int, str, bytes]:
+        route = urlsplit(path).path.removeprefix("/api")
+        try:
+            payload: object = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise TypeError("Expected a JSON object")
+            body = self.client.request(
+                "POST", route, cast(dict[str, object], payload), timeout=180
+            )
+        except (TypeError, ValueError) as error:
+            return 400, "application/json", json.dumps({"error": str(error)}).encode()
+        return 200, "application/json", json.dumps(body).encode()
+
     def respond(self, method: str, path: str) -> tuple[int, str, bytes]:
         if method != "GET":
-            return 405, "text/plain", b"Read-only monitor"
+            return 405, "text/plain", b"Method not allowed"
         route = urlsplit(path).path
         static = {
             "/": ("index.html", "text/html"),
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
         }
+        if route in ("/workspaces", "/integrations"):
+            route = "/"
+        if route.startswith("/runs/"):
+            run_id = route.removeprefix("/runs/")
+            try:
+                UUID(run_id)
+            except ValueError:
+                return 404, "text/plain", b"Unknown Run"
+            route = "/"
         if route in static:
             name, mime = static[route]
             return (
@@ -33,16 +63,27 @@ class WebApplication:
         if route.startswith("/api/"):
             api = route.removeprefix("/api")
             parts = api.strip("/").split("/")
-            allowed = api in ("/health", "/runs")
-            if len(parts) in (2, 4) and parts[0] == "runs":
+            allowed = api in ("/health", "/runs", "/workspaces")
+            if len(parts) in (2, 3, 4) and parts[0] == "runs":
                 try:
                     UUID(parts[1])
                 except ValueError:
                     return 404, "text/plain", b"Unknown Run"
-                allowed = len(parts) == 2 or (
-                    parts[2] == "artifacts"
-                    and parts[3] in ("report.md", "evidence.json")
+                allowed = (
+                    len(parts) == 2
+                    or (len(parts) == 3 and parts[2] == "github")
+                    or (
+                        len(parts) == 4
+                        and parts[2] == "artifacts"
+                        and parts[3] in ("report.md", "evidence.json")
+                    )
                 )
+            if attempt := ATTEMPTS.fullmatch(api):
+                try:
+                    UUID(attempt[1])
+                except ValueError:
+                    return 404, "text/plain", b"Unknown Run"
+                allowed = True
             if not allowed:
                 return 404, "text/plain", b"Unknown route"
             try:
@@ -61,6 +102,10 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
     app = WebApplication(ControlClient(control_dir))
 
     class Handler(BaseHTTPRequestHandler):
+        def setup(self) -> None:
+            self.request.settimeout(8)
+            super().setup()
+
         def log_message(self, format: str, *args: object) -> None:
             pass
 
@@ -84,6 +129,12 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
                 f"localhost:{listener.server_port}",
             ):
                 status, mime, body = 403, "text/plain", b"Loopback host required"
+            elif (
+                self.command == "POST"
+                and COMMAND.fullmatch(urlsplit(self.path).path.removeprefix("/api"))
+                and self.path.startswith("/api/")
+            ):
+                status, mime, body = self.workspace_command(host)
             else:
                 status, mime, body = app.respond(self.command, self.path)
             self.send_response(status)
@@ -100,6 +151,35 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
                 self.wfile.write(body)
             except BrokenPipeError, ConnectionResetError:
                 pass
+
+        def workspace_command(self, host: str) -> tuple[int, str, bytes]:
+            if (
+                self.headers.get("Origin") != f"http://{host}"
+                or self.headers.get("X-Shipyard-Workspace") != "1"
+            ):
+                return (
+                    403,
+                    "application/json",
+                    b'{"error":"Same-origin workspace request required"}',
+                )
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if (
+                    self.headers.get("Transfer-Encoding")
+                    or not 0 < length <= MAX_REQUEST
+                    or self.headers.get_content_type() != "application/json"
+                ):
+                    raise ValueError("Expected a bounded JSON request body")
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise ValueError("Incomplete request body")
+            except (OSError, ValueError) as error:
+                return (
+                    400,
+                    "application/json",
+                    json.dumps({"error": str(error)}).encode(),
+                )
+            return app.command(self.path, raw)
 
     listener = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     return listener

@@ -1,5 +1,6 @@
 """Bounded terminal presentation of packaged Run evidence."""
 
+import hashlib
 from pathlib import Path
 
 from shipyard.application.review import evaluate_review, validate_test_context
@@ -44,7 +45,7 @@ def _checks(evidence: RunEvidence) -> str:
     return f"unavailable ({total} required)"
 
 
-def _acceptance(evidence: RunEvidence) -> str:
+def _acceptance(evidence: RunEvidence, directory: Path) -> str:
     designs = [
         stage
         for stage in evidence.stages
@@ -52,6 +53,13 @@ def _acceptance(evidence: RunEvidence) -> str:
         and stage.output.result.status == StageStatus.READY
     ]
     specification = designs[0].output.artifact if len(designs) == 1 else None
+    if specification is None and evidence.reused_spec_sha256 is not None:
+        try:
+            raw = (directory / "frozen-spec.md").read_bytes()
+            if hashlib.sha256(raw).hexdigest() == evidence.reused_spec_sha256:
+                specification = raw.decode()
+        except OSError, UnicodeError:
+            pass
     if specification is None:
         return "unavailable (total unknown)"
     try:
@@ -100,7 +108,7 @@ def render_summary(evidence: RunEvidence, directory: Path) -> str:
         if evidence.candidate
         else "Candidate: unavailable",
         f"Checks: {_checks(evidence)}",
-        f"Acceptance: {_acceptance(evidence)}",
+        f"Acceptance: {_acceptance(evidence, directory)}",
         "Application: This execution has not applied a candidate to the target branch",
         "",
         *[f"{label}: {path}" for label, path in artifact_paths(directory).items()],

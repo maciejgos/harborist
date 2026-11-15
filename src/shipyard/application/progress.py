@@ -25,11 +25,14 @@ class ExecutionProgress:
     def __init__(self, callback: ProgressCallback | None) -> None:
         self.callback = callback
         self.started: set[ArtifactStage] = set()
+        self.finished: set[ArtifactStage] = set()
         self.active: ArtifactStage | None = None
 
     def emit(
         self, stage: ArtifactStage, state: ProgressState, reason: str | None = None
     ) -> None:
+        if state != "started":
+            self.finished.add(stage)
         if state == "started":
             self.started.add(stage)
             self.active = stage
@@ -48,5 +51,6 @@ class ExecutionProgress:
             if (
                 stage not in (ArtifactStage.INTAKE, ArtifactStage.PACKAGE)
                 and stage not in self.started
+                and stage not in self.finished
             ):
                 self.emit(stage, "skipped", reason)

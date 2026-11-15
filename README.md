@@ -2,10 +2,10 @@
 
 Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
 
-> **Status:** Phase 10 local background control plane completed on 2026-11-04 around the
-> synchronous, revision-bound execution core, including a lightweight browser
-> execution monitor. Phase 9 PoC validation is complete by owner decision
-> on 2026-11-04; see the [service guide](docs/background-control-plane.md).
+> **Status:** Phase 11 rework and recovery is complete (2026-11-04), with fresh
+> Attempts, frozen-spec reuse and cumulative budgets. The local background service
+> and local browser workspace wrap the synchronous execution core. See the
+> [Phase 11 acceptance report](spec/065-phase11-acceptance/report.md).
 
 ## Quick start
 
@@ -41,17 +41,26 @@ Application requires the branch to be eligible for advancement. See
 
 ## Commands
 
+See the complete [CLI command reference](COMMANDS.md) for syntax, options, defaults
+and operational requirements.
+
 | Command | Purpose |
 | --- | --- |
 | `shipyard run <source>` | Capture and submit a request. |
 | `shipyard intake <source>` | Capture frozen inputs without executing. |
 | `shipyard run <run-id>` | Submit a saved CREATED Run. |
-| `shipyard service start/status/stop` | Manage background execution. |
+| `shipyard rework <run-id> --feedback "..."` | Start a fresh Attempt after rejected software. |
+| `shipyard recover <run-id>` | Explicitly recover an eligible execution failure. |
+| `shipyard service serve/start/status/stop` | Manage background execution. |
 | `shipyard runs` / `shipyard status <run-id> --wait` | Inspect saved history and service delivery/results. |
-| `shipyard web` | Watch execution at http://127.0.0.1:8765. |
+| `shipyard web` | Operate the local workspace at http://127.0.0.1:8765. |
 | `shipyard inspect <run-id>` | Validate and print the frozen contract. |
 | `shipyard methodology <run-id>` | Preview frozen playbook and skills. |
 | `shipyard apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate. |
+| `shipyard publish <run-id> --approve <sha> --destination <owner/repo> --base <branch>` | Explicitly publish a VERIFIED candidate to GitHub. |
+| `shipyard github-status <run-id>` | Fetch and save published PR evidence. |
+| `shipyard cancel <run-id> --reason "..."` | Record Run cancellation through the service. |
+| `shipyard supersede <run-id> <source> --reason "..."` | Capture and queue a replacement request. |
 
 Sources accept `file:path/to/issue.md` or `'github:owner/repo#42'`.
 Prefix commands with `uv run` from the development checkout. Use

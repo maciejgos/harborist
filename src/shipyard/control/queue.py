@@ -14,7 +14,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shipyard.domain import RunLifecycle
+from shipyard.domain.continuation import ContinuationRequest
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.continuation import prepare_continuation
+from shipyard.persistence.retirement import load_retirement, require_live_run
 
 
 class Submission(BaseModel):
@@ -25,6 +28,7 @@ class Submission(BaseModel):
     repository: Path
     runs_root: Path
     workspace: Path | None = None
+    continuation: ContinuationRequest | None = None
 
     @field_validator("repository", "runs_root", "workspace")
     @classmethod
@@ -35,6 +39,7 @@ class Submission(BaseModel):
 
 
 class DeliveryState(StrEnum):
+    CANCELLED = "CANCELLED"
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -116,17 +121,65 @@ class QueueStore:
             key=lambda record: (record.submitted_at, str(record.submission.run_id)),
         )
 
+    def _archive_path(self, submission: Submission) -> Path:
+        key = (
+            str(submission.continuation.request_id)
+            if submission.continuation
+            else "initial"
+        )
+        return self.root / "deliveries" / str(submission.run_id) / f"{key}.json"
+
     def submit(self, submission: Submission) -> QueueRecord:
         with self._locked():
-            if self._path(submission.run_id).exists():
-                record = self._read(submission.run_id)
+            require_live_run(submission.runs_root, submission.run_id)
+            existing = (
+                self._read(submission.run_id)
+                if self._path(submission.run_id).exists()
+                else None
+            )
+            if existing is not None and existing.submission == submission:
+                return existing
+            if existing is not None and (
+                existing.submission.repository != submission.repository
+                or existing.submission.runs_root != submission.runs_root
+            ):
+                raise ValueError("Conflicting repository or Runs root for existing Run")
+            archived = self._archive_path(submission)
+            if archived.exists():
+                record = QueueRecord.model_validate_json(archived.read_bytes())
                 if record.submission != submission:
-                    raise ValueError("Conflicting submission for existing Run")
+                    raise ValueError("Conflicting archived submission")
                 return record
+            if existing is not None and (
+                submission.continuation is None
+                or existing.state in {DeliveryState.QUEUED, DeliveryState.RUNNING}
+            ):
+                raise ValueError("Conflicting submission for existing Run")
             store = FileRunStore(root=submission.runs_root)
             store.load(submission.run_id)
-            if store.load_state(submission.run_id).lifecycle != RunLifecycle.CREATED:
+            if submission.continuation is not None:
+                prepare_continuation(
+                    store=store,
+                    run_id=submission.run_id,
+                    request=submission.continuation,
+                    dry_run=True,
+                )
+            elif store.load_state(submission.run_id).lifecycle != RunLifecycle.CREATED:
                 raise ValueError("New submissions require a CREATED Run")
+            if existing is not None:
+                archive = self._archive_path(existing.submission)
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                if archive.exists():
+                    if (
+                        QueueRecord.model_validate_json(archive.read_bytes())
+                        != existing
+                    ):
+                        raise ValueError("Conflicting retained delivery history")
+                else:
+                    with archive.open("xb") as output:
+                        output.write(existing.model_dump_json().encode())
+                        output.flush()
+                        os.fsync(output.fileno())
             now = datetime.now(UTC)
             record = QueueRecord(
                 submission=submission, submitted_at=now, updated_at=now
@@ -149,6 +202,11 @@ class QueueStore:
                 return None
             for record in records:
                 if record.state == DeliveryState.QUEUED:
+                    if load_retirement(
+                        record.submission.runs_root, record.submission.run_id
+                    ):
+                        self._change(record, state=DeliveryState.CANCELLED)
+                        continue
                     return self._change(record, state=DeliveryState.RUNNING)
             return None
 
@@ -170,24 +228,42 @@ class QueueStore:
                 stages={**record.stages, progress.stage: progress},
             )
 
-    def finish(self, run_id: UUID, *, error: str | None = None) -> QueueRecord:
+    def finish(
+        self, run_id: UUID, *, error: str | None = None, cancelled: bool = False
+    ) -> QueueRecord:
         with self._locked():
             record = self._read(run_id)
             if record.state != DeliveryState.RUNNING:
                 raise ValueError("Completion requires an active claim")
             return self._change(
                 record,
-                state=DeliveryState.FAILED
-                if error is not None
-                else DeliveryState.FINISHED,
+                state=DeliveryState.CANCELLED
+                if cancelled
+                else (
+                    DeliveryState.FAILED
+                    if error is not None
+                    else DeliveryState.FINISHED
+                ),
                 error=error[:4096] if error is not None else None,
             )
+
+    def cancel_delivery(self, run_id: UUID) -> None:
+        with self._locked():
+            if self._path(run_id).exists():
+                record = self._read(run_id)
+                if record.state == DeliveryState.QUEUED:
+                    self._change(record, state=DeliveryState.CANCELLED)
 
     def interrupt_claims(self) -> None:
         """Only the exclusive service owner may call this on startup."""
         with self._locked():
             for record in self._records():
                 if record.state == DeliveryState.RUNNING:
+                    if load_retirement(
+                        record.submission.runs_root, record.submission.run_id
+                    ):
+                        self._change(record, state=DeliveryState.CANCELLED)
+                        continue
                     self._change(
                         record,
                         state=DeliveryState.INTERRUPTED,

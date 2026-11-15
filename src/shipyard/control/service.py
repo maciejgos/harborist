@@ -3,6 +3,7 @@
 import fcntl
 import json
 import os
+import re
 import stat
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -12,12 +13,26 @@ from typing import BinaryIO, Self
 from uuid import UUID
 
 from shipyard.agents.base import NativeAgent
+from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
+from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
-from shipyard.control.queue import QueueStore, Submission
+from shipyard.control.integrations import GitHubCheck, check_github
+from shipyard.control.queue import QueueRecord, QueueStore, Submission
+from shipyard.control.retirement import retire_run, supersede_run
+from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
 from shipyard.control.worker import Worker
+from shipyard.control.workspace import (
+    CaptureRequest,
+    SupersedeRequest,
+    capture_submission,
+    continuation_submission,
+    run_id_response,
+)
 from shipyard.domain import RunLifecycle
+from shipyard.domain.continuation import ContinuationRequest
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
+from shipyard.persistence.retirement import RetirementRequest
 
 MAX_REQUEST = 64 * 1024
 
@@ -57,10 +72,12 @@ class ControlService:
             queue, root=history_root if history_root is not None else runs_root()
         )
         self.queue = queue
+        self.workspaces = WorkspaceStore(queue.root / "workspaces")
         self.worker = Worker(queue, agent=agent)
         self.stopping = Event()
         self.ready = Event()
         self.gate = RLock()
+        self.active: QueueRecord | None = None
 
     def stop(self) -> None:
         with self.gate:
@@ -72,6 +89,50 @@ class ControlService:
         if method == "POST" and path == "/stop":
             self.stop()
             return {"stopping": True}
+        if method == "POST" and path == "/integrations/github":
+            request = GitHubCheck.model_validate_json(body)
+            repository = None
+            if request.workspace_id:
+                workspace = self.workspaces.get(request.workspace_id)
+                repository = workspace.github_repository
+                if repository is None:
+                    raise ValueError(
+                        "Set a GitHub repository in this Workspace before checking access"
+                    )
+            return check_github(repository)
+        if path == "/workspaces":
+            if method == "GET":
+                return {
+                    "workspaces": [
+                        item.model_dump(mode="json") for item in self.workspaces.list()
+                    ]
+                }
+            if method == "POST":
+                saved = self.workspaces.save(
+                    WorkspaceSettings.model_validate_json(body)
+                )
+                return saved.model_dump(mode="json")
+        if method == "POST" and path.startswith("/workspace/runs"):
+            return self.workspace_command(path, body)
+        disposition = re.fullmatch(r"/runs/([^/]+)/(cancel|supersede)", path)
+        if method == "POST" and disposition:
+            run_id = UUID(disposition[1])
+            request = RetirementRequest.model_validate_json(body)
+            with self.gate:
+                root = self.run_root(run_id, request)
+                if disposition[2] == "supersede":
+                    if self.stopping.is_set():
+                        raise ValueError(
+                            "Service is stopping; replacement was not accepted"
+                        )
+                    result = supersede_run(
+                        self.queue, root, run_id, request, self.active
+                    )
+                else:
+                    if request.replacement is not None:
+                        raise ValueError("Use the supersede route for a replacement")
+                    result = retire_run(self.queue, root, run_id, request, self.active)
+                return result.model_dump(mode="json")
         if method == "POST" and path == "/runs":
             submission = Submission.model_validate_json(body)
             with self.gate:
@@ -82,6 +143,14 @@ class ControlService:
             return {
                 "runs": [item.model_dump(mode="json") for item in self.history.list()]
             }
+        if method == "GET" and (
+            delivery := re.fullmatch(r"/runs/([^/]+)/github", path)
+        ):
+            return read_delivery(self.history.get(UUID(delivery[1])))
+        if method == "GET" and (attempt := ATTEMPTS.fullmatch(path)):
+            return attempt_evidence(
+                self.history.get(UUID(attempt[1])), attempt[2], attempt[3]
+            )
         if method == "GET" and "/artifacts/" in path:
             parts = path.strip("/").split("/")
             if (
@@ -122,6 +191,61 @@ class ControlService:
                 mode="json"
             )
         raise ValueError("Unknown service route or method")
+
+    def workspace_command(self, path: str, body: bytes) -> dict[str, object]:
+        if path == "/workspace/runs":
+            request = CaptureRequest.model_validate_json(body)
+            submission = capture_submission(
+                request,
+                self.history.root,
+                receipts=self.queue.root / "workspace-requests",
+            )
+            self.dispatch("POST", "/runs", submission.model_dump_json().encode())
+            return run_id_response(submission.run_id)
+        match = re.fullmatch(
+            r"/workspace/runs/([^/]+)/(continue|cancel|supersede|publish|observe)", path
+        )
+        if match is None:
+            raise ValueError("Unknown workspace command")
+        run_id = UUID(match[1])
+        record = self.history.get(run_id)
+        root = record.submission.runs_root
+        if match[2] in ("publish", "observe"):
+            return github_command(record, match[2], body)
+        if match[2] == "continue":
+            continuation = ContinuationRequest.model_validate_json(body)
+            submission = continuation_submission(record, continuation)
+            self.dispatch("POST", "/runs", submission.model_dump_json().encode())
+            return run_id_response(run_id)
+        if match[2] == "cancel":
+            request_data = RetirementRequest.model_validate_json(body)
+            retirement = RetirementRequest(reason=request_data.reason, runs_root=root)
+        else:
+            replacement = SupersedeRequest.model_validate_json(body)
+            submission = capture_submission(
+                replacement,
+                root,
+                receipts=self.queue.root / "workspace-requests" / str(run_id),
+            )
+            retirement = RetirementRequest(
+                reason=replacement.reason, runs_root=root, replacement=submission.run_id
+            )
+        self.dispatch(
+            "POST", f"/runs/{run_id}/{match[2]}", retirement.model_dump_json().encode()
+        )
+        return run_id_response(retirement.replacement or run_id)
+
+    def run_root(self, run_id: UUID, request: RetirementRequest) -> Path:
+        record = next(
+            (item for item in self.queue.list() if item.submission.run_id == run_id),
+            None,
+        )
+        if record is not None:
+            root = record.submission.runs_root
+            if request.runs_root and request.runs_root.resolve() != root:
+                raise ValueError("Runs root conflicts with the service delivery")
+            return root
+        return request.runs_root.resolve() if request.runs_root else self.history.root
 
     def serve(self) -> None:
         service = self
@@ -191,10 +315,15 @@ class ControlService:
                             record = (
                                 None if self.stopping.is_set() else self.queue.claim()
                             )
+                            self.active = record
                         if record is None:
                             self.stopping.wait(0.1)
                         else:
-                            self.worker.execute(record)
+                            try:
+                                self.worker.execute(record)
+                            finally:
+                                with self.gate:
+                                    self.active = None
                 finally:
                     self.stopping.set()
                     server.shutdown()

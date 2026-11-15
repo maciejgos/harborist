@@ -86,6 +86,8 @@ def execute_stage(
         raise ValueError("Output directory must be outside the repository workspace")
     required = REQUIRED_INPUTS[stage] - {"intent.md"}
     allowed = set(REQUIRED_INPUTS[stage])
+    if stage == AgentStage.PLAN:
+        allowed.add("continuation-context.json")
     if stage == AgentStage.REVIEW:
         allowed.add("build-process.json")
     if set(upstream) - allowed or not required <= set(upstream):

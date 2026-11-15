@@ -1,6 +1,6 @@
 # Shipyard Architecture
 
-This document describes the **Shipyard execution core** and the completed Phase 10 local background control plane. Broader Product infrastructure remains out of scope.
+This document describes the **Shipyard execution core** and the completed Phase 11 local rework/recovery workflow. Broader Product infrastructure remains out of scope.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -136,7 +136,7 @@ refs/shipyard/runs/<run-id>/candidate
 src/shipyard/
 ├── cli/            # CLI entry point, service client and presentation
 ├── control/        # local queue, service ownership, execution and read model
-├── web/            # read-only loopback browser adapter and packaged static assets
+├── web/            # loopback browser adapter and packaged static assets
 ├── domain/         # Run, Attempt, Candidate, outcomes, frozen contract
 ├── application/    # durable intake, synchronous Run executor and native stages
 ├── intake/         # local Markdown and authenticated gh capture
@@ -268,3 +268,107 @@ service delivery records through a read-only catalog. Historical Runs retain
 validated lifecycle/evidence but have no fabricated queue state or execution
 locator. Discovery never submits, mutates or resumes work. The browser still
 uses only the canonical API; it does not scan storage directly.
+
+## Phase 11 attempts and continuation
+
+Explicit `rework` and `recover` create fresh Attempt identities in the same Run.
+The first Attempt keeps its existing layout. Later Attempts own numbered
+`attempts/000001` directories with independent journals and terminal evidence;
+normal Run reads select the latest, without rewriting previous terminal records.
+A POSIX advisory lock on the original Run directory serializes admission and
+execution across foreground and service paths without adding files to evidence.
+
+Rework accepts TEST_FAILED or CHANGES_REQUIRED and starts at PLAN from the previous
+packaged candidate. Recovery accepts the documented execution-failure allowlist,
+discards partial checkout state and restarts at DESIGN or PLAN using validated
+durable specification evidence. Worker loss requires an explicit time grant;
+a completed DESIGN manifest can be checked independently when PACKAGE is absent.
+An already frozen spec survives interrupted rework. PLAN receives bounded prior
+plan, candidate, TEST, REVIEW and human feedback; incompatible feedback must return
+NEEDS_RESCOPING. There is no native-session resume or automatic retry.
+
+The immutable Run contract remains unchanged. A continuation record links the
+expected predecessor and fresh Attempt, copied-spec/context digests, cumulative
+time spending and explicit grants. The clock preserves the frozen verification
+reserve, subtracts all prior spending and adds only recorded grants. PACKAGE stays
+outside the budget. Every new candidate runs fresh trusted TEST and independent
+REVIEW, with no inherited verification. Later candidates use immutable
+`refs/shipyard/runs/<run>/attempts/<attempt>/candidate` refs; the original candidate
+ref remains intact. Explicit application validates the selected Attempt's ref.
+
+The queue retains earlier delivery snapshots under `deliveries/<run>/` and uses a
+continuation request UUID plus expected predecessor for idempotency. It rechecks
+admission at execution, never resumes interrupted claims and still runs one Run
+at a time. The Phase 11 monitor attributes observations to the current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
+[storage rules](docs/storage-and-recovery.md#phase-11-attempt-persistence) and the
+[acceptance audit](spec/065-phase11-acceptance/report.md).
+
+
+## Phase 12 GitHub delivery
+
+Publication is an explicit synchronous CLI operation outside the execution
+workflow. It validates packaged verification and the Run-owned Git ref under
+the Run lock before pushing an approved SHA to a dedicated GitHub branch.
+Expected-head Git leases protect branch updates, and verification summaries
+for later publications are appended to the PR conversation.
+
+GitHub collaboration snapshots and publication receipts live beside Run
+storage. Snapshots describe the observed PR head, GitHub checks, feedback
+and merge result. Selected feedback is resolved during Attempt admission
+and frozen into PLAN context. See [GitHub delivery usage](docs/usage.md#publish-a-verified-candidate-to-github).
+
+## Run cancellation and supersession
+
+A create-only Run-level disposition records cancellation or supersession
+beside the Attempt history. It blocks execution, continuation, and publication
+while retaining historical verification. The local worker cooperatively
+interrupts active execution, including bounded child-process capture.
+Supersession links the original to a new capture and submits it through the
+same serial queue. Run status exposes the link and historical Attempt outcome.
+
+## Local MVP web workspace
+
+The browser workspace extends the loopback adapter described in Phase 10.
+React and shadcn/ui own presentation, navigation, and local interaction state.
+A frontend build produces static assets packaged with Shipyard and served by
+`shipyard web`. The Python adapter serves assets and forwards allowlisted
+requests through ControlClient to the local service. The critical execution
+path remains synchronous and the service continues to process one Run at a
+time. The filesystem remains the source of durable state.
+
+Use [Linear](https://linear.app/) as the reference for navigation, compact
+information hierarchy, and keyboard interaction. Shared layout, design tokens,
+and component conventions cover every screen and its alternate states.
+See the [workspace spec](spec/072-web-workspace/spec.md).
+
+Run and Attempt detail use canonical read models for live and historical data.
+Delivery status, observed stage progress, validated outcome, and verification
+are separate fields. The browser attributes evidence to the selected Attempt
+and displays verification only for the candidate SHA identified by the service.
+Artifact reads use bounded, named evidence endpoints. See the
+[Run evidence spec](spec/073-web-run-evidence/spec.md).
+
+Browser actions extend the adapter with explicit write routes for supported
+operations. The loopback HTTP boundary validates Host and same-origin writes,
+applies cross-site request forgery protection, and maps bounded, typed inputs
+to shared application commands. Reuse the CLI's intake and approval semantics
+through shared application entry points. The service owns admission, current
+Run and Attempt validation, and queue changes. The browser refreshes state
+after each action and presents service rejections in context. See the
+[browser Run operations spec](spec/074-web-run-operations/spec.md).
+
+Browser publication invokes the same application operation as the CLI, outside
+the execution workflow. The trusted operation revalidates the approved SHA
+under the Run lock and applies the existing expected-head protection.
+Collaboration views display the recorded GitHub observations and publication
+receipts through the control plane. Feedback selected in the browser is
+resolved by the same Attempt admission rules as CLI feedback. See the
+[browser GitHub delivery spec](spec/075-web-github-delivery/spec.md).
+
+Local Workspaces persist named checkout defaults under the control directory.
+The browser supplies the selected defaults at intake, where the existing
+capture operation freezes the Run contract. Editing a Workspace affects
+future submissions. GitHub integration checks use the service's existing
+GitHub CLI environment and return diagnostic status. See the
+[Workspaces spec](spec/077-local-workspaces/spec.md) and
+[Integrations spec](spec/078-github-integrations/spec.md).

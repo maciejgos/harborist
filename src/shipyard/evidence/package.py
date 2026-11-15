@@ -30,6 +30,7 @@ class EvidenceFile(BaseModel):
 class RunEvidence(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     version: int = 1
+    reused_spec_sha256: str | None = None
     workspace: Path | None = None
     run: Run
     contract: RunContract
@@ -90,6 +91,7 @@ def package_run(
     stage_timings: tuple[Timing, ...] = (),
     error: str | None = None,
     workspace: Path | None = None,
+    reused_specification: Path | None = None,
 ) -> RunEvidence:
     """Publish report first and evidence index last; preserve partial failures.
 
@@ -130,12 +132,29 @@ def package_run(
         validate_test_context(
             contract=contract, attempt=attempt, candidate=candidate, test=test
         )
+    reused_spec: str | None = None
+    if reused_specification is not None:
+        from shipyard.persistence.continuation import ContinuationRecord
+
+        record = ContinuationRecord.model_validate_json(
+            (directory / "continuation.json").read_bytes()
+        )
+        raw = reused_specification.read_bytes()
+        if (
+            reused_specification != directory / "frozen-spec.md"
+            or record.attempt != attempt
+            or record.spec_digest != hashlib.sha256(raw).hexdigest()
+        ):
+            raise ValueError("Reused specification must match continuation provenance")
+        reused_spec = raw.decode("utf-8")
     if run.outcome == RunOutcome.VERIFIED:
         if attempt is None or candidate is None or test is None:
             raise ValueError("VERIFIED PACKAGE requires complete verification evidence")
         reviews = [s for s in stages if isinstance(s.output.result, ReviewStageResult)]
         designs = [s for s in stages if s.stage.value == "design"]
-        if len(reviews) != 1 or len(designs) != 1:
+        if len(reviews) != 1 or (
+            len(designs) != 1 if reused_spec is None else bool(designs)
+        ):
             raise ValueError("VERIFIED PACKAGE requires DESIGN and REVIEW")
         review = reviews[0].output.result
         assert isinstance(review, ReviewStageResult)
@@ -144,7 +163,9 @@ def package_run(
             attempt=attempt,
             candidate=candidate,
             test=test,
-            specification=designs[0].output.artifact or "",
+            specification=reused_spec
+            if reused_spec is not None
+            else designs[0].output.artifact or "",
             review=review,
         )
         if decision.verification != run.verification:
@@ -196,6 +217,12 @@ def package_run(
         f"Lifecycle: {run.lifecycle}",
         f"Result: {status}",
         f"Base: `{contract.base_sha}`",
+        f"Attempt: `{attempt.attempt_id}`; start: `{attempt.start_sha}`"
+        if attempt
+        else "Attempt: unavailable",
+        "DESIGN: reused frozen specification"
+        if reused_spec is not None
+        else "DESIGN: fresh invocation",
         f"Workspace: `{workspace}`" if workspace else "Workspace: unknown",
         f"Candidate: `{candidate.candidate_sha}`"
         if candidate
@@ -213,6 +240,29 @@ def package_run(
         f"Playbook: {contract.execution.playbook.name} / {contract.execution.playbook.sha256}",
         f"Verification configuration: {contract.verification.source_sha256}",
     ]
+    if (directory / "continuation.json").is_file():
+        from shipyard.persistence.continuation import ContinuationRecord
+
+        continuation = ContinuationRecord.model_validate_json(
+            (directory / "continuation.json").read_bytes()
+        )
+        if continuation.attempt != attempt:
+            raise ValueError("Continuation report belongs to another Attempt")
+        lines.extend(
+            [
+                "",
+                "## Continuation",
+                "",
+                f"Action: {continuation.request.action}",
+                f"Previous Attempt: `{continuation.request.expected_attempt_id}`",
+                f"Frozen Run budget: {contract.execution.budget.total_seconds}s",
+                f"Prior spending charged: {continuation.spent_seconds:.3f}s",
+                f"Explicit cumulative time grants: {continuation.granted_seconds}s",
+                "Interrupted predecessor: yes"
+                if continuation.interrupted
+                else "Interrupted predecessor: no",
+            ]
+        )
     lines.extend(
         f"Skill: {skill.name} / {skill.sha256}" for skill in contract.execution.skills
     )
@@ -277,6 +327,9 @@ def package_run(
         output.write("\n".join(lines) + "\n")
     files = _files(directory, excluded)
     evidence = RunEvidence(
+        reused_spec_sha256=hashlib.sha256(reused_spec.encode()).hexdigest()
+        if reused_spec is not None
+        else None,
         workspace=workspace,
         package_timing=Timing(
             stage=ArtifactStage.PACKAGE,
