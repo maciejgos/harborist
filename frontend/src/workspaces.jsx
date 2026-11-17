@@ -38,6 +38,7 @@ export function Workspaces({ resource }) {
     {resource.data && !workspaces.length && <div className="empty"><h2>No Workspaces yet</h2><p>Add a local checkout to reuse its settings when you start a Run.</p></div>}
     <div className="settings-list">{workspaces.map(workspace => <section key={workspace.id} className="settings-row">
       <FolderGit2 size={18} /><div><h2>{workspace.name}</h2><p className="mono muted">{workspace.repository} · {workspace.ref}</p>
+      <p className="muted">Workspace ID <code>{workspace.id}</code></p>
       {workspace.github_repository && <p className="muted">{workspace.github_repository}</p>}</div>
       <WorkspaceEditor workspace={workspace} onDone={resource.refresh} />
     </section>)}</div>

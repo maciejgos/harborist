@@ -11,6 +11,7 @@ from shipyard.cli.monitoring import runs, status
 from shipyard.cli.retirement import cancel, supersede
 from shipyard.cli.run import run_command
 from shipyard.cli.service import service_app
+from shipyard.cli.tickets import tickets_app
 from shipyard.cli.web import web
 
 app = typer.Typer(
@@ -26,6 +27,9 @@ app.command()(rework)
 app.command()(recover)
 
 app.add_typer(service_app, name="service")
+app.add_typer(
+    tickets_app, name="tickets", help="Browse GitHub issues and queue a ticket Run."
+)
 
 app.command("runs")(runs)
 app.command("status")(status)

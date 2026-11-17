@@ -4,6 +4,7 @@ import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch
 import { useResource } from "./api";
 import { GitHubDelivery } from "./github-delivery";
 import { Integrations } from "./integrations";
+import { TicketInbox } from "./tickets";
 import { Workspaces } from "./workspaces";
 import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
@@ -81,6 +82,7 @@ function RunDetail({ record: latest, id, close, onDone, onError, disabled, desti
       <section>
         <h3>Execution</h3>
         <dl>
+          {record.source_url && <><dt>Source ticket</dt><dd><a className="ticket-link" href={record.source_url} target="_blank" rel="noreferrer">{record.source_ref?.replace(/^github:/, "")}</a></dd></>}
           <dt>Repository</dt><dd>{repo(record)}</dd>
           <dt>Delivery</dt><dd>{label(record.state)}</dd>
           <dt>Lifecycle</dt><dd>{label(record.run?.lifecycle)}</dd>
@@ -129,11 +131,14 @@ function Status({ record }) {
 }
 
 function Workspace() {
+  const ticketPage = location.pathname === "/tickets";
   const integrationsPage = location.pathname === "/integrations";
   const workspacePage = location.pathname === "/workspaces";
+  const page = ticketPage ? "Ticket Inbox" : integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs";
+  const runsPage = page === "Runs";
   useEffect(() => {
-    document.title = `Shipyard · ${integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs"}`;
-  }, [integrationsPage, workspacePage]);
+    document.title = `Shipyard · ${page}`;
+  }, [page]);
   const workspaces = useResource("/workspaces");
   const history = useResource("/runs", true);
   const [selected, setSelected] = useState(selection);
@@ -187,13 +192,13 @@ function Workspace() {
     .map(item => item.github_repository))];
   const destination = destinations.length === 1 ? destinations[0] : undefined;
 
-  return <div className="workspace" data-detail={Boolean(selected)}>
+  return <div className="workspace" data-detail={runsPage && Boolean(selected)}>
     <aside className="sidebar" aria-label="Workspace">
       <a className="brand" href="/"><span><Anchor size={16} /></span>Shipyard</a>
-      <nav><a className="nav-link" href="/" aria-current={!workspacePage && !integrationsPage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Github size={16} /> Integrations</a></nav>
+      <nav><a className="nav-link" href="/tickets" aria-current={ticketPage ? "page" : undefined}><Github size={16} /> Ticket Inbox</a><a className="nav-link" href="/" aria-current={runsPage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Github size={16} /> Integrations</a></nav>
       <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
     </aside>
-    {integrationsPage ? <Integrations resource={workspaces} /> : workspacePage ? <Workspaces resource={workspaces} /> : <main>
+    {ticketPage ? <TicketInbox resource={workspaces} /> : integrationsPage ? <Integrations resource={workspaces} /> : workspacePage ? <Workspaces resource={workspaces} /> : <main>
       <header className="topbar"><Activity size={15} /><span>Runs</span><Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button></header>
       <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun workspaces={workspaces.data?.workspaces || []} onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
       <div className="toolbar">
@@ -219,7 +224,7 @@ function Workspace() {
         })}
       </div>
     </main>}
-    {!integrationsPage && !workspacePage && selected && <RunDetail destination={destination} key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
+    {runsPage && selected && <RunDetail destination={destination} key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
   </div>;
 }
 

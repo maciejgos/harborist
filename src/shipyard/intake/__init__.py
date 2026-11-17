@@ -1,6 +1,7 @@
 """Source adapters for capturing intent without advancing a Run."""
 
-from shipyard.intake.github import GitHubIntakeError, read_github_intent
+from shipyard.github.issues import GitHubIntakeError
+from shipyard.intake.github import read_github_intent
 from shipyard.intake.markdown import MarkdownIntakeError, read_markdown_intent
 from shipyard.intake.source import IntakeSourceError, capture_intent
 

@@ -13,11 +13,10 @@ from shipyard.control.workspace import normalize_path
 from shipyard.domain import ExecutionBudget
 from shipyard.git import GitRepository
 from shipyard.git.command import run_git
+from shipyard.github.issues import GITHUB_REPOSITORY
 from shipyard.persistence.application import ensure_record_directory
 from shipyard.skills import compile_methodology
 from shipyard.verification import load_verification_config
-
-GITHUB_REPOSITORY = r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+"
 
 
 def github_origin(checkout: Path) -> str | None:

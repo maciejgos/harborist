@@ -18,6 +18,7 @@ from shipyard.intake import (
 def test_gh_capture_is_explicit_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
     response = {
         "title": "Fix café",
+        "url": "https://github.com/acme/source/issues/42",
         "body": "Keep\r\nbody\n",
         "labels": [{"name": "z", "id": "label-id", "color": "fff"}, {"name": "a"}],
     }
@@ -25,10 +26,12 @@ def test_gh_capture_is_explicit_and_normalized(monkeypatch: pytest.MonkeyPatch) 
 
     def gh(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         calls.append(args)
-        assert kwargs == {"check": True, "capture_output": True, "timeout": 30}
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+        assert kwargs["timeout"] == 30
         return subprocess.CompletedProcess(args, 0, json.dumps(response).encode())
 
-    monkeypatch.setattr("shipyard.intake.github.subprocess.run", gh)
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
     intent = read_github_intent(run_id=uuid4(), source="github:acme/source#42")
     assert calls == [
         [
@@ -39,10 +42,11 @@ def test_gh_capture_is_explicit_and_normalized(monkeypatch: pytest.MonkeyPatch) 
             "--repo",
             "acme/source",
             "--json",
-            "title,body,labels",
+            "title,body,labels,url",
         ]
     ]
     assert intent.source_ref == "github:acme/source#42"
+    assert intent.source_url == response["url"]
     assert intent.markdown == '# Fix café\n\nLabels: ["a", "z"]\n\nKeep\r\nbody\n'
     response["body"] = "Edited after capture"
     assert "Edited" not in intent.markdown
@@ -63,7 +67,7 @@ def test_bad_selector_rejected_before_process(
     def unexpected(*args: object, **kwargs: object) -> None:
         pytest.fail("Invalid selector must not launch gh")
 
-    monkeypatch.setattr("shipyard.intake.github.subprocess.run", unexpected)
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", unexpected)
     with pytest.raises(GitHubIntakeError):
         read_github_intent(run_id=uuid4(), source=source)
 
@@ -82,7 +86,7 @@ def test_invalid_response_is_wrapped(
     def gh(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(["gh"], 0, output)
 
-    monkeypatch.setattr("shipyard.intake.github.subprocess.run", gh)
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError) as caught:
         read_github_intent(run_id=uuid4(), source="github:a/b#1")
     assert caught.value.__cause__ is not None
@@ -102,7 +106,7 @@ def test_gh_failures_preserve_causes(
     def gh(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         raise error
 
-    monkeypatch.setattr("shipyard.intake.github.subprocess.run", gh)
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError) as caught:
         read_github_intent(run_id=uuid4(), source="github:a/b#1")
     assert caught.value.__cause__ is error
@@ -119,3 +123,25 @@ def test_dispatch_preserves_markdown_without_imposing_metadata_schema(
         capture_intent(run_id=uuid4(), source="file:")
     with pytest.raises(IntakeSourceError):
         capture_intent(run_id=uuid4(), source="https://example.com/issue")
+
+
+def test_listing_rejects_a_url_for_a_different_issue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from shipyard.github.issues import list_tickets
+
+    def gh(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        assert args[args.index("--repo") + 1] == "acme/source"
+        assert args[args.index("--state") + 1] == "open"
+        assert args[args.index("--limit") + 1] == "100"
+        assert kwargs["timeout"] == 30
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            b'[{"number":42,"title":"Summary","labels":[],"url":"https://github.com/other/source/issues/42"}]',
+        )
+
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    with pytest.raises(GitHubIntakeError, match="invalid issue list") as caught:
+        list_tickets("acme/source")
+    assert "other/source" not in str(caught.value)

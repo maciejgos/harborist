@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from shipyard.control.saved_workspaces import GITHUB_REPOSITORY
+from shipyard.github.issues import GITHUB_REPOSITORY
 
 
 class GitHubCheck(BaseModel):
