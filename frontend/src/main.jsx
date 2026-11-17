@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Github, Inbox, RefreshCw, Search, X } from "lucide-react";
+import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Inbox, Play, Plug, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
 import { GitHubDelivery } from "./github-delivery";
 import { Integrations } from "./integrations";
@@ -134,7 +134,7 @@ function Workspace() {
   const ticketPage = location.pathname === "/tickets";
   const integrationsPage = location.pathname === "/integrations";
   const workspacePage = location.pathname === "/workspaces";
-  const page = ticketPage ? "Ticket Inbox" : integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs";
+  const page = ticketPage ? "Inbox" : integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs";
   const runsPage = page === "Runs";
   useEffect(() => {
     document.title = `Shipyard · ${page}`;
@@ -195,7 +195,7 @@ function Workspace() {
   return <div className="workspace" data-detail={runsPage && Boolean(selected)}>
     <aside className="sidebar" aria-label="Workspace">
       <a className="brand" href="/"><span><Anchor size={16} /></span>Shipyard</a>
-      <nav><a className="nav-link" href="/tickets" aria-current={ticketPage ? "page" : undefined}><Github size={16} /> Ticket Inbox</a><a className="nav-link" href="/" aria-current={runsPage ? "page" : undefined}><Inbox size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Github size={16} /> Integrations</a></nav>
+      <nav><a className="nav-link" href="/tickets" aria-current={ticketPage ? "page" : undefined}><Inbox size={16} /> Inbox</a><a className="nav-link" href="/" aria-current={runsPage ? "page" : undefined}><Play size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Plug size={16} /> Integrations</a></nav>
       <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
     </aside>
     {ticketPage ? <TicketInbox resource={workspaces} /> : integrationsPage ? <Integrations resource={workspaces} /> : workspacePage ? <Workspaces resource={workspaces} /> : <main>

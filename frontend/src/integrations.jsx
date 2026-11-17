@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Github } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { write } from "./run-actions";
 import { Button } from "./ui";
 
@@ -23,7 +23,7 @@ export function Integrations({ resource }) {
   }
 
   return <main>
-    <header className="topbar"><Github size={15} /> Integrations</header>
+    <header className="topbar"><Inbox size={15} /> Integrations</header>
     <div className="page-heading"><h1>Integrations</h1></div>
     <div className="settings-list">
       <section className="integration-panel">
