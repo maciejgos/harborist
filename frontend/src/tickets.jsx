@@ -1,9 +1,39 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Github } from "lucide-react";
+import { ApiResponseError } from "./api";
 import { Field, write } from "./run-actions";
 import { Badge, Button } from "./ui";
 
 const repositoryPattern = /^[A-Za-z0-9][A-Za-z0-9-]*\/(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+const runIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const githubActions = [
+  "install GitHub CLI (gh), ensure it is on PATH, and try again.",
+  "GitHub CLI timed out. Check network connectivity and retry.",
+  "GitHub request failed. Run gh auth login and check access to the selected repository or issue.",
+  "cannot start GitHub CLI (gh). Check installation, PATH and permissions.",
+  "invalid response; check GitHub CLI (gh) installation and access to the selected issue.",
+];
+const invalidIssueList = "GitHub CLI returned an invalid issue list. Check the repository and GitHub CLI installation, then retry.";
+
+function serviceGuidance(error, context, otherAction) {
+  // The proxy's 400 envelope also carries generic exceptions and validation details.
+  if (!(error instanceof ApiResponseError) || error.status !== 400) return undefined;
+  if (error.message === otherAction) return otherAction;
+  return githubActions.find(action => error.message === `${context}: ${action}`);
+}
+
+function validTicket(issue, repository) {
+  const prefix = `${repository}#`;
+  if (typeof issue?.identity !== "string" || !issue.identity.startsWith(prefix)) return false;
+  const number = issue.identity.slice(prefix.length);
+  const expectedUrl = `https://github.com/${repository}/issues/${number}`;
+  return /^[1-9][0-9]*$/.test(number) &&
+    typeof issue.title === "string" &&
+    Array.isArray(issue.labels) && issue.labels.every(label => typeof label === "string") &&
+    typeof issue.url === "string" && /^[\x00-\x7f]+$/.test(issue.url) &&
+    issue.url.toLowerCase() === expectedUrl.toLowerCase();
+}
 
 export function TicketInbox({ resource }) {
   const [source, setSource] = useState("");
@@ -41,17 +71,21 @@ export function TicketInbox({ resource }) {
     listRequest.current = controller;
     setListing({ pending: true, refresh: Boolean(listing) });
     try {
-      const { issues } = await write("/tickets/list", { repository }, controller.signal);
+      const response = await write("/tickets/list", { repository }, controller.signal);
+      const issues = response?.issues;
+      if (!Array.isArray(issues) || !issues.every(issue => validTicket(issue, repository))) {
+        throw new Error("Invalid issue list");
+      }
       if (!controller.signal.aborted) {
         setListing({ issues });
         setSelection(current => issues.some(issue => issue.identity === current) ? current : "");
       }
     } catch (error) {
       if (!controller.signal.aborted) {
+        const guidance = serviceGuidance(error, `Cannot list issues in ${repository}`, invalidIssueList);
+        const summary = error?.name === "TimeoutError" ? "The issue request timed out." : "Could not load issues.";
         setListing({
-          error: error.name === "TimeoutError"
-            ? "The issue request timed out. Check the local service and retry."
-            : error.message,
+          error: guidance ?? `${summary} Check the local service and retry loading issues for ${repository}.`,
         });
       }
     }
@@ -68,20 +102,25 @@ export function TicketInbox({ resource }) {
     queueRequest.current = request;
     setSubmission(request);
     try {
-      const { run_id } = await write("/tickets/queue", {
+      const response = await write("/tickets/queue", {
         source,
         workspace_id: workspaceId,
         request_id: requestId,
       });
+      const runId = response?.run_id;
+      if (typeof runId !== "string" || !runIdPattern.test(runId)) throw new Error("Invalid Run ID");
       queueRequest.current = null;
-      setSubmission({ source, workspaceId, runId: run_id });
+      setSubmission({ source, workspaceId, runId });
     } catch (error) {
       queueRequest.current = { ...request, pending: false };
+      const guidance = serviceGuidance(error, `Cannot capture GitHub issue github:${source}`);
+      const missingWorkspace = error instanceof ApiResponseError && error.status === 400 && error.message === "Workspace was not found";
+      const summary = error?.name === "TimeoutError" ? "The service response timed out." : "Could not confirm that the Run was queued.";
       setSubmission({
         source, workspaceId,
-        error: error.name === "TimeoutError"
-          ? "The service response timed out. Retry with the same issue and Workspace."
-          : error.message,
+        error: guidance ?? (missingWorkspace
+          ? "The selected Workspace was not found. Reload the Workspaces and choose an available target."
+          : `${summary} Check the local service and retry with the same issue and Workspace.`),
       });
     }
   }
@@ -132,7 +171,8 @@ export function TicketInbox({ resource }) {
           <dt>Target Workspace</dt><dd>{workspace ? `${workspace.name} · ${workspace.repository}` : "Choose a Workspace"}</dd>
         </dl>
         <Button disabled={!canQueue} onClick={queue}>{busy ? "Queuing Run…" : "Queue Run"}</Button>
-        {submission?.error && <p className="notice" role="alert">{submission.error}</p>}
+        {submission?.error && submission.source === selection && submission.workspaceId === workspaceId &&
+          <p className="notice" role="alert">{submission.error}</p>}
         {submission?.runId && <p role="status">Run queued. <a className="ticket-link" href={`/runs/${submission.runId}`}>{submission.runId}</a></p>}
       </section>
     </div>

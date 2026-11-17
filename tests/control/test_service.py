@@ -178,6 +178,7 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
     )
     assert workspace.github_repository == "other/target"
     url = "https://github.com/acme/source/issues/42"
+    canonical_url = "https://github.com/acme/renamed/issues/42"
     commands: list[str] = []
     listed_title = "Listed title"
 
@@ -192,7 +193,12 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
         if args[2] == "list":
             data = [{**common, "title": listed_title, "number": 42}]
         elif args[3] == "42":
-            data = {**common, "title": "Intake title", "body": "Authoritative body"}
+            data = {
+                **common,
+                "url": canonical_url,
+                "title": "Intake title",
+                "body": "Authoritative body",
+            }
         else:
             raise subprocess.CalledProcessError(1, args, stderr=b"private diagnostic")
         return subprocess.CompletedProcess(args, 0, json.dumps(data).encode())
@@ -248,10 +254,12 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
     )
     detail = service.dispatch("GET", f"/runs/{run_id}", b"")
     assert detail["source_ref"] == "github:acme/source#42"
-    assert detail["source_url"] == url
+    assert detail["source_url"] == canonical_url
     result = CliRunner().invoke(app, ["inspect", str(run_id), "--runs-dir", str(root)])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)["intent"]["source_url"] == url
+    inspected_intent = json.loads(result.stdout)["intent"]
+    assert inspected_intent["source_ref"] == "github:acme/source#42"
+    assert inspected_intent["source_url"] == canonical_url
     assert commands == ["list", "view", "view", "list"]
 
 

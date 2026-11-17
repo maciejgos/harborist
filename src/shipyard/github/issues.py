@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapte
 GITHUB_REPOSITORY = r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+"
 ISSUE_LIMIT = 100
 _SELECTOR = re.compile(rf"github:({GITHUB_REPOSITORY})#([1-9][0-9]*)")
+_CANONICAL_URL = re.compile(
+    rf"https://github\.com/({GITHUB_REPOSITORY})/issues/([1-9][0-9]*)"
+)
 type _Text = Annotated[str, StringConstraints(strict=True)]
 
 
@@ -68,6 +71,14 @@ def issue_url(repository: str, number: str) -> str:
 def validate_issue_url(url: str, repository: str, number: str) -> str:
     if not url.isascii() or url.lower() != issue_url(repository, number).lower():
         raise ValueError("GitHub issue URL differs from the selected issue")
+    return url
+
+
+def validate_canonical_issue_url(url: str, number: str) -> str:
+    """Validate a view URL, allowing GitHub to resolve a renamed repository."""
+    match = _CANONICAL_URL.fullmatch(url)
+    if match is None or match[2] != number or match[1].split("/")[1] in (".", ".."):
+        raise ValueError("Invalid canonical GitHub issue URL")
     return url
 
 
@@ -143,7 +154,7 @@ def get_issue(repository: str, number: str) -> Issue:
     )
     try:
         issue = Issue.model_validate_json(raw)
-        validate_issue_url(issue.url, repository, number)
+        validate_canonical_issue_url(issue.url, number)
         return issue
     except ValueError as error:
         raise GitHubIntakeError(

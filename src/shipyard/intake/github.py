@@ -8,7 +8,7 @@ from shipyard.github.issues import (
     get_issue,
     issue_url,
     parse_github_selector,
-    validate_issue_url,
+    validate_canonical_issue_url,
 )
 
 
@@ -31,6 +31,6 @@ def ticket_url(snapshot: IntentSnapshot) -> str | None:
         repository, number = parse_github_selector(snapshot.source_ref)
         if snapshot.source_url is None:
             return issue_url(repository, number)
-        return validate_issue_url(snapshot.source_url, repository, number)
+        return validate_canonical_issue_url(snapshot.source_url, number)
     except ValueError:
         return None
