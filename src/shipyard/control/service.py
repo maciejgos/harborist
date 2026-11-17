@@ -20,6 +20,11 @@ from shipyard.control.integrations import GitHubCheck, check_github
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
+from shipyard.control.tickets import (
+    TicketListRequest,
+    TicketQueueRequest,
+    capture_ticket_submission,
+)
 from shipyard.control.worker import Worker
 from shipyard.control.workspace import (
     CaptureRequest,
@@ -30,6 +35,7 @@ from shipyard.control.workspace import (
 )
 from shipyard.domain import RunLifecycle
 from shipyard.domain.continuation import ContinuationRequest
+from shipyard.github.issues import list_tickets
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.retirement import RetirementRequest
@@ -100,6 +106,24 @@ class ControlService:
                         "Set a GitHub repository in this Workspace before checking access"
                     )
             return check_github(repository)
+        if method == "POST" and path == "/tickets/list":
+            listing = TicketListRequest.model_validate_json(body)
+            return {
+                "issues": [
+                    ticket.model_dump(mode="json")
+                    for ticket in list_tickets(listing.repository)
+                ]
+            }
+        if method == "POST" and path == "/tickets/queue":
+            ticket = TicketQueueRequest.model_validate_json(body)
+            submission = capture_ticket_submission(
+                ticket,
+                self.workspaces,
+                self.history.root,
+                receipts=self.queue.root / "workspace-requests",
+            )
+            self.dispatch("POST", "/runs", submission.model_dump_json().encode())
+            return run_id_response(submission.run_id)
         if path == "/workspaces":
             if method == "GET":
                 return {

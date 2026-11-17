@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 
+export class ApiResponseError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export async function api(path, options = {}) {
   const response = await fetch("/api" + path, { cache: "no-store", ...options });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "The local service is unavailable.");
+  if (!response.ok) {
+    const message = typeof body?.error === "string" && body.error
+      ? body.error
+      : "The local service is unavailable.";
+    throw new ApiResponseError(response.status, message);
+  }
   return body;
 }
 

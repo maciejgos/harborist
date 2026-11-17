@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
 
 from shipyard.domain import ArtifactReference, IntentSnapshot
 
@@ -22,6 +22,7 @@ class _IntentMetadata(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_ref: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    source_url: str | None = Field(default=None, exclude_if=lambda url: url is None)
     artifact: ArtifactReference
 
 
@@ -38,7 +39,9 @@ class FileIntentStore:
     def save(self, snapshot: IntentSnapshot) -> None:
         snapshot = IntentSnapshot.model_validate(snapshot.model_dump())
         metadata = _IntentMetadata(
-            source_ref=snapshot.source_ref, artifact=snapshot.artifact
+            source_ref=snapshot.source_ref,
+            source_url=snapshot.source_url,
+            artifact=snapshot.artifact,
         )
         directory = self._directory or self._root / str(snapshot.run_id)
         files = (
@@ -79,6 +82,7 @@ class FileIntentStore:
             path = directory / "intent.md"
             snapshot = IntentSnapshot(
                 source_ref=metadata.source_ref,
+                source_url=metadata.source_url,
                 artifact=metadata.artifact,
                 markdown=path.read_bytes().decode("utf-8"),
             )

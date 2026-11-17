@@ -12,7 +12,7 @@ from shipyard.application.context import ExecutionContext, load_context, resolve
 from shipyard.control.queue import Submission
 from shipyard.control.read_model import RunView
 from shipyard.domain.continuation import ContinuationRequest
-from shipyard.intake.github import parse_github_selector
+from shipyard.github.issues import parse_github_selector
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.application import ensure_record_directory, write_new_record
 

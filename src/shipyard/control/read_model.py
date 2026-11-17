@@ -12,6 +12,7 @@ from shipyard.control.queue import DeliveryState, Progress, QueueRecord, Submiss
 from shipyard.control.stage_history import read_stage_history
 from shipyard.domain import Run, RunLifecycle
 from shipyard.domain.attempt import Attempt
+from shipyard.intake.github import ticket_url
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import load_continuation
 from shipyard.persistence.retirement import Retirement, load_retirement
@@ -39,6 +40,8 @@ class RunView(BaseModel):
     progress: Progress | None = None
     error: str | None = None
     title: str = ""
+    source_ref: str | None = None
+    source_url: str | None = None
     repository: Path | None = None
     candidate_sha: str | None = None
     run: Run | None = None
@@ -146,6 +149,7 @@ def project(view: RunView, *, number: int | None = None) -> RunView:
         ):
             observations = {}
             progress = None
+        url = ticket_url(contract.intent)
         return RunView.model_validate(
             {
                 **view.model_dump(),
@@ -156,6 +160,8 @@ def project(view: RunView, *, number: int | None = None) -> RunView:
                 "repository": repository,
                 "stage_errors": history.errors if history else {},
                 "run": run,
+                "source_ref": contract.intent.source_ref if url else None,
+                "source_url": url,
                 "title": next(
                     (
                         line.strip().lstrip("# ")[:200]

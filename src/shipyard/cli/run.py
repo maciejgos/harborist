@@ -13,7 +13,7 @@ from shipyard.application.context import resolve_context
 from shipyard.cli.capture import execution_command
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitWorkspaceError
-from shipyard.intake.github import parse_github_selector
+from shipyard.github.issues import parse_github_selector
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 

@@ -46,7 +46,7 @@ def test_github_capture_failure_is_actionable(
 ) -> None:
     from shipyard.agents import codex
     from shipyard.application import execution
-    from shipyard.intake import github
+    from shipyard.github import issues
 
     original = subprocess.run
 
@@ -62,7 +62,7 @@ def test_github_capture_failure_is_actionable(
     def forbidden(**kwargs: object) -> None:
         pytest.fail("Capture failure must not execute")
 
-    monkeypatch.setattr(github.subprocess, "run", transport)
+    monkeypatch.setattr(issues.subprocess, "run", transport)
     monkeypatch.setattr(execution, "execute_run", forbidden)
     monkeypatch.setattr(codex, "CodexAgent", forbidden)
     result = runner.invoke(
@@ -138,7 +138,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
     from shipyard.application import capture as application_capture
     from shipyard.application.execution import execute_run
     from shipyard.domain import RunContract
-    from shipyard.intake import github
+    from shipyard.github import issues
     from shipyard.persistence import FileRunStore
     from tests.application.test_run_execution import FakeAgent
 
@@ -168,7 +168,9 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
         fetches += 1
         assert args[args.index("--repo") + 1] == "unrelated/source"
         return subprocess.CompletedProcess(
-            args, 0, b'{"title":"Task","body":"Implement requested.txt","labels":[]}'
+            args,
+            0,
+            b'{"title":"Task","body":"Implement requested.txt","labels":[],"url":"https://github.com/unrelated/source/issues/7"}',
         )
 
     def capture_once(**kwargs: object) -> RunContract:
@@ -188,7 +190,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
 
     agent = FakeAgent()
     monkeypatch.setattr(Path, "read_bytes", read)
-    monkeypatch.setattr(github.subprocess, "run", transport)
+    monkeypatch.setattr(issues.subprocess, "run", transport)
     monkeypatch.setattr(application_capture, "create_run", capture_once)
     monkeypatch.setattr("shipyard.application.execution.execute_run", execute_once)
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)

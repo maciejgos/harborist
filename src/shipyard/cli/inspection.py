@@ -8,6 +8,7 @@ from uuid import UUID
 import typer
 
 from shipyard.domain import ArtifactStage
+from shipyard.intake.github import ticket_url
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology, compose_guidance
@@ -32,7 +33,10 @@ def inspect(
         ).load(run_id)
     except ValueError as error:
         _fail(error)
-    typer.echo(contract.model_dump_json())
+    output = contract.model_dump(mode="json")
+    if contract.intent.source_url is None and (url := ticket_url(contract.intent)):
+        output["intent"]["source_url"] = url
+    typer.echo(json.dumps(output))
 
 
 def methodology(

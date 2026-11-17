@@ -427,3 +427,31 @@ available for human handling.
 Supersession captures and queues a new Run. Status on the original shows the
 replacement ID. If the service request fails after capture, retry with
 `shipyard supersede RUN_ID --replacement REPLACEMENT_ID --reason "Requirements changed"`.
+
+## Queue a Run from the GitHub ticket Inbox
+
+Open **Ticket Inbox** in the browser monitor. Enter the source GitHub repository
+as `owner/repo` and select **Load issues**. The local service uses its authenticated
+GitHub CLI to fetch up to 100 open issues. **Refresh issues** performs another
+fetch. Select an issue and a saved target Workspace, review both selections,
+then select **Queue Run**. The target Workspace determines the checkout, settings,
+base ref, and execution budget. Its GitHub origin can differ from the issue's
+repository.
+
+Use the same service commands from the CLI:
+
+```bash
+shipyard tickets list owner/source
+shipyard tickets refresh owner/source
+shipyard tickets queue 'owner/source#42' --workspace WORKSPACE_ID
+```
+
+Find the saved Workspace UUID on the **Workspaces** page. Each command accepts
+`--control-dir` for a nondefault service directory. List and refresh both fetch
+from GitHub. If a queue response is uncertain, repeat the same command with
+`--request-id UUID` using the request ID printed on failure.
+
+The service fetches the issue again at intake and saves the resulting title,
+body, labels, and issue link before queue admission. Later edits do not change
+that Run. The browser Run detail links to the source ticket, and
+`shipyard inspect RUN_ID` shows its saved identity and URL.

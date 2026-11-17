@@ -7,12 +7,13 @@ export function command(path, payload) {
   return write("/workspace/runs" + path, payload);
 }
 
-export function write(path, payload) {
+export function write(path, payload, signal) {
+  const timeout = AbortSignal.timeout(185000);
   return api(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shipyard-Workspace": "1" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(185000),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
 }
 

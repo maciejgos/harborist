@@ -144,3 +144,158 @@ def test_stop_drains_active_run_and_preserves_pending_claims(
             .lifecycle
             == "CREATED"
         )
+
+
+def test_ticket_is_recaptured_for_the_independent_workspace(
+    tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+    from uuid import uuid4
+
+    from typer.testing import CliRunner
+
+    from shipyard.cli import app
+    from shipyard.control.saved_workspaces import WorkspaceSettings
+    from shipyard.persistence import FileRunStore
+    from tests.application.test_run_execution import capture
+    from tests.git_helpers import git
+
+    _, checkout, _ = capture(tmp_path, frozen_contract)
+    repository = checkout.checkout_root()
+    git(repository, "remote", "add", "origin", "https://github.com/other/target.git")
+    queue = QueueStore(tmp_path / "control")
+    root = tmp_path / "ticket-runs"
+    service = ControlService(queue, agent=FakeAgent(), history_root=root)
+    workspace = service.workspaces.save(
+        WorkspaceSettings(
+            id=uuid4(),
+            name="Target",
+            repository=repository,
+            settings=Path("shipyard.settings.yaml").resolve(),
+            timeout=900,
+            verification_reserve=200,
+        )
+    )
+    assert workspace.github_repository == "other/target"
+    url = "https://github.com/acme/source/issues/42"
+    canonical_url = "https://github.com/acme/renamed/issues/42"
+    commands: list[str] = []
+    listed_title = "Listed title"
+
+    original_run = subprocess.run
+
+    def gh(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if args[0] != "gh":
+            return original_run(args, **kwargs)  # type: ignore[arg-type]
+        assert args[args.index("--repo") + 1] == "acme/source"
+        commands.append(args[2])
+        common = {"url": url, "labels": [{"name": "bug"}]}
+        if args[2] == "list":
+            data = [{**common, "title": listed_title, "number": 42}]
+        elif args[3] == "42":
+            data = {
+                **common,
+                "url": canonical_url,
+                "title": "Intake title",
+                "body": "Authoritative body",
+            }
+        else:
+            raise subprocess.CalledProcessError(1, args, stderr=b"private diagnostic")
+        return subprocess.CompletedProcess(args, 0, json.dumps(data).encode())
+
+    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    listing = b'{"repository":"acme/source"}'
+    assert service.dispatch("POST", "/tickets/list", listing) == {
+        "issues": [
+            {
+                "identity": "acme/source#42",
+                "title": "Listed title",
+                "url": url,
+                "labels": ["bug"],
+            }
+        ]
+    }
+    assert queue.list() == []
+    payload = {
+        "request_id": str(uuid4()),
+        "source": "acme/source#42",
+        "workspace_id": str(workspace.id),
+    }
+
+    def submit(**changes: str) -> dict[str, object]:
+        return service.dispatch(
+            "POST", "/tickets/queue", json.dumps({**payload, **changes}).encode()
+        )
+
+    with pytest.raises(ValueError, match="Workspace was not found"):
+        submit(workspace_id=str(uuid4()))
+    with pytest.raises(ValueError, match="gh auth login") as caught:
+        submit(request_id=str(uuid4()), source="acme/source#43")
+    assert "private diagnostic" not in str(caught.value)
+    assert queue.list() == []
+    assert submit() == {"run_id": payload["request_id"]}
+    service.workspaces.save(workspace.model_copy(update={"timeout": 1000}))
+    assert submit() == {"run_id": payload["request_id"]}
+    with pytest.raises(ValueError, match="different inputs"):
+        submit(source="acme/source#43")
+    assert len(queue.list()) == 1
+    assert queue.list()[0].submission.repository == repository
+    run_id = UUID(payload["request_id"])
+    listed_title = "Later edit"
+    assert "Later edit" in json.dumps(
+        service.dispatch("POST", "/tickets/list", listing)
+    )
+    contract = FileRunStore(root=root).load(run_id)
+    assert contract.execution.budget.total_seconds == 900
+    assert contract.execution.budget.verification_reserve_seconds == 200
+    assert (
+        contract.intent.markdown
+        == '# Intake title\n\nLabels: ["bug"]\n\nAuthoritative body'
+    )
+    detail = service.dispatch("GET", f"/runs/{run_id}", b"")
+    assert detail["source_ref"] == "github:acme/source#42"
+    assert detail["source_url"] == canonical_url
+    result = CliRunner().invoke(app, ["inspect", str(run_id), "--runs-dir", str(root)])
+    assert result.exit_code == 0, result.output
+    inspected_intent = json.loads(result.stdout)["intent"]
+    assert inspected_intent["source_ref"] == "github:acme/source#42"
+    assert inspected_intent["source_url"] == canonical_url
+    assert commands == ["list", "view", "view", "list"]
+
+
+def test_older_saved_contract_shows_its_ticket_without_recapture(
+    tmp_path: Path, frozen_contract: RunContract
+) -> None:
+    from typer.testing import CliRunner
+
+    from shipyard.cli import app
+    from shipyard.domain import IntentSnapshot
+    from shipyard.persistence import FileRunStore
+
+    root = tmp_path / "runs"
+    run_id = frozen_contract.run_id
+    contract = frozen_contract.model_copy(
+        update={
+            "intent": IntentSnapshot.create(
+                run_id=run_id,
+                source_ref="github:old/source#7",
+                markdown="# Historical issue",
+            ),
+        }
+    )
+    store = FileRunStore(root=root)
+    store.save(contract)
+    saved = store.directory(run_id) / "contract.json"
+    payload = json.loads(saved.read_bytes())
+    assert "source_url" not in payload["intent"]
+    service = ControlService(
+        QueueStore(tmp_path / "control"), agent=FakeAgent(), history_root=root
+    )
+    detail = service.dispatch("GET", f"/runs/{run_id}", b"")
+    assert detail["source_ref"] == "github:old/source#7"
+    assert detail["source_url"] == "https://github.com/old/source/issues/7"
+
+    result = CliRunner().invoke(app, ["inspect", str(run_id), "--runs-dir", str(root)])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["intent"]["source_url"] == detail["source_url"]
+    assert json.loads(saved.read_bytes()) == payload

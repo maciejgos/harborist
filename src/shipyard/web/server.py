@@ -14,7 +14,7 @@ from shipyard.control.evidence_reads import ATTEMPTS
 from shipyard.control.service import MAX_REQUEST
 
 COMMAND = re.compile(
-    r"/workspaces|/integrations/github|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
+    r"/workspaces|/integrations/github|/tickets/(?:list|queue)|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
 )
 
 
@@ -44,7 +44,7 @@ class WebApplication:
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
         }
-        if route in ("/workspaces", "/integrations"):
+        if route in ("/workspaces", "/integrations", "/tickets"):
             route = "/"
         if route.startswith("/runs/"):
             run_id = route.removeprefix("/runs/")

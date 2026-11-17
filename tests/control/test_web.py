@@ -127,6 +127,18 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         response = connection.getresponse()
         assert response.status == 400
         assert "error" in json.loads(response.read())
+        for action in ("list", "queue"):
+            route = f"/api/tickets/{action}"
+            connection.request(
+                "POST", route, "{}", {**headers, "Origin": "https://other.example"}
+            )
+            response = connection.getresponse()
+            assert response.status == 403
+            response.read()
+            connection.request("POST", route, "{}", {**headers, "Origin": origin})
+            response = connection.getresponse()
+            assert response.status == 400
+            assert "error" in json.loads(response.read())
         connection.close()
     finally:
         server.shutdown()
@@ -140,10 +152,11 @@ def test_workspace_deep_link_serves_packaged_react_assets(
     from shipyard.control.client import ControlClient
 
     app = WebApplication(ControlClient(tmp_path))
-    status, _, html = app.respond("GET", f"/runs/{frozen_contract.run_id}")
-    assert status == 200
-    assert b'id="root"' in html
-    assert b'src="/app.js"' in html
+    for route in (f"/runs/{frozen_contract.run_id}", "/tickets"):
+        status, _, html = app.respond("GET", route)
+        assert status == 200
+        assert b'id="root"' in html
+        assert b'src="/app.js"' in html
     for route in ("/app.js", "/style.css"):
         status, _, content = app.respond("GET", route)
         assert status == 200 and content

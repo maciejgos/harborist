@@ -8,6 +8,7 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
+    Field,
     StringConstraints,
     TypeAdapter,
     model_validator,
@@ -34,6 +35,7 @@ class IntentSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_ref: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    source_url: str | None = Field(default=None, exclude_if=lambda url: url is None)
     markdown: _MarkdownText
     artifact: ArtifactReference
 
@@ -62,10 +64,18 @@ class IntentSnapshot(BaseModel):
         return self.artifact.run_id
 
     @classmethod
-    def create(cls, *, run_id: UUID, source_ref: str, markdown: str) -> Self:
+    def create(
+        cls,
+        *,
+        run_id: UUID,
+        source_ref: str,
+        markdown: str,
+        source_url: str | None = None,
+    ) -> Self:
         markdown = _MARKDOWN_ADAPTER.validate_python(markdown)
         return cls(
             source_ref=source_ref,
+            source_url=source_url,
             markdown=markdown,
             artifact=ArtifactReference.create(
                 run_id=run_id,

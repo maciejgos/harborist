@@ -152,7 +152,12 @@ def test_github_capture_is_durable_after_issue_edit(
     response = tmp_path / "response.json"
     response.write_text(
         json.dumps(
-            {"title": "Original", "body": "Original body", "labels": [{"name": "bug"}]}
+            {
+                "title": "Original",
+                "body": "Original body",
+                "labels": [{"name": "bug"}],
+                "url": "https://github.com/independent/source/issues/42",
+            }
         )
     )
     executable = tmp_path / "gh"
