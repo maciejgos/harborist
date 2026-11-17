@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from shipyard.cli import app
 from shipyard.domain import RunContract
+from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
 
@@ -317,6 +318,6 @@ def test_intake_summary_and_json_preserve_capture(
 def test_intake_help_explains_output_and_script_migration() -> None:
     result = runner.invoke(app, ["intake", "--help"])
     assert result.exit_code == 0
-    help_text = " ".join(result.stdout.split())
+    help_text = " ".join(strip_ansi(result.stdout).split())
     for value in ("summary", "--json", "full frozen contract", "scripts"):
         assert value in help_text

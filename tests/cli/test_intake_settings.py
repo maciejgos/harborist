@@ -14,6 +14,7 @@ from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
 from shipyard.skills import compile_methodology
 from tests.application.test_run_execution import FakeAgent
+from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
 
@@ -248,7 +249,7 @@ def test_discovery_freezes_local_settings_and_base_checks_for_execution(
 
 def test_help_documents_selection_policy() -> None:
     result = runner.invoke(app, ["intake", "--help"])
-    text = " ".join(result.stdout.split())
+    text = " ".join(strip_ansi(result.stdout).split())
     for value in (
         "shipyard.settings.yaml",
         "target checkout root",

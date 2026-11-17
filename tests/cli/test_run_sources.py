@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from shipyard.cli import app
+from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
 
@@ -430,7 +431,7 @@ def test_source_configuration_selection(
 
 def test_run_help_documents_both_modes() -> None:
     result = runner.invoke(app, ["run", "--help"])
-    text = " ".join(result.stdout.split())
+    text = " ".join(strip_ansi(result.stdout).split())
     for phrase in (
         "source",
         "UUID",

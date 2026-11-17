@@ -13,6 +13,7 @@ from shipyard.application import execution
 from shipyard.cli import app
 from shipyard.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
+from tests.cli.conftest import strip_ansi
 
 
 @pytest.mark.parametrize(
@@ -173,9 +174,10 @@ def test_partial_package_failure_does_not_advertise_artifacts(
 def test_run_help_describes_formats() -> None:
     result = CliRunner().invoke(app, ["run", "--help"])
     assert result.exit_code == 0
-    assert "--json" in result.stdout
-    assert "summary" in result.stdout
-    assert "scripts" in result.stdout.lower()
+    text = strip_ansi(result.stdout)
+    assert "--json" in text
+    assert "summary" in text
+    assert "scripts" in text.lower()
 
 
 def test_output_selection_only_renders_packaged_evidence(

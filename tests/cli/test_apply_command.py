@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from shipyard.cli import app
 from shipyard.domain import RunContract
 from tests.application.test_apply import packaged as packaged  # noqa: PLC0414
+from tests.cli.conftest import strip_ansi
 
 
 def test_apply_cli(packaged: tuple[Path, Path, RunContract, str]) -> None:
@@ -46,8 +47,9 @@ def test_invalid_args(args: list[str]) -> None:
 def test_apply_help() -> None:
     result = CliRunner().invoke(app, ["apply", "--help"])
     assert result.exit_code == 0
+    text = strip_ansi(result.stdout)
     for option in ("--repo", "--runs-dir", "--branch"):
-        assert option in result.stdout
+        assert option in text
 
 
 def test_guidance_quotes_paths(tmp_path: Path) -> None:
