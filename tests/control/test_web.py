@@ -127,8 +127,12 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         response = connection.getresponse()
         assert response.status == 400
         assert "error" in json.loads(response.read())
-        for action in ("list", "queue"):
-            route = f"/api/tickets/{action}"
+        for route in (
+            "/api/tickets/list",
+            "/api/tickets/queue",
+            "/api/integrations/codex/check",
+            "/api/integrations/codex/profile/2b3f1d4d-bedd-4eb6-9d87-706fb6d540d7",
+        ):
             connection.request(
                 "POST", route, "{}", {**headers, "Origin": "https://other.example"}
             )
@@ -324,3 +328,52 @@ def test_github_integration_distinguishes_login_and_repository_errors(
     result = integrations.check_github("example/repository")
     assert result["status"] == "repository_unavailable"
     assert integrations.check_github(None)["status"] == "connected"
+
+
+def test_codex_integration_updates_only_selected_workspace_settings(
+    tmp_path: Path,
+) -> None:
+    from uuid import uuid4
+
+    from shipyard.agents.codex import CodexAgent
+    from shipyard.control.saved_workspaces import WorkspaceSettings
+    from tests.git_helpers import git, init_repository
+    from tests.settings_helpers import write_settings
+
+    repository = tmp_path / "checkout"
+    init_repository(repository)
+    (repository / "shipyard.yaml").write_text(
+        "version: 1\nchecks: [{id: test, command: 'true'}]\n"
+    )
+    git(repository, "add", ".")
+    git(repository, "commit", "-m", "base")
+    settings = write_settings(repository)
+    default = repository / "shipyard.settings.yaml"
+    default.write_bytes(settings.read_bytes())
+    service = ControlService(
+        QueueStore(tmp_path / "control"),
+        agent=CodexAgent(executable=str(tmp_path / "missing-codex")),
+        history_root=tmp_path / "runs",
+    )
+    workspace = service.workspaces.save(
+        WorkspaceSettings(
+            id=uuid4(), name="Example", repository=repository, settings=settings
+        )
+    )
+    route = f"/integrations/codex/profile/{workspace.id}"
+    assert (
+        service.dispatch("POST", "/integrations/codex/check", b"{}")["status"]
+        == "cli_missing"
+    )
+    assert service.dispatch("GET", route, b"")["model"] == "operator-selected-model"
+    with pytest.raises(ValueError, match="supported reasoning effort") as failure:
+        service.dispatch(
+            "POST", route, b'{"model":"new-model","effort":"hidden-token"}'
+        )
+    assert "hidden-token" not in str(failure.value)
+    assert service.dispatch("POST", route, b'{"model":"new-model","effort":"low"}') == {
+        "status": "saved"
+    }
+    assert service.dispatch("GET", route, b"")["effort"] == "low"
+    assert "new-model" in settings.read_text()
+    assert "operator-selected-model" in default.read_text()

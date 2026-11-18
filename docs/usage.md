@@ -428,6 +428,34 @@ Supersession captures and queues a new Run. Status on the original shows the
 replacement ID. If the service request fails after capture, retry with
 `shipyard supersede RUN_ID --replacement REPLACEMENT_ID --reason "Requirements changed"`.
 
+## Set up local Codex
+
+In **Integrations → Codex**, select **Check Codex** to check the CLI and login
+used by the background service. Sign in with `codex login` in a terminal if
+credentials are unavailable. After installing the CLI or changing environment
+variables used by the service, restart the service from that environment.
+Shipyard discards the login command's output and displays a diagnostic message.
+The check uses local login status. A Run exercises access to the chosen model.
+
+Under **Execution profile**, select a saved Workspace and choose **Edit profile**
+to set the model and reasoning effort in its selected execution settings YAML.
+The file must already exist. Saving rewrites its formatting and removes YAML comments.
+Intake freezes the selected profile for each new Run. Rework and recovery use
+the profile already frozen for their Run.
+
+From a terminal, the equivalent commands use the terminal's Codex environment
+and the selected checkout's settings:
+
+```sh
+shipyard agent check --repo /path/to/checkout
+shipyard agent configure --repo /path/to/checkout --model gpt-6.1-sol --effort high
+```
+
+Use `--settings PATH` to select an explicit settings file. Omit `--effort` in
+`configure` to use Codex's default. Use `agent check --json` for separate
+connection and profile statuses. The check exits with status 1 if either needs
+attention.
+
 ## Queue a Run from the GitHub ticket Inbox
 
 Open **Ticket Inbox** in the browser monitor. Enter the source GitHub repository

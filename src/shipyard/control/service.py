@@ -12,11 +12,20 @@ from threading import Event, RLock, Thread
 from typing import BinaryIO, Self
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from shipyard.agents.base import NativeAgent
+from shipyard.agents.codex import CodexAgent
+from shipyard.configuration.execution import (
+    CodexProfileSetup,
+    codex_profile_status,
+    configure_codex_profile,
+    execution_settings_path,
+)
 from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
 from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
-from shipyard.control.integrations import GitHubCheck, check_github
+from shipyard.control.integrations import CODEX_PROFILE_ROUTE, GitHubCheck, check_github
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
@@ -79,6 +88,7 @@ class ControlService:
         )
         self.queue = queue
         self.workspaces = WorkspaceStore(queue.root / "workspaces")
+        self.codex = agent if isinstance(agent, CodexAgent) else None
         self.worker = Worker(queue, agent=agent)
         self.stopping = Event()
         self.ready = Event()
@@ -106,6 +116,25 @@ class ControlService:
                         "Set a GitHub repository in this Workspace before checking access"
                     )
             return check_github(repository)
+        if method == "POST" and path == "/integrations/codex/check":
+            if self.codex is None:
+                raise ValueError("The local service is not using the Codex adapter")
+            return dict(self.codex.check_connection())
+        if method in ("GET", "POST") and (
+            profile := CODEX_PROFILE_ROUTE.fullmatch(path)
+        ):
+            workspace = self.workspaces.get(UUID(profile[1]))
+            settings = execution_settings_path(workspace.repository, workspace.settings)
+            if method == "GET":
+                return codex_profile_status(settings)
+            try:
+                setup = CodexProfileSetup.model_validate_json(body)
+            except ValidationError as error:
+                raise ValueError(
+                    "Enter a valid Codex model identifier and supported reasoning effort."
+                ) from error
+            configure_codex_profile(settings, setup)
+            return {"status": "saved"}
         if method == "POST" and path == "/tickets/list":
             listing = TicketListRequest.model_validate_json(body)
             return {

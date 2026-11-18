@@ -40,6 +40,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Browser-friendly intake | Accept pasted issue links and home-relative paths. | Done | [Intake spec](spec/076-browser-friendly-intake/spec.md) |
 | Local Workspaces | Save local checkout and execution defaults for repeated Runs. | Done | [Workspaces spec](spec/077-local-workspaces/spec.md) |
 | GitHub Integrations | Check local GitHub CLI login and Workspace repository access. | Done | [Integrations spec](spec/078-github-integrations/spec.md) |
+| Local Codex setup | Diagnose Codex readiness and configure the execution profile frozen at intake. | Done | [Codex setup spec](spec/079-local-codex-setup/spec.md) |
 
 ## Product milestone 1 (target 1.0.0)
 

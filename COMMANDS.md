@@ -12,6 +12,7 @@ below belongs to Shipyard's registered CLI.
 | [intake](#intake) | Freeze a request without executing it. |
 | [inspect](#inspect) | Validate and print a saved contract. |
 | [methodology](#methodology) | Preview frozen playbook and skills. |
+| [agent](#agent) | Check Codex login and configure the model and reasoning effort for future Runs. |
 | [run](#run) | Capture a source or submit a saved Run; optionally execute in the foreground. |
 | [rework](#rework) | Create a fresh Attempt against the frozen spec. |
 | [recover](#recover) | Explicitly recover an eligible execution failure. |
@@ -28,6 +29,21 @@ below belongs to Shipyard's registered CLI.
 | [service start](#service-start) | Start the service detached. |
 | [service status](#service-status) | Read service health. |
 | [service stop](#service-stop) | Request graceful drain and shutdown. |
+
+## Agent
+
+```text
+shipyard agent check [--repo PATH] [--settings PATH] [--json]
+shipyard agent configure --model MODEL [--effort EFFORT] [--repo PATH] [--settings PATH]
+```
+
+`check` reports Codex login in the invoking terminal and validates the selected
+profile. It exits with status 1 if either check needs attention. `configure`
+updates the existing settings file's Codex model and reasoning effort for future
+intake. Use `minimal`, `low`, `medium`, `high`, or `xhigh` for `--effort`.
+Omitting it uses the Codex default. Both commands default to the target checkout's
+`shipyard.settings.yaml` unless `--settings` selects a file. See
+[local Codex setup](docs/usage.md#set-up-local-codex).
 
 ## Invocation and conventions
 

@@ -57,6 +57,12 @@ complete `agent_profile` (`name`, `version`, `provider`, `model`, `arguments`) a
 Actual UTF-8 content and SHA-256 digests are frozen, so future file edits have no
 live link to a snapshot. The agent model is an explicit operator choice.
 
+The local adapter accepts `provider: codex` and a model identifier. Use
+`arguments: []` for the Codex default reasoning effort, or use the pair
+`['-c', 'model_reasoning_effort="high"']`. Supported effort values are
+`minimal`, `low`, `medium`, `high`, and `xhigh`. See
+[local Codex setup](usage.md#set-up-local-codex) for diagnostics and editing.
+
 Budget is excluded from YAML. Shipyard defaults to 1800 total seconds with 300
 reserved for verification; callers may pass an explicit `ExecutionBudget` to the
 loader. The target repository cannot set it. Unknown fields, duplicate YAML keys,

@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 
 from shipyard.github.issues import GITHUB_REPOSITORY
 
+CODEX_PROFILE_ROUTE = re.compile(r"/integrations/codex/profile/([0-9a-f-]{36})")
+
 
 class GitHubCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
