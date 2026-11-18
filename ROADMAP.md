@@ -1,12 +1,20 @@
 # Shipyard roadmap
 
-Shipyard can already take a request from a Markdown file or GitHub issue, run it in a separate Git worktree, and verify the exact commit it produces. The local service runs one job at a time in the background. You can follow it from the CLI or browser, and Phase 11 added a way to rework or recover a Run without starting over.
+The proof of concept and local MVP are complete. The project owner accepted the
+local workflow after real use. Two recorded publications of verified candidates
+resulted in merged GitHub PRs. One Run also retained CI checks and observations
+of the PR before and after merge. [PR #13](https://github.com/maciejgos/shipyard/pull/13) ·
+[PR #51](https://github.com/maciejgos/shipyard/pull/51)
 
-The local MVP adds a browser workspace for day-to-day operation. Every screen follows a shared React and shadcn/ui design, using Linear as the reference for information density, navigation, and keyboard interaction. MVP acceptance includes the browser workflow from intake through recovery and approved GitHub delivery.
+Product Milestone 1 is the next development focus. Its goal is reliable, repeat
+use by an engineering team across several repositories. Phase 13 starts with
+team identity, project access, and authorized GitHub App commands.
 
-Team features come after the local MVP. The first product milestone is to get a real engineering team using Shipyard repeatedly across several repositories.
-
-The proof of concept uses the current package version in [pyproject.toml](pyproject.toml). The MVP and Product version numbers are proposed targets. See the [Product Requirements Document v1.0](docs/Product%20Requirements%20Document%20v1.0.md), particularly sections 89 through 92 and 97, for the milestone definitions.
+The package version is still `0.1.0`. The `0.2.0` MVP and `1.0.0` Product
+versions are release targets. See the milestone definitions in sections 89
+through 92 and the implementation sequence in section 97.
+[Package metadata](pyproject.toml) ·
+[Product Requirements Document v1.0](docs/Product%20Requirements%20Document%20v1.0.md)
 
 ## Proof of concept (0.1.0)
 
@@ -22,7 +30,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Phase 8 · Execution budget and evidence | Run the workflow synchronously and persist terminal reports, indexed evidence, bounded logs, timing, and provider usage when available. PACKAGE runs outside the execution budget. | Done | [Packaging acceptance spec](spec/045-phase8-acceptance-audit/spec.md) |
 | Phase 9 · PoC validation | The owner accepted retained Run evidence on 2026-11-04 and waived the matched direct-Codex comparison. | Done | [PoC validation spec](spec/047-poc-validation/spec.md) |
 
-## Local MVP (target 0.2.0)
+## Local MVP (accepted, target 0.2.0)
 
 | Feature | Description | Status | Details |
 | --- | --- | --- | --- |
@@ -36,7 +44,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 | Web workspace and Run inbox | Build the React and shadcn/ui workspace, shared interaction patterns, and searchable Run inbox. | Done | [Workspace spec](spec/072-web-workspace/spec.md) |
 | Web Run detail and evidence | Navigate Attempts and stages, inspect failed checks and artifacts, and verify which commit passed. | Done | [Run evidence spec](spec/073-web-run-evidence/spec.md) |
 | Browser Run submission and control | Submit from Markdown or GitHub and use approved cancellation, supersession, rework, and recovery flows. | Done | [Browser Run operations spec](spec/074-web-run-operations/spec.md) |
-| Browser GitHub delivery and MVP acceptance | Approve the exact verified commit, inspect PR evidence, and validate the packaged browser experience across every screen. | Implemented, local verification | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
+| Browser GitHub delivery and MVP acceptance | Approve publication of the exact verified commit and inspect PR evidence in the browser. The project owner accepted the local MVP. | Done | [Browser GitHub delivery spec](spec/075-web-github-delivery/spec.md) |
 | Browser-friendly intake | Accept pasted issue links and home-relative paths. | Done | [Intake spec](spec/076-browser-friendly-intake/spec.md) |
 | Local Workspaces | Save local checkout and execution defaults for repeated Runs. | Done | [Workspaces spec](spec/077-local-workspaces/spec.md) |
 | GitHub Integrations | Check local GitHub CLI login and Workspace repository access. | Done | [Integrations spec](spec/078-github-integrations/spec.md) |
@@ -46,7 +54,7 @@ The proof of concept uses the current package version in [pyproject.toml](pyproj
 
 | Feature | Description | Status | Details |
 | --- | --- | --- | --- |
-| Phase 13 · Team identity and GitHub App | Add one Organization, Projects, user roles, stable actor mapping, and authorized GitHub commands. | Todo | [Identity and GitHub App spec](spec/067-team-product/spec.md#phase-13-team-identity-and-github-app) |
+| Phase 13 · Team identity and GitHub App | Add one Organization, Projects, user roles, stable actor mapping, and authorized GitHub commands. | Next | [Identity and GitHub App spec](spec/067-team-product/spec.md#phase-13-team-identity-and-github-app) |
 | Phase 14 · Remote workers and sandboxes | Assign work to capable workers via leases, run each Attempt in a fresh sandbox, and export evidence with scoped credentials. | Todo | [Worker and sandbox spec](spec/067-team-product/spec.md#phase-14-workers-and-sandboxes) |
 | Phase 15 · Product persistence | Store control-plane state in PostgreSQL and persist candidate bundles and evidence with integrity and retention controls. | Todo | [Persistence spec](spec/067-team-product/spec.md#phase-15-product-persistence) |
 | Phase 16 · Scheduling and governance | Set queue priorities and concurrency limits, and share capacity fairly across Projects. Define who controls methodology, agent profiles, and execution policies. | Todo | [Governance spec](spec/067-team-product/spec.md#phase-16-scheduling-and-governance) |
