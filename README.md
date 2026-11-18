@@ -1,17 +1,14 @@
 # Shipyard
 
-Shipyard is a local, evidence-driven delivery harness for native coding agents. It turns an engineering request into an independently verified, revision-bound code candidate with durable evidence.
-
-> **Status:** Phase 11 rework and recovery is complete (2026-11-04), with fresh
-> Attempts, frozen-spec reuse and cumulative budgets. The local background service
-> and local browser workspace wrap the synchronous execution core. See the
-> [Phase 11 acceptance report](spec/065-phase11-acceptance/report.md).
+Shipyard turns engineering requests into independently verified code candidates
+with durable evidence. The local MVP accepts Markdown or GitHub issues, runs one
+request at a time in the background, and lets an operator inspect each Attempt,
+recover or rework a Run, and approve publication of the exact verified commit.
 
 ## Quick start
 
-Install [uv](https://docs.astral.sh/uv/). Shipyard pins Python 3.14; uv downloads
-it if needed. Install and authenticate Codex CLI before executing agent stages.
-GitHub Issue input also requires an installed, authenticated `gh`.
+Install [uv](https://docs.astral.sh/uv/). Shipyard pins Python 3.14; uv downloads it if needed. Install and authenticate Codex CLI before executing agent stages.
+GitHub issue intake and PR delivery also require an installed, authenticated `gh`.
 The target repository must have committed mandatory checks in `shipyard.yaml`
 and local operator configuration in `shipyard.settings.yaml`; this checkout
 includes both. See [configuration](docs/configuration.md) for another repository.
@@ -26,7 +23,8 @@ uv run shipyard run file:examples/intake/issue.md
 
 The command captures and queues the request, then returns its Run ID. The
 service executes independently of the terminal. Run `uv run shipyard web` in
-another terminal to follow stage progress visually at http://127.0.0.1:8765.
+another terminal to open the [local workspace](http://127.0.0.1:8765). You can
+submit Runs, follow progress, inspect evidence, and approve GitHub publication there.
 View the result with
 `uv run shipyard status <run-id> --wait`, or use `run --foreground` for
 synchronous execution and terminal result exit codes. Review the report/evidence.
@@ -38,6 +36,8 @@ uv run shipyard apply <run-id> --branch <existing-local-branch>
 
 Application requires the branch to be eligible for advancement. See
 [applying a verified candidate](docs/usage.md#apply-a-verified-candidate).
+For GitHub delivery, approve the full verified commit SHA and destination.
+See [publishing a verified candidate](docs/usage.md#publish-a-verified-candidate-to-github).
 
 ## Commands
 
@@ -75,7 +75,7 @@ INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE
 Shipyard freezes inputs and configuration, uses fresh native-agent invocations
 for DESIGN, PLAN, BUILD and REVIEW, and runs mandatory TEST checks itself.
 Verification belongs to the exact candidate commit. PACKAGE writes durable reports
-and evidence; applying a candidate is a separate user operation.
+and evidence. Local application and GitHub publication require explicit operator action.
 
 Execution runs locally, serially in the background service or explicitly in the
 foreground. Git worktrees isolate workspace state;
