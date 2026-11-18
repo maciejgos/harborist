@@ -1,6 +1,7 @@
 """Deterministic target-root settings selection and immutable capture."""
 
 import hashlib
+import json
 import shlex
 from pathlib import Path
 
@@ -275,3 +276,51 @@ def test_repository_and_explicit_example_settings_compile(
         assert snapshot.agent_profile.model == "gpt-6.1-sol"
         assert compiled.playbook.identity.name == "bounded-repository-change"
         assert compiled.skills[0].identity.version == "2"
+
+
+def test_agent_setup_changes_only_future_intake(tmp_path: Path, target: Path) -> None:
+    path = conventional(target)
+    options = ("--repo", str(target))
+    first = invoke(tmp_path, *options, "--json")
+    assert first.exit_code == 0, first.output
+    captured = RunContract.model_validate_json(first.stdout)
+
+    updated = runner.invoke(
+        app,
+        ["agent", "configure", *options, "--model", "new-model", "--effort", "high"],
+    )
+    assert updated.exit_code == 0, updated.output
+    second = invoke(tmp_path, *options, "--json")
+    assert second.exit_code == 0, second.output
+    profile = RunContract.model_validate_json(second.stdout).execution.agent_profile
+    assert profile.model == "new-model"
+    assert profile.arguments == ("-c", 'model_reasoning_effort="high"')
+    saved = FileRunStore(root=tmp_path / "runs").load(captured.run_id)
+    assert saved.execution.agent_profile.model == "operator-selected-model"
+
+    before = path.read_bytes()
+    rejected = runner.invoke(
+        app,
+        ["agent", "configure", *options, "--model=--ephemeral"],
+    )
+    assert rejected.exit_code != 0
+    assert path.read_bytes() == before
+
+
+def test_agent_check_redacts_auth_and_profile_errors(
+    tmp_path: Path, target: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = conventional(target)
+    path.write_text(
+        path.read_text().replace("arguments: []", "arguments: [hidden-profile-value]")
+    )
+    executable = tmp_path / "codex"
+    executable.write_text("#!/bin/sh\necho hidden-auth-output >&2\nexit 1\n")
+    executable.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=":")
+    result = runner.invoke(app, ["agent", "check", "--repo", str(target), "--json"])
+    assert result.exit_code == 1
+    diagnostics = json.loads(result.stdout)
+    assert diagnostics["connection"]["status"] == "credentials_unavailable"
+    assert diagnostics["profile"]["status"] == "invalid_profile"
+    assert "hidden-" not in result.output

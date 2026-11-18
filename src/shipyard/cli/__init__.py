@@ -2,6 +2,7 @@
 
 import typer
 
+from shipyard.cli.agent import agent_app
 from shipyard.cli.apply import apply_command
 from shipyard.cli.continuation import recover, rework
 from shipyard.cli.github import github_status, publish
@@ -26,6 +27,7 @@ app.command("apply")(apply_command)
 app.command()(rework)
 app.command()(recover)
 
+app.add_typer(agent_app, name="agent")
 app.add_typer(service_app, name="service")
 app.add_typer(
     tickets_app, name="tickets", help="Browse GitHub issues and queue a ticket Run."

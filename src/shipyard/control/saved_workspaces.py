@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from shipyard.configuration import load_execution_settings
+from shipyard.configuration.execution import execution_settings_path
 from shipyard.control.workspace import normalize_path
 from shipyard.domain import ExecutionBudget
 from shipyard.git import GitRepository
@@ -85,7 +86,7 @@ class WorkspaceStore:
             verification_reserve_seconds=workspace.verification_reserve,
         )
         execution = load_execution_settings(
-            path=path or checkout / "shipyard.settings.yaml", budget=budget
+            path=execution_settings_path(checkout, path), budget=budget
         )
         compile_methodology(execution)
         if workspace.github_repository and not re.fullmatch(

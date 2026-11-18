@@ -6,6 +6,7 @@ from uuid import UUID
 from shipyard.application import create_run
 from shipyard.application.context import ExecutionContext
 from shipyard.configuration import SettingsError, load_execution_settings
+from shipyard.configuration.execution import execution_settings_path
 from shipyard.domain import ExecutionBudget, Run, RunContract
 from shipyard.git import GitRepository
 from shipyard.paths import runs_root
@@ -27,9 +28,7 @@ def capture_run(
     """Share intake preparation and its single durable capture, without output."""
     repository = GitRepository(path=repo)
     root = repository.checkout_root()
-    selected_settings = (
-        settings if settings is not None else root / "shipyard.settings.yaml"
-    )
+    selected_settings = execution_settings_path(root, settings)
     budget = ExecutionBudget(
         total_seconds=timeout, verification_reserve_seconds=verification_reserve
     )

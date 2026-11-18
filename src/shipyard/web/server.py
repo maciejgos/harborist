@@ -11,10 +11,11 @@ from uuid import UUID
 
 from shipyard.control.client import ControlClient
 from shipyard.control.evidence_reads import ATTEMPTS
+from shipyard.control.integrations import CODEX_PROFILE_ROUTE
 from shipyard.control.service import MAX_REQUEST
 
 COMMAND = re.compile(
-    r"/workspaces|/integrations/github|/tickets/(?:list|queue)|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
+    r"/workspaces|/integrations/(?:github|codex/check)|/tickets/(?:list|queue)|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
 )
 
 
@@ -63,7 +64,9 @@ class WebApplication:
         if route.startswith("/api/"):
             api = route.removeprefix("/api")
             parts = api.strip("/").split("/")
-            allowed = api in ("/health", "/runs", "/workspaces")
+            allowed = api in ("/health", "/runs", "/workspaces") or bool(
+                CODEX_PROFILE_ROUTE.fullmatch(api)
+            )
             if len(parts) in (2, 3, 4) and parts[0] == "runs":
                 try:
                     UUID(parts[1])
@@ -124,6 +127,7 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
         def respond(self) -> None:
             # Reject DNS-rebinding Host values; the adapter never binds publicly.
             host = self.headers.get("Host", "")
+            route = urlsplit(self.path).path.removeprefix("/api")
             if host not in (
                 f"127.0.0.1:{listener.server_port}",
                 f"localhost:{listener.server_port}",
@@ -131,8 +135,8 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
                 status, mime, body = 403, "text/plain", b"Loopback host required"
             elif (
                 self.command == "POST"
-                and COMMAND.fullmatch(urlsplit(self.path).path.removeprefix("/api"))
                 and self.path.startswith("/api/")
+                and (COMMAND.fullmatch(route) or CODEX_PROFILE_ROUTE.fullmatch(route))
             ):
                 status, mime, body = self.workspace_command(host)
             else:

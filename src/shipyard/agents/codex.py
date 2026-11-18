@@ -1,9 +1,12 @@
 """Codex CLI Adapter. Each execute call owns a fresh process and output file."""
 
 import json
+import re
+import subprocess
 import tempfile
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from shipyard.agents.base import (
     AgentExecutionError,
@@ -12,6 +15,7 @@ from shipyard.agents.base import (
     AgentTimeoutError,
     output_schema,
 )
+from shipyard.domain.execution import AgentProfile
 from shipyard.domain.stage_result import AgentStage
 from shipyard.execution.process import capture_process
 
@@ -41,17 +45,24 @@ def format_prompt(request: AgentRequest) -> str:
     )
 
 
-def _profile_arguments(request: AgentRequest) -> tuple[str, ...]:
-    if request.profile.provider != "codex":
-        raise AgentExecutionError("Codex adapter requires a codex provider profile")
-    arguments = request.profile.arguments
+ReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh"]
+CODEX_MODEL_PATTERN = r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"
+
+
+def validate_profile(profile: AgentProfile) -> ReasoningEffort | None:
+    if profile.provider != "codex":
+        raise ValueError("Codex adapter requires a codex provider profile")
+    if not re.fullmatch(CODEX_MODEL_PATTERN, profile.model):
+        raise ValueError("Enter a valid Codex model identifier")
+    arguments = profile.arguments
+    effort = None
     for offset in range(0, len(arguments), 2):
         if offset + 1 >= len(arguments) or arguments[offset] not in ("--config", "-c"):
-            raise AgentExecutionError("Unsupported Codex profile argument")
+            raise ValueError("Unsupported Codex profile argument")
         try:
             value = tomllib.loads(arguments[offset + 1])
         except tomllib.TOMLDecodeError as error:
-            raise AgentExecutionError("Invalid Codex profile argument") from error
+            raise ValueError("Invalid Codex profile argument") from error
         if set(value) != {"model_reasoning_effort"} or value[
             "model_reasoning_effort"
         ] not in (
@@ -61,16 +72,52 @@ def _profile_arguments(request: AgentRequest) -> tuple[str, ...]:
             "high",
             "xhigh",
         ):
-            raise AgentExecutionError("Unsupported Codex profile argument")
-    return arguments
+            raise ValueError("Unsupported Codex profile argument")
+        effort = value["model_reasoning_effort"]
+    return effort
 
 
 class CodexAgent:
     def __init__(self, *, executable: str = "codex") -> None:
         self._executable = executable
 
+    def check_connection(self) -> dict[str, str]:
+        try:
+            result = subprocess.run(
+                [self._executable, "login", "status"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode == 0:
+                return {
+                    "status": "ready",
+                    "message": "Codex CLI reports an active login.",
+                }
+            if result.returncode == 1:
+                return {
+                    "status": "credentials_unavailable",
+                    "message": "Codex credentials are unavailable. Run codex login in your terminal, then check again.",
+                }
+        except FileNotFoundError:
+            return {
+                "status": "cli_missing",
+                "message": "Install Codex CLI and make it available on PATH.",
+            }
+        except OSError, subprocess.TimeoutExpired:
+            pass
+        return {
+            "status": "check_failed",
+            "message": "Codex CLI could not report login status. Check codex login status in your terminal.",
+        }
+
     def execute(self, request: AgentRequest) -> AgentResponse:
-        arguments = _profile_arguments(request)
+        try:
+            validate_profile(request.profile)
+        except ValueError as error:
+            raise AgentExecutionError(str(error)) from error
         with tempfile.TemporaryDirectory(prefix="shipyard-codex-") as temporary:
             root = Path(temporary)
             schema = root / "schema.json"
@@ -81,7 +128,7 @@ class CodexAgent:
             command = [
                 self._executable,
                 "exec",
-                *arguments,
+                *request.profile.arguments,
                 "--ignore-user-config",
                 "--ephemeral",
                 "--config",
