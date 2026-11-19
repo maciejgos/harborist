@@ -13,6 +13,7 @@ from harborist.configuration import load_execution_settings
 from harborist.domain import RunContract, RunOutcome
 from harborist.git import GitRepository
 from harborist.persistence import FileRunStore
+from harborist.sandbox.docker import DockerSandboxRuntime
 from harborist.skills import compile_methodology
 from tests.application.test_run_execution import FakeAgent
 from tests.cli.conftest import strip_ansi
@@ -267,6 +268,11 @@ def test_repository_and_explicit_example_settings_compile(
 ) -> None:
     root = Path(__file__).resolve().parents[2]
     monkeypatch.chdir(tmp_path)
+
+    def baseline_digest(_: DockerSandboxRuntime) -> str:
+        return "a" * 64
+
+    monkeypatch.setattr(DockerSandboxRuntime, "baseline_digest", baseline_digest)
     for path in (
         root / "harborist.settings.yaml",
         root / "examples/intake/settings.yaml",
