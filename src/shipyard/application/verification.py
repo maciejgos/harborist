@@ -11,9 +11,10 @@ from shipyard.domain.artifact import ArtifactStage
 from shipyard.domain.attempt import Attempt
 from shipyard.domain.candidate import Candidate
 from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
+from shipyard.execution.process import capture_process
 from shipyard.git import GitRepository
 from shipyard.git.repository import GitReadError
-from shipyard.verification.runner import CheckCollection, run_checks
+from shipyard.verification.runner import CheckCollection, CheckExecutor, run_checks
 
 
 class TestExecution(BaseModel):
@@ -36,6 +37,7 @@ def execute_test(
     check_timeout_seconds: float,
     total_timeout_seconds: float | None = None,
     cleanup_workspace: Callable[[], None] | None = None,
+    executor: CheckExecutor = capture_process,
 ) -> TestExecution:
     """Write manifest last; caller owns total budget and lifecycle transitions.
 
@@ -58,6 +60,7 @@ def execute_test(
         logs_dir=output_dir / "logs",
         timeout_seconds=check_timeout_seconds,
         total_timeout_seconds=total_timeout_seconds,
+        executor=executor,
     )
     workspace_error = None
     try:

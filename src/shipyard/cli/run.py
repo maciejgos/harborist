@@ -16,6 +16,7 @@ from shipyard.git.repository import GitWorkspaceError
 from shipyard.github.issues import parse_github_selector
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
+from shipyard.sandbox.docker import DockerSandboxRuntime
 
 
 def run_command(
@@ -227,6 +228,7 @@ def run_command(
                 repository=GitRepository(path=repo),
                 workspace=workspace,
                 agent=CodexAgent(),
+                runtime=DockerSandboxRuntime(),
                 progress=reporter.update,
             )
         except KeyboardInterrupt as error:

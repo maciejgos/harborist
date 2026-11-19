@@ -3,19 +3,28 @@
 import os
 import re
 import subprocess
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from shipyard.domain.sandbox import SandboxPolicy
 from shipyard.github.issues import GITHUB_REPOSITORY
 
 CODEX_PROFILE_ROUTE = re.compile(r"/integrations/codex/profile/([0-9a-f-]{36})")
+SANDBOX_POLICY_ROUTE = re.compile(r"/integrations/sandbox/policy/([0-9a-f-]{36})")
 
 
 class GitHubCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workspace_id: UUID | None = None
+
+
+class SandboxPolicyEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    policy: Literal["trusted-local"] | SandboxPolicy
 
 
 def check_github(repository: str | None) -> dict[str, object]:

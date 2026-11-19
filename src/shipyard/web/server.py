@@ -11,11 +11,11 @@ from uuid import UUID
 
 from shipyard.control.client import ControlClient
 from shipyard.control.evidence_reads import ATTEMPTS
-from shipyard.control.integrations import CODEX_PROFILE_ROUTE
+from shipyard.control.integrations import CODEX_PROFILE_ROUTE, SANDBOX_POLICY_ROUTE
 from shipyard.control.service import MAX_REQUEST
 
 COMMAND = re.compile(
-    r"/workspaces|/integrations/(?:github|codex/check)|/tickets/(?:list|queue)|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
+    r"/workspaces|/integrations/(?:github|codex/check|sandbox/check)|/tickets/(?:list|queue)|/workspace/runs(?:/([0-9a-f-]{36})/(?:continue|cancel|supersede|publish|observe))?"
 )
 
 
@@ -66,6 +66,7 @@ class WebApplication:
             parts = api.strip("/").split("/")
             allowed = api in ("/health", "/runs", "/workspaces") or bool(
                 CODEX_PROFILE_ROUTE.fullmatch(api)
+                or SANDBOX_POLICY_ROUTE.fullmatch(api)
             )
             if len(parts) in (2, 3, 4) and parts[0] == "runs":
                 try:
@@ -136,7 +137,11 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
             elif (
                 self.command == "POST"
                 and self.path.startswith("/api/")
-                and (COMMAND.fullmatch(route) or CODEX_PROFILE_ROUTE.fullmatch(route))
+                and (
+                    COMMAND.fullmatch(route)
+                    or CODEX_PROFILE_ROUTE.fullmatch(route)
+                    or SANDBOX_POLICY_ROUTE.fullmatch(route)
+                )
             ):
                 status, mime, body = self.workspace_command(host)
             else:

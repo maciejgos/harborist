@@ -184,6 +184,31 @@ RunStore
 
 Infrastructure-specific behavior stays behind these boundaries.
 
+### Local Docker Sandboxes adapter
+
+An optional frozen Docker policy selects an injected `SandboxRuntime`; the CLI
+and local Worker compose its Docker Sandboxes 0.54.x adapter. Trusted-local
+captures keep the original path. `SandboxCodexAgent` implements `NativeAgent`,
+while TEST accepts a small command-executor boundary. The synchronous core owns
+all stage routing, candidate creation, verification, and PACKAGE in both modes.
+
+Each agent stage and TEST gets a fresh mountless VM populated from a committed
+Git bundle. BUILD exports a bounded binary patch to the owned host worktree;
+system Git creates the candidate and durable ref, and a complete candidate
+bundle is retained outside the VMs. TEST and REVIEW import that exact commit
+into separate environments. No repository code is executed on the host in
+Docker mode. Fresh VMs prevent BUILD tool/process state carrying into TEST or
+REVIEW. The local operator remains trusted; this does not implement team
+credential governance or protection from a malicious host administrator.
+
+Workspace policy editing uses the existing local service and same-origin browser
+guards. Saving changes future capture defaults only. Intake fingerprints Docker's
+global policy; drift fails execution rather than expanding frozen authority.
+The app never writes Docker's global policy. Cancellation stops the VM itself;
+incomplete exports retain a stopped VM for explicit inspection. See the
+[acceptance contract](spec/082-local-docker-sandboxes/spec.md) and
+[configuration guide](docs/configuration.md#docker-sandboxes-execution).
+
 ## Cross-Cutting Concerns
 
 ### Execution budget

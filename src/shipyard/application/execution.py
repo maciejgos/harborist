@@ -1,6 +1,9 @@
 """One synchronous attempt: explicit canonical flow and terminal PACKAGE."""
 
+import hashlib
+import json
 import math
+from contextlib import nullcontext
 from pathlib import Path
 from uuid import UUID
 
@@ -20,10 +23,13 @@ from shipyard.domain.playbook_execution import (
     StageReceipt,
     StepOutcome,
 )
+from shipyard.domain.sandbox import SandboxPolicy
 from shipyard.domain.stage_result import AgentStage, InvalidStageOutput, StageStatus
 from shipyard.evidence.package import RunEvidence, package_run
 from shipyard.execution.cancellation import check_cancellation
+from shipyard.execution.process import capture_process
 from shipyard.git import GitRepository
+from shipyard.git.command import run_git
 from shipyard.git.repository import GitReadError, GitWorkspaceError
 from shipyard.paths import legacy_run_workspace
 from shipyard.persistence import FileRunStore
@@ -34,6 +40,7 @@ from shipyard.persistence.workspace import (
     load_layout,
     load_selection,
 )
+from shipyard.sandbox.base import SandboxRuntime
 from shipyard.skills import compile_methodology
 
 
@@ -46,6 +53,7 @@ def execute_run(
     agent: NativeAgent,
     clock: BudgetClock | None = None,
     progress: ProgressCallback | None = None,
+    runtime: SandboxRuntime | None = None,
 ) -> RunEvidence:
     """Execute one fresh Attempt under the local Run execution lock."""
     with execution_lock(store, run_id):
@@ -58,6 +66,7 @@ def execute_run(
             agent=agent,
             clock=clock,
             progress=progress,
+            runtime=runtime,
         )
 
 
@@ -70,6 +79,7 @@ def _execute_run(
     agent: NativeAgent,
     clock: BudgetClock | None,
     progress: ProgressCallback | None,
+    runtime: SandboxRuntime | None,
 ) -> RunEvidence:
     """Execute once, preserving partial work and terminal evidence.
 
@@ -170,6 +180,13 @@ def _execute_run(
                 StageReceipt(stage=ArtifactStage.DESIGN, outcome=StepOutcome.SUCCEEDED)
             )
         isolated = repository.create_workspace(attempt=attempt, path=workspace)
+        policy = contract.execution.sandbox_policy
+        if isinstance(policy, SandboxPolicy):
+            if runtime is None:
+                raise AgentExecutionError(
+                    "The selected sandbox runtime is not configured; host execution is disabled"
+                )
+            agent = runtime.agent(policy=policy, receipts=directory / "sandbox")
         for stage in (
             AgentStage.DESIGN,
             AgentStage.PLAN,
@@ -258,6 +275,21 @@ def _execute_run(
                         ),
                         attempt_scoped=continuation is not None,
                     )
+                    if isinstance(policy, SandboxPolicy):
+                        bundle = directory / "sandbox" / "candidate.bundle"
+                        run_git(isolated.path, "bundle", "create", str(bundle), "HEAD")
+                        (bundle.parent / "candidate.json").write_text(
+                            json.dumps(
+                                {
+                                    "candidate": candidate.model_dump(mode="json"),
+                                    "start_sha": attempt.start_sha,
+                                    "sha256": hashlib.sha256(
+                                        bundle.read_bytes()
+                                    ).hexdigest(),
+                                    "size_bytes": bundle.stat().st_size,
+                                }
+                            )
+                        )
                     clock.allowance(artifact_stage, admission=False)
                     if execution.output.plan_update is not None:
                         upstream["plan.md"] = directory / "build" / "plan.md"
@@ -277,16 +309,30 @@ def _execute_run(
                 try:
                     allowance = clock.allowance(ArtifactStage.TEST)
                     updates.emit(ArtifactStage.TEST, "started")
-                    test = execute_test(
-                        contract=contract,
-                        attempt=attempt,
-                        candidate=candidate,
-                        workspace=isolated.path,
-                        output_dir=directory / "test",
-                        check_timeout_seconds=allowance,
-                        total_timeout_seconds=allowance,
-                        cleanup_workspace=isolated.clean_ignored_files,
-                    )
+                    with (
+                        runtime.workspace(
+                            policy=policy,
+                            workspace=isolated.path,
+                            seconds=allowance,
+                            label="test",
+                            receipts=directory / "sandbox",
+                        )
+                        if isinstance(policy, SandboxPolicy) and runtime is not None
+                        else nullcontext()
+                    ) as guest:
+                        test = execute_test(
+                            contract=contract,
+                            attempt=attempt,
+                            candidate=candidate,
+                            workspace=isolated.path,
+                            output_dir=directory / "test",
+                            check_timeout_seconds=allowance,
+                            total_timeout_seconds=allowance,
+                            cleanup_workspace=guest.require_unchanged
+                            if guest
+                            else isolated.clean_ignored_files,
+                            executor=guest.capture if guest else capture_process,
+                        )
                     check_cancellation()
                     clock.allowance(ArtifactStage.TEST, admission=False)
                     routing = routing.accept(test.receipt)

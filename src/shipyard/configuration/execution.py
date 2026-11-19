@@ -17,6 +17,7 @@ from shipyard.domain.execution import (
     MethodologyAsset,
     Nonblank,
 )
+from shipyard.domain.sandbox import SandboxPolicy
 
 
 class SettingsError(ValueError):
@@ -49,7 +50,7 @@ class _Settings(BaseModel):
     playbook: _AssetSource
     skills: tuple[_AssetSource, ...]
     agent_profile: AgentProfile
-    sandbox_policy: Literal["trusted-local"]
+    sandbox_policy: Literal["trusted-local"] | SandboxPolicy
 
     @field_validator("version")
     @classmethod
@@ -141,16 +142,71 @@ def load_execution_settings(
         path = path.resolve(strict=True)
         settings = _Settings.model_validate(_read_settings(path))
         validate_profile(settings.agent_profile)
+        policy = settings.sandbox_policy
+        if isinstance(policy, SandboxPolicy):
+            from shipyard.sandbox.docker import DockerSandboxRuntime
+
+            policy = policy.model_copy(
+                update={"baseline_sha256": DockerSandboxRuntime().baseline_digest()}
+            )
         return ExecutionSnapshot(
             playbook=_capture_asset(settings.playbook, path.parent),
             skills=tuple(
                 _capture_asset(skill, path.parent) for skill in settings.skills
             ),
             agent_profile=settings.agent_profile,
-            sandbox_policy=settings.sandbox_policy,
+            sandbox_policy=policy,
             budget=budget
             if budget is not None
             else ExecutionBudget(total_seconds=1800, verification_reserve_seconds=300),
         )
     except (OSError, ValueError, yaml.YAMLError) as error:
         raise SettingsError(f"Cannot capture execution settings from {path}") from error
+
+
+def sandbox_policy_status(path: Path) -> dict[str, object]:
+    try:
+        policy = _Settings.model_validate(_read_settings(path)).sandbox_policy
+    except OSError, ValueError, yaml.YAMLError:
+        return {
+            "status": "settings_unavailable",
+            "message": "Cannot read valid execution settings.",
+        }
+    return {
+        "status": "configured",
+        "policy": policy.model_dump(mode="json")
+        if isinstance(policy, SandboxPolicy)
+        else policy,
+    }
+
+
+def configure_sandbox_policy(
+    path: Path, policy: Literal["trusted-local"] | SandboxPolicy
+) -> None:
+    """Save future execution defaults without provisioning or changing Docker globals."""
+    try:
+        path = path.resolve(strict=True)
+        raw = _read_settings(path)
+        if not isinstance(raw, dict):
+            raise TypeError("Expected settings mapping")
+        settings = cast(dict[str, object], raw)
+        settings["sandbox_policy"] = (
+            policy.model_copy(update={"baseline_sha256": None}).model_dump(mode="json")
+            if isinstance(policy, SandboxPolicy)
+            else policy
+        )
+        _Settings.model_validate(settings)
+        with NamedTemporaryFile(
+            dir=path.parent, mode="w", encoding="utf-8", delete=False
+        ) as stream:
+            pending = Path(stream.name)
+            try:
+                yaml.safe_dump(settings, stream, sort_keys=False, allow_unicode=True)
+                stream.close()
+                pending.replace(path)
+            finally:
+                pending.unlink(missing_ok=True)
+    except (OSError, TypeError, ValueError, yaml.YAMLError) as error:
+        raise SettingsError(
+            "Could not save sandbox policy. Check the execution settings file and permissions."
+        ) from error

@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from shipyard.domain.artifact import ArtifactSha256
+from shipyard.domain.sandbox import SandboxPolicy
 
 type Nonblank = Annotated[
     str, StringConstraints(strict=True, pattern=r"^\S(?:[\s\S]*\S)?$")
@@ -71,7 +72,7 @@ class ExecutionSnapshot(BaseModel):
     playbook: MethodologyAsset
     skills: tuple[MethodologyAsset, ...]
     agent_profile: AgentProfile
-    sandbox_policy: Literal["trusted-local"]
+    sandbox_policy: Literal["trusted-local"] | SandboxPolicy
     budget: ExecutionBudget
 
     @model_validator(mode="after")

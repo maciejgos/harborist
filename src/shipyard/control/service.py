@@ -20,12 +20,20 @@ from shipyard.configuration.execution import (
     CodexProfileSetup,
     codex_profile_status,
     configure_codex_profile,
+    configure_sandbox_policy,
     execution_settings_path,
+    sandbox_policy_status,
 )
 from shipyard.control.evidence_reads import ATTEMPTS, attempt_evidence
 from shipyard.control.github_delivery import github_command, read_delivery
 from shipyard.control.history import RunHistory
-from shipyard.control.integrations import CODEX_PROFILE_ROUTE, GitHubCheck, check_github
+from shipyard.control.integrations import (
+    CODEX_PROFILE_ROUTE,
+    SANDBOX_POLICY_ROUTE,
+    GitHubCheck,
+    SandboxPolicyEdit,
+    check_github,
+)
 from shipyard.control.queue import QueueRecord, QueueStore, Submission
 from shipyard.control.retirement import retire_run, supersede_run
 from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
@@ -44,10 +52,12 @@ from shipyard.control.workspace import (
 )
 from shipyard.domain import RunLifecycle
 from shipyard.domain.continuation import ContinuationRequest
+from shipyard.domain.sandbox import SandboxPolicy
 from shipyard.github.issues import list_tickets
 from shipyard.paths import runs_root
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.retirement import RetirementRequest
+from shipyard.sandbox.docker import DockerSandboxRuntime
 
 MAX_REQUEST = 64 * 1024
 
@@ -120,6 +130,28 @@ class ControlService:
             if self.codex is None:
                 raise ValueError("The local service is not using the Codex adapter")
             return dict(self.codex.check_connection())
+        if method == "POST" and path == "/integrations/sandbox/check":
+            if body != b"{}":
+                raise ValueError("Sandbox readiness expects an empty request")
+            return DockerSandboxRuntime().check()
+        if method in ("GET", "POST") and (
+            match := SANDBOX_POLICY_ROUTE.fullmatch(path)
+        ):
+            workspace = self.workspaces.get(UUID(match[1]))
+            settings = execution_settings_path(workspace.repository, workspace.settings)
+            if method == "GET":
+                return {
+                    **sandbox_policy_status(settings),
+                    "defaults": SandboxPolicy().model_dump(mode="json"),
+                }
+            try:
+                policy = SandboxPolicyEdit.model_validate_json(body).policy
+            except ValidationError as error:
+                raise ValueError(
+                    "Enter valid runtime resources and hostname rules; URLs, credentials, and unrestricted wildcards are not accepted."
+                ) from error
+            configure_sandbox_policy(settings, policy)
+            return {"status": "saved"}
         if method in ("GET", "POST") and (
             profile := CODEX_PROFILE_ROUTE.fullmatch(path)
         ):

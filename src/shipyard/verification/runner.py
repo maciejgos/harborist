@@ -3,11 +3,18 @@
 import math
 import time
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
 from shipyard.domain import VerificationConfig
-from shipyard.execution.process import capture_process
+from shipyard.execution.process import ProcessCapture, capture_process
+
+
+class CheckExecutor(Protocol):
+    def __call__(
+        self, command: list[str], *, cwd: Path, timeout: float, limit: int
+    ) -> ProcessCapture: ...
 
 
 class CheckResult(BaseModel):
@@ -44,6 +51,7 @@ def run_checks(
     timeout_seconds: float,
     total_timeout_seconds: float | None = None,
     max_log_bytes: int = 65536,
+    executor: CheckExecutor = capture_process,
 ) -> CheckCollection:
     """Run all checks, even after failure; log I/O errors abort evidence capture."""
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
@@ -81,7 +89,7 @@ def run_checks(
                 error = "Shared TEST deadline exhausted before invocation"
             else:
                 try:
-                    capture = capture_process(
+                    capture = executor(
                         ["/bin/sh", "-c", check.command],
                         cwd=workspace,
                         timeout=allowance,

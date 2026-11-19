@@ -9,12 +9,21 @@ from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import prepare_continuation
 from shipyard.persistence.retirement import load_retirement
+from shipyard.sandbox.base import SandboxRuntime
+from shipyard.sandbox.docker import DockerSandboxRuntime
 
 
 class Worker:
-    def __init__(self, queue: QueueStore, *, agent: NativeAgent) -> None:
+    def __init__(
+        self,
+        queue: QueueStore,
+        *,
+        agent: NativeAgent,
+        runtime: SandboxRuntime | None = None,
+    ) -> None:
         self.queue = queue
         self.agent = agent
+        self.runtime = runtime if runtime is not None else DockerSandboxRuntime()
 
     def execute_next(self) -> bool:
         record = self.queue.claim()
@@ -53,6 +62,7 @@ class Worker:
                 workspace=submission.workspace,
                 agent=self.agent,
                 progress=progress,
+                runtime=self.runtime,
             )
         except Exception as error:  # noqa: BLE001 - delivery failure, never workflow inference
             self.queue.finish(
