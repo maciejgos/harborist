@@ -1,15 +1,15 @@
-# Shipyard Product Requirements Document
+# Harborist Product Requirements Document
 
 **Version:** 1.0  
 **Status:** Discovery complete / implementation baseline  
 **Date:** 25 October 2026  
-**Product:** Shipyard
+**Product:** Harborist
 
 ---
 
 # 1. Executive Summary
 
-Shipyard is a **headless, evidence-driven software-delivery control plane around native coding agents**.
+Harborist is a **headless, evidence-driven software-delivery control plane around native coding agents**.
 
 It turns engineering intent into revision-bound, independently verified code changes while separating the authorities to:
 
@@ -23,9 +23,9 @@ Its primary flow is:
 ```text
 GitHub Issue or Markdown Issue
         ↓
-      Shipyard
+      Harborist
         ↓
-native coding agent + Shipyard skills
+native coding agent + Harborist skills
         ↓
 Specification
         ↓
@@ -46,9 +46,9 @@ GitHub Pull Request
 human review / CI / merge
 ```
 
-Shipyard does **not** replace Codex, Claude Code, or another capable coding agent. The coding agent retains responsibility for repository exploration, reasoning, editing, and normal implementation work.
+Harborist does **not** replace Codex, Claude Code, or another capable coding agent. The coding agent retains responsibility for repository exploration, reasoning, editing, and normal implementation work.
 
-Shipyard owns the delivery contract around that agent:
+Harborist owns the delivery contract around that agent:
 
 - intent;
 - workflow;
@@ -73,7 +73,7 @@ The central product hypothesis is:
 
 ## 2.1 Vision
 
-Shipyard should make autonomous or semi-autonomous software implementation **dependable enough to become normal engineering infrastructure**.
+Harborist should make autonomous or semi-autonomous software implementation **dependable enough to become normal engineering infrastructure**.
 
 A user should be able to provide an engineering request and receive not merely generated code, but a complete delivery package answering:
 
@@ -95,7 +95,7 @@ The system should favor **explicit uncertainty over false confidence**.
 
 # 3. Product Positioning
 
-Shipyard is not primarily:
+Harborist is not primarily:
 
 - an AI coding assistant;
 - an IDE;
@@ -106,7 +106,7 @@ Shipyard is not primarily:
 - a deployment system;
 - a project-management system.
 
-Shipyard is a **software-delivery harness and control plane for native coding agents**.
+Harborist is a **software-delivery harness and control plane for native coding agents**.
 
 The native coding agent should remain strong at what it already does well:
 
@@ -118,7 +118,7 @@ run development-time tools
 iterate locally
 ```
 
-Shipyard should concentrate on what should be deterministic, durable, governed, independently inspectable, or shared across humans and agents:
+Harborist should concentrate on what should be deterministic, durable, governed, independently inspectable, or shared across humans and agents:
 
 ```text
 intent
@@ -142,13 +142,13 @@ historical outcomes
 
 ## 4.1 Native agents remain native
 
-Shipyard must not recreate a competing inner agent loop.
+Harborist must not recreate a competing inner agent loop.
 
 The rule is:
 
 > **Playbooks orchestrate. Skills advise. Trusted executors enforce.**
 
-A Shipyard playbook decides which stages must happen.
+A Harborist playbook decides which stages must happen.
 
 A skill provides stage-specific guidance.
 
@@ -205,7 +205,7 @@ A model may not reason its way around a failed authoritative check.
 
 ## 4.5 Verification, publication, approval, and merge are different authorities
 
-Shipyard uses:
+Harborist uses:
 
 ```text
 IMPLEMENTED
@@ -229,7 +229,7 @@ Therefore:
 
 ## 4.6 Execution authority and publication authority are separate
 
-Authorizing Shipyard to generate another Attempt does not authorize Shipyard to publish the eventual result.
+Authorizing Harborist to generate another Attempt does not authorize Harborist to publish the eventual result.
 
 Every publication requires an explicit authorization for the exact candidate being published.
 
@@ -237,7 +237,7 @@ Every publication requires an explicit authorization for the exact candidate bei
 
 ## 4.7 Human changes to the factory are governed
 
-Shipyard may learn from historical results and may generate concrete proposed improvements.
+Harborist may learn from historical results and may generate concrete proposed improvements.
 
 It may not silently modify:
 
@@ -272,7 +272,7 @@ Candidate C was VERIFIED.
 Human pushed commit H.
 
 C remains VERIFIED.
-Current PR head H is NOT Shipyard-verified.
+Current PR head H is NOT Harborist-verified.
 ```
 
 ---
@@ -297,7 +297,7 @@ Later administrative changes affect future Runs only.
 
 ## 4.10 Cloud portability is architectural
 
-Shipyard must be deployable:
+Harborist must be deployable:
 
 - locally;
 - on ordinary VMs;
@@ -312,7 +312,7 @@ The core domain must depend on small capability boundaries rather than cloud-spe
 
 ## 5.1 Operator
 
-An engineer or technical user who wants Shipyard to implement real work.
+An engineer or technical user who wants Harborist to implement real work.
 
 Operators may:
 
@@ -331,7 +331,7 @@ Operators do not govern the methodology of the factory.
 
 ## 5.2 Admin
 
-An administrator responsible for the Shipyard factory.
+An administrator responsible for the Harborist factory.
 
 Admins can additionally:
 
@@ -387,7 +387,7 @@ They do not impersonate humans.
 
 A human reviewing a GitHub Pull Request.
 
-Reviewers primarily work through GitHub rather than Shipyard.
+Reviewers primarily work through GitHub rather than Harborist.
 
 Their feedback becomes important evidence for:
 
@@ -414,7 +414,7 @@ Product surfaces may include:
 - web UI;
 - REST API;
 - MCP;
-- GitHub `/shipyard run`.
+- GitHub `/harborist run`.
 
 The target implementation Project is separately identified.
 
@@ -424,7 +424,7 @@ The source Issue and implementation repository do not have to be the same reposi
 
 ## 6.2 Intake
 
-Shipyard normalizes and freezes the source into:
+Harborist normalizes and freezes the source into:
 
 ```text
 intent.md
@@ -454,7 +454,7 @@ It receives:
 
 - frozen intent;
 - repository context;
-- Shipyard design skills.
+- Harborist design skills.
 
 It produces:
 
@@ -504,7 +504,7 @@ NEEDS_RESCOPING
 
 `plan.md` is implementation guidance.
 
-It describes **HOW Shipyard intends to implement the specification**.
+It describes **HOW Harborist intends to implement the specification**.
 
 It is not the correctness contract.
 
@@ -543,7 +543,7 @@ or:
 NEEDS_RESCOPING
 ```
 
-When BUILD succeeds, Shipyard creates a Git candidate commit.
+When BUILD succeeds, Harborist creates a Git candidate commit.
 
 ---
 
@@ -626,7 +626,7 @@ rather than proliferating playbooks.
 
 # 9. Skills
 
-A Shipyard skill is a human-readable Markdown asset with small YAML front matter.
+A Harborist skill is a human-readable Markdown asset with small YAML front matter.
 
 Example:
 
@@ -664,7 +664,7 @@ it should be a playbook step rather than a skill.
 
 ## 10.1 Organization library
 
-Shipyard ships default methodology assets.
+Harborist ships default methodology assets.
 
 Organizations adopt and own a governed library:
 
@@ -736,12 +736,12 @@ No shadow execution is required in Product Milestone 1.
 
 # 11. Deterministic Verification
 
-## 11.1 `shipyard.yaml`
+## 11.1 `harborist.yaml`
 
 Each target repository contains a committed:
 
 ```text
-shipyard.yaml
+harborist.yaml
 ```
 
 Product Milestone 1 keeps this intentionally narrow.
@@ -764,9 +764,9 @@ It does not become a general project manifest.
 
 ## 11.2 Frozen verification configuration
 
-Shipyard reads `shipyard.yaml` from the Run’s frozen base commit.
+Harborist reads `harborist.yaml` from the Run’s frozen base commit.
 
-If BUILD modifies `shipyard.yaml`, that change does not alter how the current candidate is judged.
+If BUILD modifies `harborist.yaml`, that change does not alter how the current candidate is judged.
 
 ---
 
@@ -852,7 +852,7 @@ BUILD produces a candidate Git commit before authoritative TEST.
 
 TEST and REVIEW operate on that exact immutable SHA.
 
-For PoC, the candidate remains reachable through a Shipyard-owned ref such as:
+For PoC, the candidate remains reachable through a Harborist-owned ref such as:
 
 ```text
 refs/shipyard/runs/<run-id>/candidate
@@ -887,7 +887,7 @@ Example concepts:
 }
 ```
 
-Shipyard validates:
+Harborist validates:
 
 1. process success;
 2. schema validity;
@@ -899,7 +899,7 @@ Invalid output results in:
 INVALID_STAGE_OUTPUT
 ```
 
-Shipyard does not guess and does not automatically repair the result in early releases.
+Harborist does not guess and does not automatically repair the result in early releases.
 
 ---
 
@@ -909,7 +909,7 @@ PACKAGE always attempts to finalize the Run.
 
 It is outside the execution time budget.
 
-Shipyard may fail to finish software work, but should still finish explaining what happened.
+Harborist may fail to finish software work, but should still finish explaining what happened.
 
 Every terminal result should have:
 
@@ -938,7 +938,7 @@ A Run has a frozen overall execution budget.
 
 It comes from:
 
-- Shipyard default;
+- Harborist default;
 - optional explicit override such as `--timeout`.
 
 Budget is not repository-controlled.
@@ -947,7 +947,7 @@ Stage percentages are planning targets, not rigid slices.
 
 Unused time may roll forward.
 
-Shipyard must reserve enough budget for verification so BUILD cannot consume the entire budget.
+Harborist must reserve enough budget for verification so BUILD cannot consume the entire budget.
 
 Queue waiting time does not count against execution budget.
 
@@ -965,7 +965,7 @@ PACKAGE is still permitted to finalize evidence.
 
 # 17. Native-Agent Execution
 
-Shipyard defines a small internal native-agent contract.
+Harborist defines a small internal native-agent contract.
 
 PoC implementation:
 
@@ -1049,7 +1049,7 @@ is immutable.
 
 Local uncommitted changes are ignored.
 
-Shipyard operates from committed Git state in an isolated worktree or sandbox.
+Harborist operates from committed Git state in an isolated worktree or sandbox.
 
 Developer modifications are untouched.
 
@@ -1155,12 +1155,12 @@ Verification never transfers between candidates.
 If the target branch advances:
 
 ```text
-Shipyard: A → B → C
+Harborist: A → B → C
 
 main:     A → X → Y
 ```
 
-Shipyard does not silently rebase or merge `Y` into the existing Run.
+Harborist does not silently rebase or merge `Y` into the existing Run.
 
 It records drift as evidence.
 
@@ -1205,7 +1205,7 @@ Recovery uses the remaining Run budget by default.
 
 An Operator may explicitly grant additional time.
 
-Shipyard never silently extends resources.
+Harborist never silently extends resources.
 
 ---
 
@@ -1344,9 +1344,9 @@ authoritative: false
 
 Supersession preserves knowledge, not authority.
 
-If the old Run has an open PR, Shipyard may mark/comment that it was superseded.
+If the old Run has an open PR, Harborist may mark/comment that it was superseded.
 
-Shipyard does not automatically close the PR.
+Harborist does not automatically close the PR.
 
 ---
 
@@ -1395,11 +1395,11 @@ A newly created PR should contain a concise evidence summary including:
 - acceptance-criterion coverage;
 - independent-review result;
 - known limitations;
-- reference to full Shipyard evidence.
+- reference to full Harborist evidence.
 
 GitHub remains the primary human code-review surface.
 
-Shipyard does not automatically merge.
+Harborist does not automatically merge.
 
 ---
 
@@ -1408,9 +1408,9 @@ Shipyard does not automatically merge.
 Product Milestone 1 supports explicit GitHub commands such as:
 
 ```text
-/shipyard run
-/shipyard rework
-/shipyard publish
+/harborist run
+/harborist rework
+/harborist publish
 ```
 
 Each command:
@@ -1418,7 +1418,7 @@ Each command:
 1. arrives through authenticated GitHub App webhook;
 2. is deduplicated/idempotent;
 3. resolves the GitHub actor;
-4. maps that actor to a Shipyard User;
+4. maps that actor to a Harborist User;
 5. checks Operator/Admin authority;
 6. invokes the same canonical domain API used by UI/CLI.
 
@@ -1426,10 +1426,10 @@ Each command:
 
 # 30. Target Project Resolution
 
-If an Issue belongs to a repository that maps unambiguously to a Shipyard Project:
+If an Issue belongs to a repository that maps unambiguously to a Harborist Project:
 
 ```text
-/shipyard run
+/harborist run
 ```
 
 may infer the target.
@@ -1437,21 +1437,21 @@ may infer the target.
 For cross-repository backlog use:
 
 ```text
-/shipyard run project=payments
+/harborist run project=payments
 ```
 
-If no unique target can be resolved, Shipyard refuses to guess and surfaces valid choices.
+If no unique target can be resolved, Harborist refuses to guess and surfaces valid choices.
 
 ---
 
 # 31. Human PR Feedback
 
-Human `CHANGES_REQUESTED` does not automatically spend Shipyard resources.
+Human `CHANGES_REQUESTED` does not automatically spend Harborist resources.
 
 An authorized user explicitly runs:
 
 ```text
-/shipyard rework
+/harborist rework
 ```
 
 Human comments become additional evidence for the next Attempt.
@@ -1464,13 +1464,13 @@ If it materially changes the acceptance contract, same-Run rework is refused.
 
 # 32. Human PR Commits
 
-If a human extends the Shipyard candidate:
+If a human extends the Harborist candidate:
 
 ```text
 A → B → H
 ```
 
-where `B` was the last Shipyard candidate, `H` may become the starting SHA for an explicitly authorized rework Attempt.
+where `B` was the last Harborist candidate, `H` may become the starting SHA for an explicitly authorized rework Attempt.
 
 It is recorded as:
 
@@ -1486,7 +1486,7 @@ The resulting candidate must pass complete TEST + REVIEW.
 
 # 33. Rewritten PR History
 
-If a human force-pushes/rebases so the current PR head is no longer a descendant of the last Shipyard-published candidate, same-Run rework is not permitted.
+If a human force-pushes/rebases so the current PR head is no longer a descendant of the last Harborist-published candidate, same-Run rework is not permitted.
 
 Example:
 
@@ -1498,7 +1498,7 @@ A → X → H
 
 A new Run is required.
 
-Human commits may extend Shipyard lineage.
+Human commits may extend Harborist lineage.
 
 They may not silently replace its foundation.
 
@@ -1512,7 +1512,7 @@ If an Attempt began from PR head `H` and produced `C`, publication records:
 expected_pr_head_sha: H
 ```
 
-Before updating the PR, Shipyard checks the current GitHub head.
+Before updating the PR, Harborist checks the current GitHub head.
 
 If:
 
@@ -1528,7 +1528,7 @@ If:
 current == J
 ```
 
-Shipyard returns:
+Harborist returns:
 
 ```text
 PUBLICATION_CONFLICT
@@ -1536,29 +1536,29 @@ PUBLICATION_CONFLICT
 
 and pushes nothing.
 
-Shipyard never force-pushes over human work.
+Harborist never force-pushes over human work.
 
 ---
 
 # 35. GitHub CI
 
-Shipyard verification and GitHub CI are separate dimensions.
+Harborist verification and GitHub CI are separate dimensions.
 
 Example:
 
 ```text
-Shipyard verification:
+Harborist verification:
 VERIFIED
 
 GitHub required CI:
 FAILING
 ```
 
-A later CI failure does not rewrite historical Shipyard verification.
+A later CI failure does not rewrite historical Harborist verification.
 
-Shipyard reads GitHub branch-protection/ruleset semantics to distinguish required checks from optional checks.
+Harborist reads GitHub branch-protection/ruleset semantics to distinguish required checks from optional checks.
 
-`shipyard.yaml` remains authoritative for Shipyard pre-publication verification.
+`harborist.yaml` remains authoritative for Harborist pre-publication verification.
 
 GitHub remains authoritative for GitHub merge policy.
 
@@ -1566,7 +1566,7 @@ GitHub remains authoritative for GitHub merge policy.
 
 # 36. CI Evidence
 
-Shipyard retains bounded CI evidence such as:
+Harborist retains bounded CI evidence such as:
 
 ```text
 check name
@@ -1587,7 +1587,7 @@ Relevant CI failure evidence may become input to explicitly authorized rework.
 
 # 37. Integration Readiness
 
-Integration readiness is independent from Shipyard verification.
+Integration readiness is independent from Harborist verification.
 
 Example values:
 
@@ -1612,13 +1612,13 @@ without contradiction.
 
 # 38. PR Head Integrity
 
-If Shipyard publishes candidate `C`, then a human pushes `H`:
+If Harborist publishes candidate `C`, then a human pushes `H`:
 
 ```text
 C → H
 ```
 
-Shipyard shows:
+Harborist shows:
 
 ```text
 verified_candidate_sha: C
@@ -1630,13 +1630,13 @@ DIVERGED_FROM_VERIFIED_CANDIDATE
 
 Historical verification remains attached to `C`.
 
-Shipyard must never present `H` as verified.
+Harborist must never present `H` as verified.
 
 ---
 
 # 39. Merge Observation
 
-Shipyard observes but does not perform merge.
+Harborist observes but does not perform merge.
 
 On merge it records:
 
@@ -1656,7 +1656,7 @@ Deployment and release orchestration are explicitly outside Product Milestone 1.
 
 # 40. Merge Provenance
 
-Shipyard should inspect how strongly the merged result can be related to the verified candidate.
+Harborist should inspect how strongly the merged result can be related to the verified candidate.
 
 Example categories:
 
@@ -1667,15 +1667,15 @@ MERGED_SQUASHED
 MERGED_UNKNOWN
 ```
 
-The taxonomy may be refined technically, but Shipyard must not claim provenance it cannot prove.
+The taxonomy may be refined technically, but Harborist must not claim provenance it cannot prove.
 
-Shipyard records provenance rather than dictating the team’s merge strategy.
+Harborist records provenance rather than dictating the team’s merge strategy.
 
 ---
 
 # 41. Project Model
 
-One canonical Shipyard Project maps to one GitHub repository.
+One canonical Harborist Project maps to one GitHub repository.
 
 A Project remains intentionally thin:
 
@@ -1694,7 +1694,7 @@ run history
 
 Repository truth remains in the repository.
 
-Shipyard does not duplicate:
+Harborist does not duplicate:
 
 - language;
 - frameworks;
@@ -1710,9 +1710,9 @@ into a large Project manifest.
 
 Repository-native agent instructions such as `AGENTS.md` are consumed through the native coding agent’s own behavior.
 
-Shipyard does not build its own competing repository instruction parser or RAG subsystem in Product Milestone 1.
+Harborist does not build its own competing repository instruction parser or RAG subsystem in Product Milestone 1.
 
-Shipyard records provenance such as applicable instruction file paths/hashes where practical.
+Harborist records provenance such as applicable instruction file paths/hashes where practical.
 
 PLAN declares expected change scope.
 
@@ -1735,7 +1735,7 @@ GitHub first
 OIDC/SSO later
 ```
 
-Shipyard uses its own stable internal User identity.
+Harborist uses its own stable internal User identity.
 
 Audit records must not rely solely on mutable GitHub usernames.
 
@@ -1785,7 +1785,7 @@ The product avoids generic anonymous “system” actors where a concrete machin
 
 # 46. Headless Product Architecture
 
-Shipyard is a **headless control plane**.
+Harborist is a **headless control plane**.
 
 First-party interfaces are replaceable clients:
 
@@ -1793,7 +1793,7 @@ First-party interfaces are replaceable clients:
 CLI ─────────┐
 Web UI ──────┤
 MCP ─────────┤
-GitHub ──────┼──→ Public Shipyard Control Plane
+GitHub ──────┼──→ Public Harborist Control Plane
 Custom UI ───┤
 Lagrange ────┤
 Automation ──┘
@@ -1840,11 +1840,11 @@ PublishCandidate
 
 # 48. MCP
 
-The MCP server is a first-party agent-facing adapter over the canonical Shipyard control plane.
+The MCP server is a first-party agent-facing adapter over the canonical Harborist control plane.
 
 It is not a second workflow engine.
 
-MCP access uses normal Shipyard authentication and authorization, including Service Accounts.
+MCP access uses normal Harborist authentication and authorization, including Service Accounts.
 
 ---
 
@@ -1857,8 +1857,8 @@ Later CLI becomes a client of the background control plane.
 Representative submission:
 
 ```text
-shipyard run file:./issue.md
-shipyard run github:acme/project#42
+harborist run file:./issue.md
+harborist run github:acme/project#42
 ```
 
 Optional target:
@@ -1879,7 +1879,7 @@ Optional budget:
 --timeout
 ```
 
-Normal CLI output shows Shipyard workflow state and results rather than unbounded raw coding-agent chatter.
+Normal CLI output shows Harborist workflow state and results rather than unbounded raw coding-agent chatter.
 
 ---
 
@@ -1913,7 +1913,7 @@ Product Milestone 1 uses a GitHub App.
 
 No PAT fallback is required in the first Product milestone.
 
-Authorized repositories become Shipyard Projects.
+Authorized repositories become Harborist Projects.
 
 GitHub credentials belong to the Organization integration, not to workers or users.
 
@@ -1962,7 +1962,7 @@ Workers use the standalone `sbx` CLI with sandbox compute local to the worker.
 The [Phase 14 acceptance contract](../spec/081-workers-and-docker-sandboxes/spec.md)
 defines this runtime choice and its isolation, ownership, and export requirements.
 
-Shipyard depends on a small:
+Harborist depends on a small:
 
 ```text
 SandboxRuntime
@@ -2005,7 +2005,7 @@ The native agent may not dynamically expand its own network authority.
 
 # 55. Trusted-Local Mode
 
-Shipyard also supports an explicit trusted-local development/evaluation mode.
+Harborist also supports an explicit trusted-local development/evaluation mode.
 
 This mode is:
 
@@ -2035,7 +2035,7 @@ Lease expiry means:
 
 It does **not** prove that execution stopped.
 
-Shipyard must not silently reassign such work.
+Harborist must not silently reassign such work.
 
 It becomes:
 
@@ -2061,7 +2061,7 @@ memory
 codex capability
 ```
 
-Shipyard should not encode every project framework/language as scheduler metadata.
+Harborist should not encode every project framework/language as scheduler metadata.
 
 Those belong inside the repository/sandbox environment.
 
@@ -2135,7 +2135,7 @@ Explicit cancellation remains the mechanism for stopping active work.
 
 # 61. Queue Fairness
 
-Within each priority class, Shipyard uses lightweight Project fairness.
+Within each priority class, Harborist uses lightweight Project fairness.
 
 Conceptually:
 
@@ -2219,7 +2219,7 @@ The architecture does not require a generic database abstraction beyond standard
 
 # 65. ArtifactStore
 
-Shipyard uses a small capability boundary:
+Harborist uses a small capability boundary:
 
 ```text
 ArtifactStore
@@ -2306,7 +2306,7 @@ PoC is filesystem-only.
 Example:
 
 ```text
-~/.shipyard/runs/<run-id>/
+~/.harborist/runs/<run-id>/
 ```
 
 Containing:
@@ -2380,7 +2380,7 @@ Product exposes standard operational telemetry through:
 
 External operations platforms such as Grafana, GCP monitoring, or Datadog remain responsible for general infrastructure monitoring.
 
-Shipyard UI shows product-operational information such as:
+Harborist UI shows product-operational information such as:
 
 - queue;
 - workers;
@@ -2425,7 +2425,7 @@ Built-in analytics remain small and interpretable.
 - merge rate;
 - time to merge.
 
-Shipyard does not invent one opaque AI quality score.
+Harborist does not invent one opaque AI quality score.
 
 ---
 
@@ -2450,7 +2450,7 @@ cached tokens
 provider-native counters
 ```
 
-Shipyard preserves a normalized small common usage model plus bounded provider-native metadata.
+Harborist preserves a normalized small common usage model plus bounded provider-native metadata.
 
 Monetary cost is recorded only when the provider reports an actual charge.
 
@@ -2460,13 +2460,13 @@ For subscription-backed execution with no attributable charge:
 cost = UNKNOWN
 ```
 
-Shipyard does not maintain its own pricing table to fabricate an estimated actual cost.
+Harborist does not maintain its own pricing table to fabricate an estimated actual cost.
 
 ---
 
 # 73. Learning Loop
 
-Shipyard analyzes historical evidence at two scopes:
+Harborist analyzes historical evidence at two scopes:
 
 ```text
 Project
@@ -2505,7 +2505,7 @@ proposed action
 
 # 74. Factory Improvement Proposals
 
-Shipyard may generate a concrete proposed change such as:
+Harborist may generate a concrete proposed change such as:
 
 ```text
 review-change@7
@@ -2515,7 +2515,7 @@ review-change@7
 or:
 
 ```text
-Recommend adding a compatibility check to shipyard.yaml.
+Recommend adding a compatibility check to harborist.yaml.
 ```
 
 The proposal is never automatically activated.
@@ -2524,7 +2524,7 @@ An Admin must review and explicitly create/activate the new version.
 
 The governing rule is:
 
-> Shipyard may learn from outcomes, but humans authorize changes to the system that judges future software.
+> Harborist may learn from outcomes, but humans authorize changes to the system that judges future software.
 
 ---
 
@@ -2586,7 +2586,7 @@ Operators do not choose arbitrary policy versions per Run.
 
 # 77. Secrets
 
-Shipyard uses a small:
+Harborist uses a small:
 
 ```text
 SecretProvider
@@ -2603,7 +2603,7 @@ external vault
 GCP Secret Manager
 ```
 
-Shipyard stores opaque secret references in normal domain state.
+Harborist stores opaque secret references in normal domain state.
 
 It does not treat PostgreSQL as the primary secret vault.
 
@@ -2623,7 +2623,7 @@ secret_ref: agent/codex-production
 
 The raw credential can change without changing Run execution policy.
 
-Shipyard may safely record:
+Harborist may safely record:
 
 - secret provider;
 - secret reference;
@@ -2647,7 +2647,7 @@ The native agent does not start when the required credential cannot be establish
 
 The failure is recoverable after the infrastructure problem is corrected.
 
-Shipyard does not silently switch providers or execution profiles.
+Harborist does not silently switch providers or execution profiles.
 
 ---
 
@@ -2658,7 +2658,7 @@ Product Milestone 1 supports:
 ```text
 GitHub contextual notifications
 +
-Shipyard in-product notifications
+Harborist in-product notifications
 ```
 
 Slack, Teams, and email are deferred.
@@ -2689,13 +2689,13 @@ Notifications never determine workflow correctness.
 
 # 81. Backup and Restore
 
-Shipyard defines a recovery contract but does not build a proprietary backup system.
+Harborist defines a recovery contract but does not build a proprietary backup system.
 
 Must be recoverable:
 
 - PostgreSQL;
 - ArtifactStore;
-- Shipyard configuration;
+- Harborist configuration;
 - external secret references/configuration.
 
 Reconstructable:
@@ -2711,7 +2711,7 @@ Operators use native backup mechanisms appropriate to their deployment environme
 
 # 82. Restore Semantics
 
-After restore Shipyard verifies:
+After restore Harborist verifies:
 
 ```text
 database reachable
@@ -2727,13 +2727,13 @@ Runs that were executing when ownership became uncertain become:
 RECOVERY_REQUIRED
 ```
 
-Shipyard does not silently replay them.
+Harborist does not silently replay them.
 
 ---
 
 # 83. Recovery-Degraded Mode
 
-If PostgreSQL and ArtifactStore restore points are inconsistent, Shipyard may enter:
+If PostgreSQL and ArtifactStore restore points are inconsistent, Harborist may enter:
 
 ```text
 RECOVERY_DEGRADED
@@ -2745,7 +2745,7 @@ Publication requiring missing/unverifiable candidate evidence is blocked.
 
 Unaffected history may remain inspectable.
 
-Shipyard must never silently treat missing evidence as trustworthy evidence.
+Harborist must never silently treat missing evidence as trustworthy evidence.
 
 ---
 
@@ -2867,7 +2867,7 @@ These are deployment choices rather than Product domain dependencies.
 
 # 88. Canonical Configuration Model
 
-Shipyard has one canonical Product configuration model covering capabilities such as:
+Harborist has one canonical Product configuration model covering capabilities such as:
 
 ```text
 database
@@ -2892,7 +2892,7 @@ but configure the same conceptual Product capabilities.
 
 The rule is:
 
-> One Shipyard product, one configuration contract, multiple deployment topologies.
+> One Harborist product, one configuration contract, multiple deployment topologies.
 
 ---
 
@@ -2900,7 +2900,7 @@ The rule is:
 
 ## 89.1 Hypothesis
 
-Can Shipyard technically wrap a native coding agent in a structured specification → implementation → verification process that produces stronger trust evidence than direct agent usage?
+Can Harborist technically wrap a native coding agent in a structured specification → implementation → verification process that produces stronger trust evidence than direct agent usage?
 
 ---
 
@@ -2911,11 +2911,11 @@ PoC includes:
 - local CLI;
 - Codex;
 - exactly one canonical playbook;
-- built-in Shipyard skills;
+- built-in Harborist skills;
 - Markdown and GitHub Issue intake;
 - local `gh` authentication for GitHub issue reading;
 - isolated Git worktree;
-- committed `shipyard.yaml`;
+- committed `harborist.yaml`;
 - DESIGN;
 - PLAN;
 - BUILD;
@@ -2953,7 +2953,7 @@ Repository code and checks execute with the same level of trust a developer woul
 
 Network and host environment are inherited.
 
-Shipyard makes no hostile-code isolation claim.
+Harborist makes no hostile-code isolation claim.
 
 ---
 
@@ -2963,7 +2963,7 @@ Phase 1:
 
 ```text
 10–15 real bounded issues
-on Shipyard itself
+on Harborist itself
 ```
 
 Phase 2:
@@ -2994,7 +2994,7 @@ Control:
 Issue → direct Codex
 
 Experiment:
-same Issue/base → Shipyard → Codex
+same Issue/base → Harborist → Codex
 ```
 
 Compare:
@@ -3008,7 +3008,7 @@ Compare:
 - candidate correctness;
 - time/usage overhead.
 
-Shipyard need not be faster.
+Harborist need not be faster.
 
 It must not materially reduce candidate correctness.
 
@@ -3020,7 +3020,7 @@ The PoC hypothesis is trust-first.
 
 ## 90.1 Hypothesis
 
-Will an individual engineer repeatedly use Shipyard to turn real issues into trustworthy Pull Requests in a normal GitHub workflow?
+Will an individual engineer repeatedly use Harborist to turn real issues into trustworthy Pull Requests in a normal GitHub workflow?
 
 ---
 
@@ -3028,7 +3028,7 @@ Will an individual engineer repeatedly use Shipyard to turn real issues into tru
 
 MVP adds:
 
-- local background Shipyard service;
+- local background Harborist service;
 - durable indexed Run/Attempt storage;
 - asynchronous execution;
 - queue;
@@ -3072,7 +3072,7 @@ GitHub remains the collaboration and approval surface.
 
 ## 91.1 Hypothesis
 
-Can a real engineering team depend on Shipyard as shared infrastructure for trustworthy agent-driven implementation across multiple repositories?
+Can a real engineering team depend on Harborist as shared infrastructure for trustworthy agent-driven implementation across multiple repositories?
 
 ---
 
@@ -3182,15 +3182,15 @@ These are validation targets, not hard Product limits.
 
 The strongest final milestone signal is:
 
-> If Shipyard disappeared tomorrow, would the team actively want it back in its normal engineering workflow?
+> If Harborist disappeared tomorrow, would the team actively want it back in its normal engineering workflow?
 
 Supporting behavior includes:
 
 - continued voluntary use;
 - repeated Run submissions;
 - PRs actually merged;
-- Operators choosing Shipyard rather than direct coding-agent usage;
-- reviewers using Shipyard evidence;
+- Operators choosing Harborist rather than direct coding-agent usage;
+- reviewers using Harborist evidence;
 - teams continuing after the novelty period.
 
 Product Milestone 1 is not complete merely because all code exists.
@@ -3212,9 +3212,9 @@ Product Milestone 1 is not complete merely because all code exists.
 - weekly active Operators;
 - Runs per active Project;
 - repeat Run rate;
-- percentage of Projects with recurring Shipyard usage;
+- percentage of Projects with recurring Harborist usage;
 - published PRs;
-- merged Shipyard PRs.
+- merged Harborist PRs.
 
 ## Reliability
 
@@ -3271,7 +3271,7 @@ Product Milestone 1 does **not** include:
 - automatic rework loops;
 - automatic recovery without authorization;
 - arbitrary multiple playbooks;
-- project-owned private Shipyard skill forks;
+- project-owned private Harborist skill forks;
 - generic plugin runtime;
 - Slack/Teams/email notification framework;
 - general-purpose workflow automation;
@@ -3292,7 +3292,7 @@ Product Milestone 1 does **not** include:
 
 The following are architecture-level invariants unless explicitly revisited through a future PRD:
 
-1. **Shipyard wraps native coding agents; it does not replace their internal reasoning/tool loop.**
+1. **Harborist wraps native coding agents; it does not replace their internal reasoning/tool loop.**
 2. **`spec.md` is the acceptance contract; `plan.md` is implementation guidance.**
 3. **BUILD cannot silently rewrite the frozen spec.**
 4. **Mandatory TEST failures cannot be overridden by semantic review.**
@@ -3300,14 +3300,14 @@ The following are architecture-level invariants unless explicitly revisited thro
 6. **Verification is bound to an exact candidate SHA.**
 7. **Fresh agent invocations are used for independent stages.**
 8. **Execution and publication authority remain separate.**
-9. **Shipyard does not automatically merge.**
+9. **Harborist does not automatically merge.**
 10. **Product Milestone 1 does not orchestrate deployments.**
 11. **Runs freeze execution-semantic policy.**
 12. **Human review feedback cannot silently rewrite a Run’s spec.**
 13. **Rework creates a new Attempt, not a continuation of an agent session.**
 14. **Recovery creates fresh execution from durable validated state.**
-15. **Shipyard never silently rebases an existing Run onto a moving target branch.**
-16. **Shipyard never force-pushes over collaboration state that changed after an Attempt began.**
+15. **Harborist never silently rebases an existing Run onto a moving target branch.**
+16. **Harborist never force-pushes over collaboration state that changed after an Attempt began.**
 17. **Historical verification results are not rewritten by later CI/human events.**
 18. **The factory may recommend improvements but may not silently activate them.**
 19. **First-party UI/CLI/MCP do not receive hidden state-changing capabilities unavailable through the supported control plane.**
@@ -3438,7 +3438,7 @@ TEST can checkout/inspect the exact candidate SHA independently.
 
 Build:
 
-- `shipyard.yaml`;
+- `harborist.yaml`;
 - base-revision config freezing;
 - mandatory check executor;
 - complete check collection.
@@ -3449,7 +3449,7 @@ All configured checks run.
 
 Any failed mandatory check prevents REVIEW.
 
-A BUILD modification to `shipyard.yaml` cannot alter current Run verification.
+A BUILD modification to `harborist.yaml` cannot alter current Run verification.
 
 ---
 
@@ -3587,7 +3587,7 @@ Build:
 
 Unauthorized GitHub commenters cannot create Runs.
 
-Every state-changing GitHub command maps to a stable Shipyard actor.
+Every state-changing GitHub command maps to a stable Harborist actor.
 
 ---
 
@@ -3700,7 +3700,7 @@ Build:
 
 ### Acceptance
 
-Shipyard cannot activate its own recommendation.
+Harborist cannot activate its own recommendation.
 
 Every recommendation exposes its evidence basis.
 
@@ -3844,7 +3844,7 @@ Publish candidate and later fail GitHub required CI.
 Expected:
 
 ```text
-Shipyard verification remains VERIFIED
+Harborist verification remains VERIFIED
 GitHub CI == FAILING
 ```
 
@@ -3875,15 +3875,15 @@ same resulting domain behavior
 
 | Feature | Decision |
 |---|---|
-| 0 | Issue → Shipyard → agent → spec → implementation → verification → code + evidence |
+| 0 | Issue → Harborist → agent → spec → implementation → verification → code + evidence |
 | 1 | Free-form intent; design detects missing product intent |
-| 2 | One canonical playbook; explicit Shipyard skills |
+| 2 | One canonical playbook; explicit Harborist skills |
 | 3 | `intent.md` → `spec.md` → `plan.md`; no PoC human gate |
 | 4 | BUILD may adapt plan, never silently rewrite spec |
 | 5 | Explicit trusted checks; all run; any mandatory failure stops REVIEW |
 | 6 | Fresh independent semantic review; PASS/FAIL/UNVERIFIED |
 | 7 | Evidence/report for every terminal result |
-| 8 | `shipyard.yaml` verification-only; frozen from base revision |
+| 8 | `harborist.yaml` verification-only; frozen from base revision |
 | 9 | Small NativeAgent interface; Codex first |
 | 10 | Frozen base SHA; isolated worktree |
 | 11 | Frozen elastic execution budget; PACKAGE outside budget |
@@ -3915,8 +3915,8 @@ same resulting domain behavior
 | 37 | Evidence-based learning recommendations; human activation |
 | 38 | Organization methodology library; immutable versions |
 | 39 | One canonical playbook; Project version override for rollout |
-| 40 | Authorized `/shipyard run`; infer Project only when unambiguous |
-| 41 | Explicit `/shipyard rework`; frozen spec; separate publication |
+| 40 | Authorized `/harborist run`; infer Project only when unambiguous |
+| 41 | Explicit `/harborist rework`; frozen spec; separate publication |
 | 42 | Incremental candidate lineage; drift surfaced; integration status separate |
 | 43 | GitHub CI separate from VERIFIED; bounded CI evidence |
 | 44 | Observe merge; provenance strength; no deployment |
@@ -3938,7 +3938,7 @@ same resulting domain behavior
 
 # 100. Final Product Thesis
 
-Shipyard should not win by generating code more aggressively than native coding agents.
+Harborist should not win by generating code more aggressively than native coding agents.
 
 It should win by making their work **dependable**.
 
@@ -3966,6 +3966,6 @@ Here is the complete evidence chain.
 
 That is the product.
 
-Shipyard is therefore best understood as:
+Harborist is therefore best understood as:
 
 > **A headless, governed, evidence-driven software factory control plane that makes native coding-agent output trustworthy enough to become normal engineering delivery infrastructure.**

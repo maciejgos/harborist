@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
+from harborist.cli import app
 from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
@@ -18,12 +18,12 @@ runner = CliRunner()
 def target(tmp_path: Path) -> Path:
     path = tmp_path / "target"
     init_repository(path)
-    (path / "shipyard.yaml").write_text(
+    (path / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'test -f requested.txt'}]\n"
     )
     git(path, "add", ".")
     git(path, "commit", "-m", "base")
-    write_settings(path).rename(path / "shipyard.settings.yaml")
+    write_settings(path).rename(path / "harborist.settings.yaml")
     return path
 
 
@@ -45,9 +45,9 @@ def test_github_capture_failure_is_actionable(
     remedy: str,
     command: str,
 ) -> None:
-    from shipyard.agents import codex
-    from shipyard.application import execution
-    from shipyard.github import issues
+    from harborist.agents import codex
+    from harborist.application import execution
+    from harborist.github import issues
 
     original = subprocess.run
 
@@ -115,8 +115,8 @@ def test_github_capture_failure_is_actionable(
 def test_dispatch_rejects_before_application_calls(
     monkeypatch: pytest.MonkeyPatch, argument: str, options: list[str], explanation: str
 ) -> None:
-    from shipyard.application import capture as application_capture
-    from shipyard.application import execution
+    from harborist.application import capture as application_capture
+    from harborist.application import execution
 
     def forbidden(**kwargs: object) -> None:
         pytest.fail("Invalid invocation must not capture or execute")
@@ -135,12 +135,12 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
 ) -> None:
     import json
 
-    from shipyard.agents import codex
-    from shipyard.application import capture as application_capture
-    from shipyard.application.execution import execute_run
-    from shipyard.domain import RunContract
-    from shipyard.github import issues
-    from shipyard.persistence import FileRunStore
+    from harborist.agents import codex
+    from harborist.application import capture as application_capture
+    from harborist.application.execution import execute_run
+    from harborist.domain import RunContract
+    from harborist.github import issues
+    from harborist.persistence import FileRunStore
     from tests.application.test_run_execution import FakeAgent
 
     issue = tmp_path / "issue.md"
@@ -178,7 +178,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
         contract = original_create(**kwargs)  # type: ignore[arg-type]
         captures.append(contract)
         issue.unlink()
-        (target / "shipyard.settings.yaml").unlink()
+        (target / "harborist.settings.yaml").unlink()
         return contract
 
     def execute_once(**kwargs: object):  # type: ignore[no-untyped-def]
@@ -193,7 +193,7 @@ def test_combined_path_captures_once_and_executes_frozen_snapshot(
     monkeypatch.setattr(Path, "read_bytes", read)
     monkeypatch.setattr(issues.subprocess, "run", transport)
     monkeypatch.setattr(application_capture, "create_run", capture_once)
-    monkeypatch.setattr("shipyard.application.execution.execute_run", execute_once)
+    monkeypatch.setattr("harborist.application.execution.execute_run", execute_once)
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     nested = target / "nested"
     nested.mkdir()
@@ -242,8 +242,8 @@ def test_preflight_failure_retains_capture_and_recovers_without_live_inputs(
 ) -> None:
     import shlex
 
-    from shipyard.agents import codex
-    from shipyard.persistence import FileRunStore
+    from harborist.agents import codex
+    from harborist.persistence import FileRunStore
     from tests.application.test_run_execution import FakeAgent
 
     issue = tmp_path / "issue.md"
@@ -277,10 +277,10 @@ def test_preflight_failure_retains_capture_and_recovers_without_live_inputs(
     assert agent.calls == []
     assert "fresh external --workspace" in result.stderr
     command = shlex.split(result.stderr.split("Recover with:\n", 1)[1].splitlines()[0])
-    assert command[:3] == ["shipyard", "run", str(run_id)]
+    assert command[:3] == ["harborist", "run", str(run_id)]
     assert command[3:5] == ["--runs-dir", str(runs)]
     issue.unlink()
-    (target / "shipyard.settings.yaml").unlink()
+    (target / "harborist.settings.yaml").unlink()
     recovered = runner.invoke(app, command[1:])
     assert recovered.exit_code == 2, recovered.output
     assert "NEEDS_CLARIFICATION" in recovered.stdout
@@ -293,7 +293,7 @@ def test_preflight_failure_retains_capture_and_recovers_without_live_inputs(
 def test_file_capture_failure_has_correction_and_no_run(
     tmp_path: Path, target: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
-    from shipyard.agents import codex
+    from harborist.agents import codex
 
     issue = tmp_path / "missing.md"
     if failure == "unreadable":
@@ -341,7 +341,7 @@ def test_admitted_source_outcomes_retain_evidence_without_recovery(
     mode: str,
     status: int,
 ) -> None:
-    from shipyard.agents import codex
+    from harborist.agents import codex
     from tests.application.test_run_execution import FakeAgent
 
     agent = FakeAgent(mode)
@@ -377,8 +377,8 @@ def test_admitted_source_outcomes_retain_evidence_without_recovery(
 def test_source_configuration_selection(
     tmp_path: Path, target: Path, monkeypatch: pytest.MonkeyPatch, selection: str
 ) -> None:
-    from shipyard.agents import codex
-    from shipyard.domain import RunContract
+    from harborist.agents import codex
+    from harborist.domain import RunContract
     from tests.application.test_run_execution import FakeAgent
 
     agent = FakeAgent("clarify")
@@ -393,7 +393,7 @@ def test_source_configuration_selection(
     if selection == "invalid-override":
         override.write_text("invalid")
     if selection in {"relative-override", "invalid-default"}:
-        (target / "shipyard.settings.yaml").write_text("invalid")
+        (target / "harborist.settings.yaml").write_text("invalid")
     if selection == "budget":
         options = ["--timeout", "100", "--verification-reserve", "100"]
     workspace = tmp_path / "custom workspace"
@@ -442,6 +442,6 @@ def test_run_help_documents_both_modes() -> None:
         "--context",
         "CREATED",
         "--workspace",
-        "shipyard.settings.yaml",
+        "harborist.settings.yaml",
     ):
         assert phrase in text

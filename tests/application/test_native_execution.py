@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.codex import CodexAgent
-from shipyard.application.stages import StageExecution, execute_stage
-from shipyard.application.verification import execute_test
-from shipyard.domain import Run, RunContract, RunOutcome
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.playbook_execution import StepOutcome
-from shipyard.domain.stage_result import AgentStage
-from shipyard.git import GitRepository
-from shipyard.verification.config import load_verification_config
+from harborist.agents.codex import CodexAgent
+from harborist.application.stages import StageExecution, execute_stage
+from harborist.application.verification import execute_test
+from harborist.domain import Run, RunContract, RunOutcome
+from harborist.domain.attempt import Attempt
+from harborist.domain.playbook_execution import StepOutcome
+from harborist.domain.stage_result import AgentStage
+from harborist.git import GitRepository
+from harborist.verification.config import load_verification_config
 from tests.agents.test_codex import fake
 from tests.git_helpers import git, init_repository
 
@@ -70,7 +70,7 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
     )
     repository = tmp_path / "repository"
     init_repository(repository)
-    (repository / "shipyard.yaml").write_text(
+    (repository / "harborist.yaml").write_text(
         "version: 1\nchecks:\n  - id: test\n    command: "
         + ("test -f implemented.txt" if check_passes else "exit 1")
         + "\n"
@@ -117,7 +117,7 @@ pathlib.Path(args[args.index('--output-last-message') + 1]).write_text(json.dump
         if stage == AgentStage.PLAN:
             upstream["plan.md"] = directory / "plan.md"
     candidate = isolated.publish_candidate(
-        message="Shipyard candidate\n\nExplicit caller message"
+        message="Harborist candidate\n\nExplicit caller message"
     )
     assert (
         git(repository, "rev-parse", isolated.candidate_ref) == candidate.candidate_sha

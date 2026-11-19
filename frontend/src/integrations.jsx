@@ -76,11 +76,11 @@ function CodexIntegration({ workspaces }) {
 
   return <section className="integration-panel">
     <h2>Codex</h2>
-    <p className="muted">Check Codex CLI login in the Shipyard service environment.</p>
+    <p className="muted">Check Codex CLI login in the Harborist service environment.</p>
     <Button disabled={busy} onClick={check}>{busy ? "Checking…" : "Check Codex"}</Button>
     {result && <p role="status" className={result.status === "ready" ? "integration-connected" : "notice"}>
       {result.message}
-      {result.status === "cli_missing" && " Restart the Shipyard service after installing it."}
+      {result.status === "cli_missing" && " Restart the Harborist service after installing it."}
     </p>}
     <h3>Execution profile</h3>
     {workspace ? <>

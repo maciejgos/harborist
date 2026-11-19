@@ -55,16 +55,16 @@ Both Phase 4 acceptance statements pass:
 
 With the added audit integration test:
 
-- `UV_CACHE_DIR=/tmp/shipyard-uv-cache uv run pytest`: **544 passed**.
-- `UV_CACHE_DIR=/tmp/shipyard-uv-cache uv run ruff check .`: **passed**.
-- `UV_CACHE_DIR=/tmp/shipyard-uv-cache uv run pyright`: **0 errors, 0 warnings**.
+- `UV_CACHE_DIR=/tmp/harborist-uv-cache uv run pytest`: **544 passed**.
+- `UV_CACHE_DIR=/tmp/harborist-uv-cache uv run ruff check .`: **passed**.
+- `UV_CACHE_DIR=/tmp/harborist-uv-cache uv run pyright`: **0 errors, 0 warnings**.
 
 The cache override avoids this environment's read-only default uv cache.
 The all-stage integration test crosses the application, Codex adapter, actual
 subprocesses, JSON schemas, durable files and a real Git candidate checkout. A
 fake executable returns synthetic model responses. The fixture creates/commits
 the BUILD change with Git and supplies a synthetic successful TEST receipt; it
-is not evidence that Shipyard implements Phase 5 or Phase 6.
+is not evidence that Harborist implements Phase 5 or Phase 6.
 
 Codex invocation flags were checked against installed `codex exec --help` and
 [official Codex commands](https://learn.chatgpt.com/docs/developer-commands#codex-exec).

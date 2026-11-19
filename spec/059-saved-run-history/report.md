@@ -1,6 +1,6 @@
 # Saved Run history acceptance
 
-The history API, browser and CLI now include saved Runs under ~/.shipyard/runs,
+The history API, browser and CLI now include saved Runs under ~/.harborist/runs,
 merged with service submissions. Historical Runs are projected read-only, with
 no invented queue state, no required source checkout and no re-execution.
 

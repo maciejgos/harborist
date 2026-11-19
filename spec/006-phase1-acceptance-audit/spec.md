@@ -34,7 +34,7 @@
 Passing checks and present model names alone do not prove full acceptance. This
 audit does not establish a VERIFIED candidate, authorize scope deferrals, or change
 the phase gate. It is a documented assessment of one repository revision, not an
-executed Shipyard workflow or an independent native-agent REVIEW.
+executed Harborist workflow or an independent native-agent REVIEW.
 
 No new tests are required for this documentation-only work. Implementation may
 revise plan.md; acceptance changes must be explicit.

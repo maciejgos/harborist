@@ -7,12 +7,12 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.agents.base import AgentRequest, AgentResponse
-from shipyard.application import create_run
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract, RunOutcome
-from shipyard.domain.stage_result import AgentStage
-from shipyard.persistence import FileRunStore
+from harborist.agents.base import AgentRequest, AgentResponse
+from harborist.application import create_run
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract, RunOutcome
+from harborist.domain.stage_result import AgentStage
+from harborist.persistence import FileRunStore
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git
 
@@ -20,7 +20,7 @@ from tests.git_helpers import git
 def test_nested_workspace_identity_cleanup_and_evidence(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application import intake
+    from harborist.application import intake
 
     def no_recapture(*args: object, **kwargs: object) -> None:
         pytest.fail("execution must not recapture intent")
@@ -129,7 +129,7 @@ def test_invalid_placements_remain_created(
         workspace.mkdir()
         (workspace / "keep").write_text("retained")
     elif kind == "permission":
-        from shipyard.git import repository
+        from harborist.git import repository
 
         workspace = directory / "workspace"
 
@@ -192,7 +192,7 @@ def test_legacy_created_selection(
     expected = (
         tmp_path / "override"
         if override
-        else tmp_path / "home" / ".shipyard" / "workspaces" / str(contract.run_id)
+        else tmp_path / "home" / ".harborist" / "workspaces" / str(contract.run_id)
     )
     result = execute_run(
         store=store,
@@ -258,7 +258,7 @@ def test_identical_captures_keep_distinct_identity(
 def test_recorded_legacy_selection_remains_authoritative_and_immutable(
     tmp_path: Path, frozen_contract: RunContract, override: bool
 ) -> None:
-    from shipyard.persistence.workspace import WorkspaceSelection
+    from harborist.persistence.workspace import WorkspaceSelection
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     directory = store.directory(contract.run_id)
@@ -287,13 +287,13 @@ def test_recorded_legacy_selection_remains_authoritative_and_immutable(
 def test_legacy_existing_worktree_is_retained_before_admission(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.domain import Attempt
+    from harborist.domain import Attempt
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     store, repo, contract = capture(tmp_path, frozen_contract)
     directory = store.directory(contract.run_id)
     (directory / "workspace-layout.json").unlink()
-    destination = tmp_path / "home" / ".shipyard" / "workspaces" / str(contract.run_id)
+    destination = tmp_path / "home" / ".harborist" / "workspaces" / str(contract.run_id)
     repo.create_workspace(
         attempt=Attempt.create(contract.run_id, contract.base_sha), path=destination
     )

@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from shipyard.control.queue import DeliveryState, QueueStore, Submission
-from shipyard.control.worker import Worker
-from shipyard.domain import RunContract
-from shipyard.persistence import FileRunStore
+from harborist.control.queue import DeliveryState, QueueStore, Submission
+from harborist.control.worker import Worker
+from harborist.domain import RunContract
+from harborist.persistence import FileRunStore
 from tests.application.test_run_execution import FakeAgent, capture
 
 

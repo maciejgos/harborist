@@ -10,7 +10,7 @@
 4. Add `Attempt.create(run_id, start_sha)` using UUID4 and
    `Attempt.create_candidate(candidate_sha)` returning a separate Candidate with
    its owning Attempt ID. Helpers use validated constructors, not unchecked copies.
-5. Export the three additions through `shipyard.domain` and update README.
+5. Export the three additions through `harborist.domain` and update README.
 
 Keep the records separate with no Run back-reference object, embedded candidate,
 or infrastructure dependencies. Keep Run unchanged. No new dependencies needed.

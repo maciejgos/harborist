@@ -11,7 +11,7 @@
 - AC-003: Prompt contains exact frozen upstream text, selected guidance,
   methodology/profile identities, stage duties, candidate context and remaining
   budget. Markdown outputs are returned in the final JSON envelope, allowing
-  read-only stages to produce artifacts through Shipyard.
+  read-only stages to produce artifacts through Harborist.
 - AC-004: Missing executable, nonzero process exit, timeout, missing/oversized or
   invalid UTF-8 final message raises AgentExecutionError. Enforce supplied timeout
   and best-effort terminate the process group. Temporary schema/output files are

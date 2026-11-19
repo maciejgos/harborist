@@ -25,5 +25,5 @@ Later orchestration will create events after successful operations.
   and filesystem persistence behind its boundary.
 
 Follow the manual `intent.md → spec.md → plan.md` pattern; do not claim an
-executed Shipyard Run or independent agent stages. Preserve earlier specifications.
+executed Harborist Run or independent agent stages. Preserve earlier specifications.
 Emission, persistence, replay, and full audit behavior remain future work.

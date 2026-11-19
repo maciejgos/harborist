@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.agents import codex
-from shipyard.application import execution
-from shipyard.cli import app
-from shipyard.domain import RunContract
+from harborist.agents import codex
+from harborist.application import execution
+from harborist.cli import app
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -85,7 +85,7 @@ def test_cli_finalization_failure_is_safe(
     boundary: str,
     mode: str,
 ) -> None:
-    from shipyard.persistence import FileRunStore
+    from harborist.persistence import FileRunStore
 
     _, _, contract = capture(tmp_path, frozen_contract)
     monkeypatch.setattr(codex, "CodexAgent", lambda: FakeAgent(mode))

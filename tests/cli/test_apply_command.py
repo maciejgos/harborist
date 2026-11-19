@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
-from shipyard.domain import RunContract
+from harborist.cli import app
+from harborist.domain import RunContract
 from tests.application.test_apply import packaged as packaged  # noqa: PLC0414
 from tests.cli.conftest import strip_ansi
 
@@ -55,7 +55,7 @@ def test_apply_help() -> None:
 def test_guidance_quotes_paths(tmp_path: Path) -> None:
     from uuid import uuid4
 
-    from shipyard.cli.run_summary import application_guidance
+    from harborist.cli.run_summary import application_guidance
 
     run_id = uuid4()
     repo = tmp_path / "repo with spaces"
@@ -64,7 +64,7 @@ def test_guidance_quotes_paths(tmp_path: Path) -> None:
     assert "Verified; awaiting application" in lines[0]
     command = shlex.split(lines[-1])
     assert command == [
-        "shipyard",
+        "harborist",
         "apply",
         str(run_id),
         "--branch",
@@ -79,8 +79,8 @@ def test_guidance_quotes_paths(tmp_path: Path) -> None:
 def test_saved_apply_context(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application.context import ExecutionContext
-    from shipyard.application.execution import execute_run
+    from harborist.application.context import ExecutionContext
+    from harborist.application.execution import execute_run
     from tests.application.test_run_execution import FakeAgent, capture
 
     store, repository, contract = capture(tmp_path, frozen_contract)

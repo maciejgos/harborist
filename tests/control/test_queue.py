@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.control.queue import DeliveryState, QueueStore, Submission
-from shipyard.domain import RunContract
-from shipyard.persistence import FileRunStore
+from harborist.control.queue import DeliveryState, QueueStore, Submission
+from harborist.domain import RunContract
+from harborist.persistence import FileRunStore
 
 
 def submission(tmp_path: Path, contract: RunContract) -> Submission:

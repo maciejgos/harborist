@@ -3,11 +3,11 @@
 ## Approach
 
 1. Record the manually prepared intent and acceptance contract before code.
-2. Bootstrap Python 3.14 with uv, Hatchling, a `src/shipyard/` package, and
+2. Bootstrap Python 3.14 with uv, Hatchling, a `src/harborist/` package, and
    Pydantic v2. Add pytest, Ruff (default lint rules, Python 3.14 target), and
    strict Pyright for source and tests. Pin Python and commit `uv.lock`.
 3. Implement and export RunLifecycle, RunOutcome, FailureReason, Run, and
-   InvalidRunTransition from `shipyard.domain`.
+   InvalidRunTransition from `harborist.domain`.
 4. Add parametrized invariant and transition tests, then document setup.
 
 ## Domain interface

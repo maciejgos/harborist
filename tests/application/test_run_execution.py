@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentExecutionError, AgentRequest, AgentResponse
-from shipyard.application.budget import BudgetClock
-from shipyard.application.execution import execute_run
-from shipyard.domain import FailureReason, RunContract, RunOutcome
-from shipyard.domain.stage_result import AgentStage
-from shipyard.git import GitRepository
-from shipyard.persistence import FileRunStore
-from shipyard.verification.config import load_verification_config
+from harborist.agents.base import AgentExecutionError, AgentRequest, AgentResponse
+from harborist.application.budget import BudgetClock
+from harborist.application.execution import execute_run
+from harborist.domain import FailureReason, RunContract, RunOutcome
+from harborist.domain.stage_result import AgentStage
+from harborist.git import GitRepository
+from harborist.persistence import FileRunStore
+from harborist.verification.config import load_verification_config
 from tests.git_helpers import git, init_repository
 
 
@@ -85,7 +85,7 @@ def capture(
 ) -> tuple[FileRunStore, GitRepository, RunContract]:
     repository = tmp_path / "repository"
     init_repository(repository)
-    (repository / "shipyard.yaml").write_text(
+    (repository / "harborist.yaml").write_text(
         f"version: 1\nchecks:\n  - id: test\n    command: {check}\n"
     )
     git(repository, "add", ".")
@@ -242,8 +242,8 @@ def test_cli_runs_capture_and_returns_report_paths(
 ) -> None:
     from typer.testing import CliRunner
 
-    from shipyard.agents import codex
-    from shipyard.cli import app
+    from harborist.agents import codex
+    from harborist.cli import app
 
     store, _, contract = capture(tmp_path, frozen_contract)
     agent = FakeAgent()
@@ -311,7 +311,7 @@ def test_package_failure_is_surfaced_after_terminal_persistence(
     frozen_contract: RunContract,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from shipyard.application import execution
+    from harborist.application import execution
 
     def unavailable(**kwargs: object) -> None:
         raise OSError("disk full during PACKAGE")
@@ -411,7 +411,7 @@ def test_default_workspace_uses_custom_runs_root(
     assert result.candidate is not None
     assert git(workspace, "rev-parse", "HEAD") == result.candidate.candidate_sha
     assert (store.directory(contract.run_id) / "evidence.json").is_file()
-    assert not (tmp_path / "repository" / ".shipyard").exists()
+    assert not (tmp_path / "repository" / ".harborist").exists()
 
 
 @pytest.mark.parametrize("kind", ["overlap", "alias", "existing", "file", "permission"])
@@ -429,12 +429,12 @@ def test_default_workspace_errors_leave_run_created(
     elif kind == "alias":
         home.symlink_to(tmp_path / "repository", target_is_directory=True)
     monkeypatch.setenv("HOME", str(home))
-    workspace = home / ".shipyard" / "workspaces" / str(contract.run_id)
+    workspace = home / ".harborist" / "workspaces" / str(contract.run_id)
     if kind == "existing":
         workspace.mkdir(parents=True)
     elif kind == "file":
         home.mkdir()
-        (home / ".shipyard").write_text("preserve")
+        (home / ".harborist").write_text("preserve")
     elif kind == "permission":
         original = Path.mkdir
 
@@ -455,10 +455,10 @@ def test_default_workspace_errors_leave_run_created(
     assert store.load_state(contract.run_id).lifecycle.value == "CREATED"
     assert not (store.directory(contract.run_id) / ".execution").exists()
     if kind in {"overlap", "alias"}:
-        assert not (tmp_path / "repository" / ".shipyard").exists()
+        assert not (tmp_path / "repository" / ".harborist").exists()
         assert not (tmp_path / "repository" / "home").exists()
     if kind == "file":
-        assert (home / ".shipyard").read_text() == "preserve"
+        assert (home / ".harborist").read_text() == "preserve"
     result = execute_run(
         store=store,
         run_id=contract.run_id,
@@ -473,7 +473,7 @@ def test_default_workspace_errors_leave_run_created(
 def test_candidate_message_uses_frozen_source_and_retains_identities(
     tmp_path: Path, frozen_contract: RunContract, source_ref: str
 ) -> None:
-    from shipyard.domain import Attempt, IntentSnapshot
+    from harborist.domain import Attempt, IntentSnapshot
 
     intent = IntentSnapshot.create(
         run_id=frozen_contract.run_id,
@@ -521,9 +521,9 @@ def test_candidate_message_uses_frozen_source_and_retains_identities(
         result.candidate.candidate_sha,
     )
     subject = (
-        "Shipyard candidate for acme/source#42"
+        "Harborist candidate for acme/source#42"
         if source_ref.startswith("github:")
-        else "Shipyard candidate"
+        else "Harborist candidate"
     )
     assert message == (
         f"{subject}\n\nRun: {contract.run_id}\nAttempt: {attempt.attempt_id}"
@@ -570,7 +570,7 @@ def test_invalid_design_stops_before_plan(
 def test_empty_intent_reaches_design_for_clarification(
     tmp_path: Path, frozen_contract: RunContract, markdown: str
 ) -> None:
-    from shipyard.domain import IntentSnapshot
+    from harborist.domain import IntentSnapshot
 
     template = RunContract.model_validate(
         {
@@ -612,7 +612,7 @@ def test_test_cannot_verify_hidden_tracked_changes(
     store, repo, contract = capture(
         tmp_path,
         frozen_contract,
-        "git update-index --assume-unchanged shipyard.yaml && echo hidden >> shipyard.yaml",
+        "git update-index --assume-unchanged harborist.yaml && echo hidden >> harborist.yaml",
     )
     agent = FakeAgent()
     result = execute_run(

@@ -11,11 +11,11 @@ from uuid import uuid4
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.agents import codex
-from shipyard.application.context import ExecutionContext
-from shipyard.cli import app
-from shipyard.domain import RunContract
-from shipyard.persistence import FileRunStore
+from harborist.agents import codex
+from harborist.application.context import ExecutionContext
+from harborist.cli import app
+from harborist.domain import RunContract
+from harborist.persistence import FileRunStore
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
@@ -30,19 +30,19 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
     project = Path(__file__).resolve().parents[2]
     binary = tmp_path / "bin"
     binary.mkdir()
-    entry = binary / "shipyard"
+    entry = binary / "harborist"
     entry.write_text(
         f"#!{sys.executable}\n"
-        "from shipyard.agents import codex\n"
+        "from harborist.agents import codex\n"
         "from tests.application.test_run_execution import FakeAgent\n"
         "codex.CodexAgent = lambda: FakeAgent('clarify')\n"
-        "from shipyard.cli import app\n"
+        "from harborist.cli import app\n"
         "app()\n"
     )
     entry.chmod(0o755)
     target = tmp_path / "target with 'quotes' and $dollars;"
     init_repository(target)
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'true'}]\n"
     )
     git(target, "add", ".")
@@ -54,9 +54,9 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
     home = tmp_path / "home with 'quotes' and $(touch bad);"
     home.mkdir()
     runs = {
-        "default": home / ".shipyard" / "runs",
+        "default": home / ".harborist" / "runs",
         "external": tmp_path / "runs with 'quotes' and $(touch bad);",
-        "inside": target / ".shipyard" / "runs",
+        "inside": target / ".harborist" / "runs",
     }[layout]
     environment = {
         **os.environ,
@@ -65,7 +65,7 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
         "PYTHONPATH": os.pathsep.join([str(project / "src"), str(project)]),
     }
     args = [
-        "shipyard",
+        "harborist",
         "intake",
         f"file:{issue}",
         "--repo",
@@ -95,7 +95,7 @@ def test_emitted_command_executes_from_another_cwd_via_posix_shell(
     else:
         assert intake.stderr == ""
     assert shlex.split(command) == [
-        "shipyard",
+        "harborist",
         "run",
         str(contract.run_id),
     ] + (["--runs-dir", str(runs)] if layout != "default" else [])
@@ -287,7 +287,7 @@ def test_context_rejects_explicit_conflicts(
     agent = FakeAgent("clarify")
     monkeypatch.setattr(codex, "CodexAgent", lambda: agent)
     if automatic:
-        monkeypatch.setattr("shipyard.cli.run.runs_root", lambda: path.parent.parent)
+        monkeypatch.setattr("harborist.cli.run.runs_root", lambda: path.parent.parent)
     arguments = ["run", "--foreground", str(contract.run_id)]
     if not automatic:
         arguments += ["--context", str(path)]
@@ -372,7 +372,7 @@ def test_explicit_context_alone_selects_locator(
     ).save()
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
-    competing = home / ".shipyard" / "runs" / str(contract.run_id) / path.name
+    competing = home / ".harborist" / "runs" / str(contract.run_id) / path.name
     competing.parent.mkdir(parents=True)
     competing.write_text("invalid automatic context")
     agent = FakeAgent("clarify")
@@ -398,7 +398,7 @@ def test_absent_context_keeps_legacy_selection_without_backfill(
     repository = tmp_path / "repository"
     if selection == "default":
         monkeypatch.setattr(
-            "shipyard.cli.run.runs_root",
+            "harborist.cli.run.runs_root",
             lambda: store.directory(contract.run_id).parent,
         )
     if selection == "explicit":

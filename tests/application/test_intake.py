@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application import create_run
-from shipyard.domain import GitCommitSha, Run, RunLifecycle
-from shipyard.domain.execution import ExecutionSnapshot
-from shipyard.git import GitRepository
-from shipyard.persistence import (
+from harborist.application import create_run
+from harborist.domain import GitCommitSha, Run, RunLifecycle
+from harborist.domain.execution import ExecutionSnapshot
+from harborist.git import GitRepository
+from harborist.persistence import (
     FileRunStore,
     RunAlreadyExistsError,
 )
-from shipyard.playbooks import MethodologyError
-from shipyard.verification import VerificationConfigError
+from harborist.playbooks import MethodologyError
+from harborist.verification import VerificationConfigError
 from tests.git_helpers import git, init_repository
 from tests.methodology_helpers import asset, playbook_asset, skill_asset
 
@@ -25,10 +25,10 @@ from tests.methodology_helpers import asset, playbook_asset, skill_asset
 def target(tmp_path: Path) -> Path:
     path = tmp_path / "target"
     init_repository(path)
-    (path / "shipyard.yaml").write_text(
+    (path / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: tests, command: pytest}]\n"
     )
-    git(path, "add", "shipyard.yaml")
+    git(path, "add", "harborist.yaml")
     git(path, "commit", "-m", "Base configuration")
     return path
 
@@ -45,7 +45,7 @@ def test_create_freezes_once_and_survives_all_mutable_inputs(
     run = Run.create()
     repository = GitRepository(path=target)
     base = repository.resolve_base()
-    (target / "shipyard.yaml").write_text("invalid uncommitted configuration")
+    (target / "harborist.yaml").write_text("invalid uncommitted configuration")
     index = target / ".git" / "index"
     before_index = index.read_bytes()
     original_resolve = repository.resolve_base
@@ -76,7 +76,7 @@ def test_create_freezes_once_and_survives_all_mutable_inputs(
     assert (directory / "intent.md").read_bytes() == source.read_bytes()
     before = (directory / "contract.json").read_bytes()
     source.unlink()
-    (target / "shipyard.yaml").write_text("invalid checkout settings")
+    (target / "harborist.yaml").write_text("invalid checkout settings")
     git(target, "commit", "--allow-empty", "-m", "Advance base")
     assert store.load(run.run_id).model_dump_json().encode() == before
     with pytest.raises(RunAlreadyExistsError):
@@ -115,8 +115,8 @@ def test_invalid_base_configuration_never_publishes_contract(
     target: Path,
     execution: ExecutionSnapshot,
 ) -> None:
-    (target / "shipyard.yaml").write_text("invalid")
-    git(target, "add", "shipyard.yaml")
+    (target / "harborist.yaml").write_text("invalid")
+    git(target, "add", "harborist.yaml")
     git(target, "commit", "-m", "Bad config")
     root = tmp_path / "runs"
     with pytest.raises(VerificationConfigError):
@@ -188,10 +188,10 @@ def test_explicit_ref_selects_older_committed_settings(
     issue = tmp_path / "issue.md"
     issue.write_text("Request")
     original = GitRepository(path=target).resolve_base()
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: tests, command: changed}]\n"
     )
-    git(target, "add", "shipyard.yaml")
+    git(target, "add", "harborist.yaml")
     git(target, "commit", "-m", "New checks")
     contract = create_run(
         source=f"file:{issue}",

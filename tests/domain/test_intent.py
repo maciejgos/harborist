@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import ArtifactKind, ArtifactStage, IntentSnapshot
+from harborist.domain import ArtifactKind, ArtifactStage, IntentSnapshot
 
 
 def test_snapshot_factory_preserves_content_and_ownership() -> None:

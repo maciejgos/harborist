@@ -2,12 +2,12 @@ import hashlib
 
 import pytest
 
-from shipyard.domain.stage_result import (
+from harborist.domain.stage_result import (
     CriterionResult,
     CriterionStatus,
     InvalidStageOutput,
 )
-from shipyard.review.criteria import extract_criteria, validate_coverage
+from harborist.review.criteria import extract_criteria, validate_coverage
 
 
 def test_extract_explicit_declarations_and_exact_digest() -> None:

@@ -5,12 +5,12 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from shipyard.agents.base import AgentInput, AgentRequest, output_schema, parse_output
-from shipyard.configuration.execution import load_execution_settings
-from shipyard.domain.artifact import ArtifactStage
-from shipyard.domain.execution import AgentProfile
-from shipyard.domain.stage_result import AgentStage, InvalidStageOutput
-from shipyard.skills.composition import compile_methodology, compose_guidance
+from harborist.agents.base import AgentInput, AgentRequest, output_schema, parse_output
+from harborist.configuration.execution import load_execution_settings
+from harborist.domain.artifact import ArtifactStage
+from harborist.domain.execution import AgentProfile
+from harborist.domain.stage_result import AgentStage, InvalidStageOutput
+from harborist.skills.composition import compile_methodology, compose_guidance
 from tests.settings_helpers import write_settings
 
 
@@ -74,7 +74,7 @@ def test_only_build_may_report_development_checks(tmp_path: Path) -> None:
 
 
 def test_build_revision_and_review_candidate(tmp_path: Path) -> None:
-    from shipyard.domain.candidate import Candidate
+    from harborist.domain.candidate import Candidate
 
     req = request(tmp_path)
     compiled = compile_methodology(

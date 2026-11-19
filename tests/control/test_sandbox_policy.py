@@ -4,9 +4,9 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.control.queue import QueueStore
-from shipyard.control.saved_workspaces import WorkspaceSettings
-from shipyard.control.service import ControlService
+from harborist.control.queue import QueueStore
+from harborist.control.saved_workspaces import WorkspaceSettings
+from harborist.control.service import ControlService
 from tests.application.test_run_execution import FakeAgent
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
@@ -16,7 +16,7 @@ def test_app_edits_selected_workspace_policy_and_redacts_errors(tmp_path: Path) 
     root = tmp_path / "repo"
     init_repository(root)
     settings = write_settings(root)
-    (root / "shipyard.yaml").write_text(
+    (root / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'true'}]\n"
     )
     git(root, "add", ".")

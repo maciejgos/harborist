@@ -25,6 +25,6 @@ in the adapter and validated content identity in the domain.
 - [Architecture](../../ARCHITECTURE.md): local synchronous execution and domain
   independence from filesystem operations.
 
-Prepare intent/spec/plan manually; do not claim an executed Shipyard workflow.
+Prepare intent/spec/plan manually; do not claim an executed Harborist workflow.
 This slice captures source text, not normalized semantic intent. Durable storage,
 GitHub/CLI intake, and the full frozen Run contract remain future work.

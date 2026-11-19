@@ -1,6 +1,6 @@
 # Phase 14 workers and Docker Sandboxes
 
-[GitHub issue #44](https://github.com/maciejgos/shipyard/issues/44)
+[GitHub issue #44](https://github.com/maciejgos/harborist/issues/44)
 
 Product workers execute Attempts in fresh Docker Sandboxes microVMs. A worker
 may run on a different machine from the control plane; sandbox compute stays
@@ -77,16 +77,16 @@ increment does not change existing frozen Runs or complete this whole phase.
   continuation inputs. Never attach to an existing sandbox on a naming
   collision or reuse an earlier Attempt's VM, agent sessions, writable volumes,
   or caches. Do not mount the developer checkout, its Git common directory,
-  Shipyard control/evidence storage, host Docker socket, home configuration,
+  Harborist control/evidence storage, host Docker socket, home configuration,
   or SSH agent. Disable shared agent skills and MCP access; supply only frozen
-  Shipyard methodology. Developer staged, unstaged, untracked, and ignored
+  Harborist methodology. Developer staged, unstaged, untracked, and ignored
   files remain untouched and are not copied into execution.
 - **AC-7 · Canonical execution and verification.** The worker invokes the
   synchronous execution core with `INTAKE → DESIGN → PLAN → BUILD → TEST →
   REVIEW → PACKAGE`; it does not create a second workflow engine. DESIGN,
   PLAN, BUILD, and REVIEW use fresh noninteractive native-agent processes,
   validated structured output, and the frozen model/profile. BUILD cannot
-  change the frozen acceptance spec. Shipyard creates and records the candidate
+  change the frozen acceptance spec. Harborist creates and records the candidate
   commit, runs the frozen mandatory TEST commands against that exact SHA, and
   blocks REVIEW on mandatory failure. REVIEW is independent and read-only.
   Keep runner control and authoritative receipts outside agent-writable state;
@@ -178,7 +178,7 @@ must repeat this durability proof with its Product storage implementation.
 ## Docker reference baseline
 
 Checked against Docker documentation on 2026-11-19. These references describe
-provider capabilities; the acceptance criteria above define Shipyard policy.
+provider capabilities; the acceptance criteria above define Harborist policy.
 
 - [Docker Sandboxes overview](https://docs.docker.com/ai/sandboxes/) and
   [local/cloud differences](https://docs.docker.com/ai/sandboxes/cloud/local-vs-cloud/).

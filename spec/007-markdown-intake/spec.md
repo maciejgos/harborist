@@ -29,8 +29,8 @@
   filesystem/decoding exception as cause. Invalid model metadata remains a
   Pydantic validation error.
 - **AC-007 — Interfaces and boundaries:** Export IntentSnapshot through
-  shipyard.domain and read_markdown_intent/MarkdownIntakeError through
-  shipyard.intake. Keep domain code free of filesystem operations. Add no
+  harborist.domain and read_markdown_intent/MarkdownIntakeError through
+  harborist.intake. Keep domain code free of filesystem operations. Add no
   dependencies or interface hierarchy and preserve existing behavior.
 - **AC-008 — Documentation:** Record intent, specification, and plan separately;
   document the callable API and limitations in README and add the intake adapter

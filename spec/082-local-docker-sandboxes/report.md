@@ -19,7 +19,7 @@ Platform: Apple silicon macOS, Docker Sandboxes 0.54.0, Codex 0.170.0,
 
 A disposable greeting request completed DESIGN, PLAN, BUILD, TEST, REVIEW, and
 PACKAGE with VERIFIED. This is a test-repository candidate, not verification
-of the Shipyard implementation itself:
+of the Harborist implementation itself:
 
 - Run: `18914a5b-b55b-4045-96a3-de25bf2b3a66`.
 - Exact candidate: `9d486e612cb371f0bd694af09ffa77bdeb732f17`.

@@ -24,7 +24,7 @@ methodology. Earlier captures remain inspectable, but their REVIEW inputs must
 satisfy the current explicit contract before execution.
 
 No live authenticated Codex invocation is claimed. Semantic PASS remains an agent
-assessment, supported by human-readable review.md; Shipyard validates coverage and
+assessment, supported by human-readable review.md; Harborist validates coverage and
 consistency, not the truth of arbitrary prose. Captures/verification records are
 trusted-local attestations and do not authenticate maliciously edited files.
 Exclusive workspace use is required. Create-only capture is not crash-atomic.

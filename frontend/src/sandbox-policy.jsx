@@ -59,7 +59,7 @@ function PolicyEditor({ workspace }) {
           <Field label="CPUs" name="cpus" type="number" min={1} max={16} defaultValue={policy.cpus} required disabled={busy} />
           <Field label="Memory (MiB)" name="memory_mib" type="number" min={512} max={32768} defaultValue={policy.memory_mib} required disabled={busy} />
         </div>
-        <p className="muted">Network rules apply to Shipyard’s disposable sandboxes on top of Docker’s machine policy. Deny rules take precedence. Saving does not edit Docker’s global policy.</p>
+        <p className="muted">Network rules apply to Harborist’s disposable sandboxes on top of Docker’s machine policy. Deny rules take precedence. Saving does not edit Docker’s global policy.</p>
         <label className="field">Additional allowed destinations
           <textarea className="input" aria-label="Additional allowed destinations" name="allow" rows={4} defaultValue={policy.allow.join("\n")} placeholder="registry.example.com:443" aria-describedby="sandbox-rule-help" disabled={busy} />
         </label>

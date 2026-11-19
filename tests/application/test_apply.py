@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git
 
@@ -35,7 +35,7 @@ def packaged(
 def test_apply_and_repeat_preserve_run(
     packaged: tuple[Path, Path, RunContract, str],
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, candidate = packaged
     directory = root / str(contract.run_id)
@@ -73,7 +73,7 @@ def test_apply_and_repeat_preserve_run(
 def test_invalid_evidence_refuses(
     packaged: tuple[Path, Path, RunContract, str], corruption: str
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, _ = packaged
     directory = root / str(contract.run_id)
@@ -98,7 +98,7 @@ def test_invalid_evidence_refuses(
 def test_retained_workspace_is_mutable(
     packaged: tuple[Path, Path, RunContract, str], tmp_path: Path
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, candidate = packaged
     (tmp_path / "work" / "requested.txt").write_text("unverified workspace edit")
@@ -112,8 +112,8 @@ def test_retained_workspace_is_mutable(
 def test_receipt_failure_and_retry(
     packaged: tuple[Path, Path, RunContract, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application.apply import apply_run
-    from shipyard.persistence.application import ApplicationStore
+    from harborist.application.apply import apply_run
+    from harborist.persistence.application import ApplicationStore
 
     root, repo, contract, candidate = packaged
     publish = ApplicationStore.publish
@@ -137,7 +137,7 @@ def test_receipt_failure_and_retry(
 def test_preparation_failure_blocks_git(
     packaged: tuple[Path, Path, RunContract, str],
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, _ = packaged
     (root / "applications").write_text("obstruction")
@@ -150,7 +150,7 @@ def test_preparation_failure_blocks_git(
 def test_target_requires_new_run(
     packaged: tuple[Path, Path, RunContract, str], position: str
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, candidate = packaged
     if position == "ahead":
@@ -167,7 +167,7 @@ def test_target_requires_new_run(
 def test_omitted_test_log_is_incomplete(
     packaged: tuple[Path, Path, RunContract, str],
 ) -> None:
-    from shipyard.application.apply import apply_run
+    from harborist.application.apply import apply_run
 
     root, repo, contract, _ = packaged
     path = root / str(contract.run_id) / "evidence.json"
@@ -186,8 +186,8 @@ def test_unindexed_context_and_repository_conflict_are_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from shipyard.application.apply import apply_run
-    from shipyard.application.context import ExecutionContext
+    from harborist.application.apply import apply_run
+    from harborist.application.context import ExecutionContext
     from tests.git_helpers import init_repository
 
     root, repo, contract, candidate = packaged
@@ -214,7 +214,7 @@ def test_unindexed_context_and_repository_conflict_are_rejected(
 def test_publication_rejects_wrong_approval_and_moved_candidate_ref(
     packaged: tuple[Path, Path, RunContract, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application import publication
+    from harborist.application import publication
 
     root, repo, contract, candidate = packaged
     run_id = contract.run_id
@@ -259,17 +259,17 @@ def test_selected_github_review_starts_fresh_verification(
 ) -> None:
     from datetime import UTC, datetime
 
-    from shipyard.application.collaboration import Observation
-    from shipyard.application.publication import publication_directory
-    from shipyard.domain import RunOutcome
-    from shipyard.domain.continuation import (
+    from harborist.application.collaboration import Observation
+    from harborist.application.publication import publication_directory
+    from harborist.domain import RunOutcome
+    from harborist.domain.continuation import (
         ContinuationRequest,
         GitHubFeedbackSelection,
     )
-    from shipyard.git.repository import GitRepository
-    from shipyard.github.collaboration import CheckPage, Feedback, StatusPage
-    from shipyard.persistence import FileRunStore
-    from shipyard.persistence.continuation import prepare_continuation
+    from harborist.git.repository import GitRepository
+    from harborist.github.collaboration import CheckPage, Feedback, StatusPage
+    from harborist.persistence import FileRunStore
+    from harborist.persistence.continuation import prepare_continuation
 
     root, repo, contract, candidate = packaged
     run_id = contract.run_id
@@ -334,8 +334,8 @@ def test_publication_pushes_exact_candidate_and_reconciles_retry(
     packaged: tuple[Path, Path, RunContract, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from shipyard.application import publication
-    from shipyard.git.publication import push_candidate
+    from harborist.application import publication
+    from harborist.git.publication import push_candidate
 
     root, repo, contract, candidate = packaged
     monkeypatch.chdir(repo)
@@ -343,7 +343,7 @@ def test_publication_pushes_exact_candidate_and_reconciles_retry(
     remote.mkdir()
     git(remote, "init", "--bare")
     git(repo, "push", str(remote), f"{contract.base_sha}:refs/heads/main")
-    branch = f"shipyard/{contract.run_id}"
+    branch = f"harborist/{contract.run_id}"
     ref = f"refs/heads/{branch}"
     run_git = publication.run_git
     pulls: list[dict[str, object]] = []

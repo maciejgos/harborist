@@ -8,7 +8,7 @@
   unknown fields, invalid domain settings and unreadable/invalid UTF-8 assets.
   SettingsError preserves the cause and source-path context without echoing content.
 - AC-003: YAML cannot supply budget. An explicit application-provided budget wins;
-  otherwise Shipyard supplies 1800 seconds overall and 300 for verification.
+  otherwise Harborist supplies 1800 seconds overall and 300 for verification.
 - AC-004: Frozen snapshots and JSON round-trips survive deletion/editing of original
   settings and assets. Existing verification YAML semantics remain unchanged.
 

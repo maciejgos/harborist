@@ -42,13 +42,13 @@ FINISHED means the executor returned packaged evidence, not VERIFIED. FAILED
 means the executor raised; retained Run records remain authoritative.
 INTERRUPTED means service ownership was lost after claim. Restart never retries
 or resumes it, even if the Run still appears CREATED or terminal. Operators
-inspect retained records and explicitly use `shipyard recover` where eligible
+inspect retained records and explicitly use `harborist recover` where eligible
 (with an additional-time grant after worker loss), or use fresh intake. See
 [rework and recovery](usage.md#rework-and-recovery). A crash after PACKAGE but before queue completion may
 therefore show INTERRUPTED beside a valid terminal Run.
 
 GET /health, GET /runs and GET /runs/{uuid} read persisted records. Run history
-combines UUID captures under ~/.shipyard/runs with service submissions. Progress is
+combines UUID captures under ~/.harborist/runs with service submissions. Progress is
 observational and may lag; validated lifecycle and immutable terminal evidence
 are authoritative. Concurrent lifecycle writes may temporarily yield an explicit
 unavailable status rather than fabricated state. Artifact references identify packaged files. An allowlisted GET endpoint serves
@@ -68,12 +68,12 @@ control directory and mode 0600. Local filesystem owner is the trust boundary.
 ## Operation
 
 ```bash
-uv run shipyard service start
-uv run shipyard run file:examples/intake/issue.md
-uv run shipyard runs
-uv run shipyard status <run-id> --wait
-uv run shipyard service status
-uv run shipyard service stop
+uv run harborist service start
+uv run harborist run file:examples/intake/issue.md
+uv run harborist runs
+uv run harborist status <run-id> --wait
+uv run harborist service status
+uv run harborist service stop
 ```
 
 `start` detaches a new process and waits for readiness. Repeating it while the
@@ -95,7 +95,7 @@ observational progress and package file availability. `status --wait` polls and
 returns the terminal delivery record; it also exits zero for a successful read,
 regardless of software outcome. Inspect `run.outcome` and `run.failure_reason`.
 Interrupting the viewer leaves the service running. Listings include saved Runs
-under ~/.shipyard/runs and submissions in the selected service.
+under ~/.harborist/runs and submissions in the selected service.
 
 `run --foreground` retains the former synchronous output and terminal exit codes
 (0 VERIFIED, 2 other software outcomes, 1 execution failure, 130 cancellation).
@@ -111,7 +111,7 @@ No previous candidate's verification transfers to that new Run.
 
 ## Storage and HTTP
 
-Default control storage is `~/.shipyard/control`:
+Default control storage is `~/.harborist/control`:
 
 ```text
 control/
@@ -131,9 +131,9 @@ ignored. Corrupt published queue records fail closed and require inspection.
 For direct API access (for example a local web adapter):
 
 ```bash
-curl --unix-socket "$HOME/.shipyard/control/service.sock" http://localhost/health
-curl --unix-socket "$HOME/.shipyard/control/service.sock" http://localhost/runs
-curl --unix-socket "$HOME/.shipyard/control/service.sock" http://localhost/runs/<run-id>
+curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/health
+curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/runs
+curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/runs/<run-id>
 ```
 
 Submission JSON has `version: 1`, `run_id`, `repository`, `runs_root` and optional
@@ -161,8 +161,8 @@ Start (or upgrade and restart) the service, then launch the workspace in another
 terminal:
 
 ```bash
-uv run shipyard service start
-uv run shipyard web
+uv run harborist service start
+uv run harborist web
 ```
 
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Use **New Run**
@@ -177,7 +177,7 @@ origin and pass through the same application rules as the CLI. The installed
 package includes the React assets. Frontend development uses `npm ci` and
 `npm run build` from `frontend/`.
 
-Use `shipyard web --control-dir PATH --port 8766` to select another service or
+Use `harborist web --control-dir PATH --port 8766` to select another service or
 port. The control directory must match `service start` and `run`. An unavailable
 service has an explicit retry state; failed refreshes retain prior data with a
 stale-data warning. Selection and search survive polling and reconnects. Reports
@@ -193,8 +193,8 @@ remain separate from authoritative lifecycle and verification. Restart
 an older running service after upgrading to enable stage history and artifact
 endpoints; let active work finish before a normal upgrade/restart.
 
-The dashboard and `shipyard runs` discover all saved Run directories under
-`~/.shipyard/runs`, including earlier foreground executions and CREATED captures,
+The dashboard and `harborist runs` discover all saved Run directories under
+`~/.harborist/runs`, including earlier foreground executions and CREATED captures,
 then merge service submissions without duplicates. No import, queue insertion,
 source checkout or execution-context locator is required. Individual details and
 the report/evidence viewers work for historical Runs too.

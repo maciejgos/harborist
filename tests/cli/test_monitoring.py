@@ -3,8 +3,8 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
-from shipyard.control.client import ControlClient
+from harborist.cli import app
+from harborist.control.client import ControlClient
 
 RUN_ID = "00000000-0000-4000-8000-000000000001"
 
@@ -113,7 +113,7 @@ def test_wait_returns_for_terminal_saved_run_without_delivery_state(
     def no_wait(seconds: float) -> None:
         raise AssertionError("Terminal saved Run must not keep polling")
 
-    monkeypatch.setattr("shipyard.cli.monitoring.time.sleep", no_wait)
+    monkeypatch.setattr("harborist.cli.monitoring.time.sleep", no_wait)
     result = CliRunner().invoke(app, ["status", RUN_ID, "--wait"])
     assert result.exit_code == 0, result.output
     assert "VERIFIED" in result.stdout

@@ -1,8 +1,8 @@
 # Specification: Intake and inspection CLI
 
-- AC-001: Install shipyard entry point using Typer, as selected by architecture;
-  support python -m shipyard. Provide intake SOURCE with required --settings,
-  --repo (current directory default), --ref (HEAD), --runs-dir (~/.shipyard/runs),
+- AC-001: Install harborist entry point using Typer, as selected by architecture;
+  support python -m harborist. Provide intake SOURCE with required --settings,
+  --repo (current directory default), --ref (HEAD), --runs-dir (~/.harborist/runs),
   --timeout (1800 seconds) and --verification-reserve (300 seconds).
 - AC-002: Validate budget input and call the existing settings loader/use case.
   Print complete machine-readable contract JSON. Expected capture/config/storage
@@ -12,7 +12,7 @@
 - AC-004: Make CREATED-only intake explicit in help/docs. Do not expose a run
   command implying agent/check execution. No lifecycle/outcome changes.
 - AC-005: Supply readable canonical playbook/skill and operator-settings examples,
-  an example issue and Shipyard's own committed verification configuration. CLI
+  an example issue and Harborist's own committed verification configuration. CLI
   round-trip and failure tests pass; dependencies and lockfile stay synchronized.
 
 These methodology examples are frozen Phase 2 inputs. Runtime interpretation,

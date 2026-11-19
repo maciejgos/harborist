@@ -137,7 +137,7 @@ function Workspace() {
   const page = ticketPage ? "Inbox" : integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs";
   const runsPage = page === "Runs";
   useEffect(() => {
-    document.title = `Shipyard · ${page}`;
+    document.title = `Harborist · ${page}`;
   }, [page]);
   const workspaces = useResource("/workspaces");
   const history = useResource("/runs", true);
@@ -194,7 +194,7 @@ function Workspace() {
 
   return <div className="workspace" data-detail={runsPage && Boolean(selected)}>
     <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/"><span><Anchor size={16} /></span>Shipyard</a>
+      <a className="brand" href="/"><span><Anchor size={16} /></span>Harborist</a>
       <nav><a className="nav-link" href="/tickets" aria-current={ticketPage ? "page" : undefined}><Inbox size={16} /> Inbox</a><a className="nav-link" href="/" aria-current={runsPage ? "page" : undefined}><Play size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Plug size={16} /> Integrations</a></nav>
       <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
     </aside>
@@ -209,7 +209,7 @@ function Workspace() {
       {history.error && <p className="notice" role="alert">{history.data ? "Disconnected. Showing the last available runs." : history.error}</p>}
       <div className="run-list">
         {!history.data && !history.error && <div className="empty" role="status">Loading Runs…</div>}
-        {history.data && visible.length === 0 && <div className="empty"><Inbox size={21} /><h2>{records.length ? "No matching Runs" : "No Runs yet"}</h2><p>{records.length ? "Try a different search or filter." : "Runs submitted through Shipyard appear here."}</p></div>}
+        {history.data && visible.length === 0 && <div className="empty"><Inbox size={21} /><h2>{records.length ? "No matching Runs" : "No Runs yet"}</h2><p>{records.length ? "Try a different search or filter." : "Runs submitted through Harborist appear here."}</p></div>}
         {groups.map(name => {
           const rows = visible.filter(record => group(record) === name);
           return rows.length > 0 && <section key={name} className="run-group" aria-label={name}>

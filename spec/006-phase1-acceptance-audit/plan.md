@@ -9,7 +9,7 @@
    and P1-D01–D04 to dependency prohibitions. Link findings to source symbols
    and existing pytest selectors. Keep partial/deferred claims separate from PASS.
 4. Run the full validation set, recording exact commands and results. The sandbox
-   requires the writable cache override `UV_CACHE_DIR=/private/tmp/shipyard-uv-cache`;
+   requires the writable cache override `UV_CACHE_DIR=/private/tmp/harborist-uv-cache`;
    use it consistently without changing project configuration.
 5. Write report.md with baseline, verdicts, traceability tables, evidence index,
    validation results, limitations, and follow-up completion conditions.

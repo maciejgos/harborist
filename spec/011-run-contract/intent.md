@@ -21,5 +21,5 @@ inconsistent ownership or base provenance without adding execution machinery.
   verification configuration loading.
 
 These documents are manually prepared intake, specification, and implementation
-guidance, not artifacts of an executed Shipyard workflow. This is a partial
+guidance, not artifacts of an executed Harborist workflow. This is a partial
 execution contract; full Phase 2 acceptance remains open.

@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentExecutionError
-from shipyard.domain.sandbox import SandboxPolicy
-from shipyard.sandbox.docker import DockerSandboxRuntime, policy_digest
+from harborist.agents.base import AgentExecutionError
+from harborist.domain.sandbox import SandboxPolicy
+from harborist.sandbox.docker import DockerSandboxRuntime, policy_digest
 from tests.git_helpers import git, init_repository
 
 
@@ -58,8 +58,8 @@ def test_changed_baseline_prevents_provisioning_and_host_execution(
 def test_cancellation_still_stops_only_the_owned_sandbox(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.execution.cancellation import cancellation_check
-    from shipyard.sandbox.docker import DockerWorkspace
+    from harborist.execution.cancellation import cancellation_check
+    from harborist.sandbox.docker import DockerWorkspace
 
     calls: list[tuple[str, ...]] = []
 
@@ -104,9 +104,9 @@ def test_cancellation_still_stops_only_the_owned_sandbox(
 
 
 def test_verification_commands_use_supplied_executor(tmp_path: Path) -> None:
-    from shipyard.domain.verification import VerificationCheck, VerificationConfig
-    from shipyard.execution.process import ProcessCapture
-    from shipyard.verification.runner import run_checks
+    from harborist.domain.verification import VerificationCheck, VerificationConfig
+    from harborist.execution.process import ProcessCapture
+    from harborist.verification.runner import run_checks
 
     commands: list[list[str]] = []
 

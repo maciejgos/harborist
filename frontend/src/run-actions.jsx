@@ -11,7 +11,7 @@ export function write(path, payload, signal) {
   const timeout = AbortSignal.timeout(185000);
   return api(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shipyard-Workspace": "1" },
+    headers: { "Content-Type": "application/json", "X-Harborist-Workspace": "1" },
     body: JSON.stringify(payload),
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
@@ -26,7 +26,7 @@ function CaptureFields({ repository, workspace }) {
     {!workspace && <Field label="Repository path" name="repository" defaultValue={repository} placeholder="~/Code/my-repository" required />}
     <Field label="Markdown path or GitHub issue" name="source" placeholder="https://github.com/owner/repo/issues/123 or ~/request.md" required />
     {!workspace && <details className="advanced"><summary>Advanced</summary>
-    <Field label="Settings path (optional)" name="settings" placeholder="Defaults to shipyard.settings.yaml in the repository" />
+    <Field label="Settings path (optional)" name="settings" placeholder="Defaults to harborist.settings.yaml in the repository" />
     <Field label="Base Git ref" name="ref" defaultValue="HEAD" required />
     <div className="field-pair">
       <Field label="Total time (seconds)" name="timeout" type="number" min="1" defaultValue="1800" required />

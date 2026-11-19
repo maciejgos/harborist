@@ -67,9 +67,9 @@ ordering, or change domain state; the filesystem Run store validates lifecycle e
 
 ```python
 from pathlib import Path
-from shipyard.application.candidate_message import candidate_message
-from shipyard.domain import Attempt
-from shipyard.git import GitRepository
+from harborist.application.candidate_message import candidate_message
+from harborist.domain import Attempt
+from harborist.git import GitRepository
 
 repository = GitRepository(path=Path("/path/to/repository"))
 attempt = Attempt.create(run_id, repository.resolve_base())
@@ -85,7 +85,7 @@ Use the frozen contract base SHA when creating an actual Run's Attempt. The call
 validates Run/Attempt ownership and calls publication only after successful BUILD.
 Workspace destinations must be fresh and outside the source checkout. Creation
 checks out the exact start commit detached and preserves developer files/index.
-BUILD must leave HEAD unchanged; Shipyard stages edits, deletions and nonignored
+BUILD must leave HEAD unchanged; Harborist stages edits, deletions and nonignored
 new files and creates the commit, including for a no-change result. Publication
 removes ignored disposable files (including local environments and tool caches)
 from the owned isolated worktree before committing. Keep durable implementation
@@ -96,7 +96,7 @@ The application composes the message from the frozen intake source before the
 initial candidate commit. For a GitHub source `github:acme/source#42`:
 
 ```text
-Shipyard candidate for acme/source#42
+Harborist candidate for acme/source#42
 
 Run: cd736d82-fa33-42a2-9e50-fb9e561aa015
 Attempt: 9518caf4-4d86-41ba-8641-0ea452a587c1
@@ -107,7 +107,7 @@ The reference is informational; candidate publication does not close the issue.
 File sources use the same complete identity fields without an issue reference:
 
 ```text
-Shipyard candidate
+Harborist candidate
 
 Run: cd736d82-fa33-42a2-9e50-fb9e561aa015
 Attempt: 9518caf4-4d86-41ba-8641-0ea452a587c1
@@ -135,8 +135,8 @@ Capture a local issue file through the Python API:
 ```python
 from pathlib import Path
 
-from shipyard.domain import Run
-from shipyard.intake import read_markdown_intent
+from harborist.domain import Run
+from harborist.intake import read_markdown_intent
 
 run = Run.create()
 intent = read_markdown_intent(run_id=run.run_id, path=Path("issue.md"))
@@ -171,9 +171,9 @@ credentials/process failure, 30-second timeout, or malformed response raises
 Save a snapshot under an explicitly supplied Runs directory:
 
 ```python
-from shipyard.persistence import FileIntentStore
+from harborist.persistence import FileIntentStore
 
-store = FileIntentStore(root=Path.home() / ".shipyard" / "runs")
+store = FileIntentStore(root=Path.home() / ".harborist" / "runs")
 store.save(intent)
 restored = store.load(intent.run_id)
 ```
@@ -196,7 +196,7 @@ multi-file publication, or power-loss durability guarantees. See the
 Resolve committed HEAD or a native Git commit-ish through system Git:
 
 ```python
-from shipyard.git import GitRepository
+from harborist.git import GitRepository
 
 repository = GitRepository(path=Path("."))
 base_sha = repository.resolve_base()
@@ -219,8 +219,8 @@ or manage candidate commits/refs. See the
 Compose the previously captured inputs without repeating intake or Git resolution:
 
 ```python
-from shipyard.configuration import load_execution_settings
-from shipyard.domain import RunContract
+from harborist.configuration import load_execution_settings
+from harborist.domain import RunContract
 
 execution = load_execution_settings(path=Path("examples/intake/settings.yaml"))
 contract = RunContract(
@@ -252,7 +252,7 @@ and the CLI connect these boundaries. See the
 
 ## Complete Run persistence
 
-`FileRunStore(root=Path.home() / ".shipyard" / "runs").save(contract)` reserves a fresh Run
+`FileRunStore(root=Path.home() / ".harborist" / "runs").save(contract)` reserves a fresh Run
 directory and stores `run.json` in CREATED, exact `intent.md`, `intent.json` and
 `contract.json`. Contract JSON is written last as the completion marker. `load`
 validates all four records and their agreement without reading original inputs.
@@ -266,7 +266,7 @@ See [Run persistence specification](../spec/015-run-contract-persistence/spec.md
 
 ## Durable intake use case
 
-`shipyard.application.create_run` accepts a source selector, `GitRepository`,
+`harborist.application.create_run` accepts a source selector, `GitRepository`,
 `FileRunStore`, a complete `ExecutionSnapshot`, and an optional base ref. It creates
 an identity, resolves the base once, loads committed verification settings, captures
 intent and saves the contract in CREATED. It first compiles all frozen methodology,
@@ -283,18 +283,18 @@ configuration is rejected before source capture/storage. The synchronous executo
 
 ## Independent native-agent stages (Phase 4)
 
-`shipyard.application.stages.execute_stage` executes one stage synchronously.
+`harborist.application.stages.execute_stage` executes one stage synchronously.
 It accepts a reloaded `RunContract`, its `Attempt`, an existing workspace,
 explicit upstream artifact paths, a new output directory outside the workspace,
 an injected `NativeAgent`, and positive `remaining_seconds`. For example:
 
 ```python
 from pathlib import Path
-from shipyard.agents.codex import CodexAgent
-from shipyard.application.stages import execute_stage
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.run_contract import RunContract
-from shipyard.domain.stage_result import AgentStage
+from harborist.agents.codex import CodexAgent
+from harborist.application.stages import execute_stage
+from harborist.domain.attempt import Attempt
+from harborist.domain.run_contract import RunContract
+from harborist.domain.stage_result import AgentStage
 
 contract = RunContract.model_validate_json(Path("contract.json").read_bytes())
 attempt = Attempt.create(contract.run_id, contract.base_sha)
@@ -311,7 +311,7 @@ result = execute_stage(
 ```
 
 The caller prepares the workspace and calculates remaining budget. This API does
-not start or finish a Run. Use `shipyard run` for synchronous orchestration.
+not start or finish a Run. Use `harborist run` for synchronous orchestration.
 
 | Stage | Durable upstream inputs | Captured Markdown |
 |---|---|---|
@@ -334,7 +334,7 @@ Untracked and ignored files are rejected for REVIEW. The supplied evidence must 
 a complete `execute_test` manifest matching the frozen configuration, Run, Attempt,
 candidate, ordered commands/results and receipt. Missing or contradictory evidence
 is rejected before invocation. Complete criterion coverage is checked afterward;
-only Shipyard's validated decision can authorize VERIFIED completion.
+only Harborist's validated decision can authorize VERIFIED completion.
 
 Each successful directory contains `request.json` (frozen input text, guidance,
 profile and candidate context), `stage-result.json`, its Markdown outputs, and a
@@ -345,7 +345,7 @@ Directories are create-only; inputs and failed captures are never overwritten.
 call, sends the prompt on stdin, and uses a stage-specific `--output-schema` and
 fresh `--output-last-message` file. It requests read-only access for DESIGN, PLAN
 and REVIEW, workspace-write for BUILD, and no approval prompts. Markdown is
-returned inside the final JSON envelope and written by Shipyard. Provider output
+returned inside the final JSON envelope and written by Harborist. Provider output
 has `result`, `artifact` and `plan_update` fields; `artifact` is null for BUILD,
 and `plan_update` is null except when BUILD revises the plan.
 
@@ -353,7 +353,7 @@ The frozen profile must use `provider: codex`. `model` is explicit. Initially,
 profile `arguments` supports only pairs such as
 `["--config", 'model_reasoning_effort="high"']` (also `-c`), with effort values
 minimal/low/medium/high/xhigh. Other arguments are rejected before launch to
-preserve Shipyard's workspace, output and invocation controls. Authentication
+preserve Harborist's workspace, output and invocation controls. Authentication
 comes from the operator's local Codex installation; no provider secrets are saved.
 The adapter enforces the supplied per-call timeout, kills its process group on
 timeout, bounds final output to 4 MiB and retains at most 64 KiB per diagnostic stream. Launch errors,
@@ -368,7 +368,7 @@ a live authenticated provider call has not been validated. CLI flag references:
 ## Trusted TEST
 
 ```python
-from shipyard.application.verification import execute_test
+from harborist.application.verification import execute_test
 
 tested = execute_test(
     contract=contract, attempt=attempt, candidate=candidate,
@@ -378,7 +378,7 @@ tested = execute_test(
 # Pass tested.receipt and test-capture/manifest.json to REVIEW only on success.
 ```
 
-TEST uses the frozen base configuration, even if BUILD changes `shipyard.yaml`.
+TEST uses the frozen base configuration, even if BUILD changes `harborist.yaml`.
 Every command runs in order through `/bin/sh -c`; nonzero exits, launch errors
 and timeouts do not skip subsequent checks. Each command has its own explicit
 timeout. Output is drained continuously with a 64 KiB retained prefix per stream
@@ -421,8 +421,8 @@ with `pass`, `fail` or `unverified`; omitted or unknown IDs are invalid stage ou
 The reviewer explains assessments and unverified areas in `review.md`.
 
 ```python
-from shipyard.application.stages import execute_stage
-from shipyard.domain import AgentStage
+from harborist.application.stages import execute_stage
+from harborist.domain import AgentStage
 
 reviewed = execute_stage(
     contract=contract, attempt=attempt, stage=AgentStage.REVIEW,
@@ -511,8 +511,8 @@ source text; no schema is imposed. Source and target repositories are independen
 Operator YAML is loaded into a complete immutable execution snapshot. Methodology
 paths resolve beside the settings file and exact UTF-8 content is hashed. Safe
 unique-key YAML parsing is shared with verification configuration. Budget cannot
-be specified in YAML: Shipyard supplies defaults or an explicit application budget.
-Intake CLI defaults to the single `shipyard.settings.yaml` at the resolved target
+be specified in YAML: Harborist supplies defaults or an explicit application budget.
+Intake CLI defaults to the single `harborist.settings.yaml` at the resolved target
 checkout root, selected by `--repo` or `.` from the invocation directory. Git
 resolves the root when either directory is a subdirectory. Explicit `--settings
 PATH` takes precedence, including external files; relative explicit paths use
@@ -522,7 +522,7 @@ selected settings fail before Run creation with the selected path and remediatio
 to supply `--settings PATH`; an invalid explicit override never falls back.
 
 Execution settings are local intake inputs independent of `--ref`. Root
-`shipyard.yaml` remains separate and supplies mandatory checks from the frozen
+`harborist.yaml` remains separate and supplies mandatory checks from the frozen
 base SHA. Settings cannot replace these checks or weaken TEST/REVIEW gates.
 Existing Runs consume captured execution and methodology snapshots without
 rediscovering or reloading live files.
@@ -560,7 +560,7 @@ invalid or foreign layout records fail closed, without backfilling old captures.
 An explicit `--workspace` has precedence, followed by a recorded selection
 (`execution-workspace.json` or retained `workspace.json`), then the capture's
 default. Legacy CREATED Runs without a recorded selection
-retain `~/.shipyard/workspaces/<run-id>` as their default. Existing historical
+retain `~/.harborist/workspaces/<run-id>` as their default. Existing historical
 worktrees remain in place and fail freshness checks, never being reused or moved.
 `--runs-dir` selects storage and thus the new Run-owned default, subject to the
 existing execution-context consistency checks. No override relocates a capture
@@ -583,7 +583,7 @@ Each explicit intake creates a distinct Run and fresh workspace even when issue
 identity and intent digest match. Executing a captured Run never recaptures the
 issue. There is no deduplication, deletion, automatic migration or source candidate
 application. Source repositories stay in place, including linked-worktree metadata
-and Shipyard candidate refs. Agents, staging, publication and ignored-file cleanup
+and Harborist candidate refs. Agents, staging, publication and ignored-file cleanup
 operate on the workspace child, leaving sibling records untouched. This remains
 trusted-local operational isolation, not an adversarial filesystem sandbox.
 
@@ -605,7 +605,7 @@ without an explicit front-matter migration.
 
 `compile_methodology` parses a frozen execution snapshot; `compose_guidance` filters
 skills by native-agent stage in configured order and returns immutable sections
-with exact content/provenance. Shipyard-owned stages do not receive composed agent
+with exact content/provenance. Harborist-owned stages do not receive composed agent
 skills. Guidance cannot add steps, dependencies, executors or hooks; provider prompt
 formatting and execution are implemented by the Phase 4 Codex adapter.
 
@@ -658,7 +658,7 @@ generated upstream artifacts must remain nonblank.
 `CodexAgent` uses one fresh ephemeral `codex exec` subprocess per invocation with
 explicit model, workspace, sandbox and schema. It reads only the final message,
 not stdout, and bounds its size. Read-only stages return Markdown inside JSON for
-Shipyard to persist. BUILD uses workspace-write. Profile arguments cannot override
+Harborist to persist. BUILD uses workspace-write. Profile arguments cannot override
 harness controls; only reasoning-effort config pairs are initially supported.
 Timeouts terminate the process group best-effort; temporary files are cleaned.
 The shared subprocess capture drains pipes while retaining a 64 KiB prefix per
@@ -706,7 +706,7 @@ The implemented Git boundary owns:
 `require_normal_index_tracking` rejects assume-unchanged and skip-worktree flags
 that could hide tracked edits. Candidate publication checks this before staging;
 every exact-revision cleanliness check and checked-out application preflight also
-enforces it. Shipyard rejects these flags without changing the index itself.
+enforces it. Harborist rejects these flags without changing the index itself.
 
 `require_clean_revision` provides a read-only pre/post REVIEW assertion for an
 existing checkout at the exact candidate SHA, rejecting tracked, untracked and
@@ -730,7 +730,7 @@ Local uncommitted developer state is ignored.
 
 ### `verification`
 
-The implemented loader reads root `shipyard.yaml` from an exact supplied base SHA,
+The implemented loader reads root `harborist.yaml` from an exact supplied base SHA,
 parses UTF-8 YAML using safe unique-key mappings, and validates frozen domain
 settings. Version 1 contains only ordered checks with unique IDs and nonblank
 command strings; all checks are mandatory. Snapshots retain the base SHA and
@@ -757,7 +757,7 @@ Log truncation does not affect check success.
 
 ## Candidate application implementation
 
-`shipyard apply <run-id> --branch <existing-local-branch> [--repo PATH]
+`harborist apply <run-id> --branch <existing-local-branch> [--repo PATH]
 [--runs-dir PATH]` is an independent synchronous operation after PACKAGE. The
 canonical [stage flow](../ARCHITECTURE.md#execution-flow) is unchanged. VERIFIED remains the software outcome;
 new terminal summaries say “Verified; awaiting application” and print a
@@ -766,7 +766,7 @@ its `run`, `workspace`, `report`, `evidence` contract; guidance goes to stderr.
 Application does not invoke agents or rerun verification.
 
 `application/context.py` shares saved-locator resolution between run and apply.
-Default storage is `~/.shipyard/runs`; custom storage needs `--runs-dir`. Valid
+Default storage is `~/.harborist/runs`; custom storage needs `--runs-dir`. Valid
 context selects the repository independently of cwd, and explicit options must
 match after path/checkout normalization. Invalid existing locators fail closed;
 only absence permits legacy explicit repository or cwd/default storage fallback.

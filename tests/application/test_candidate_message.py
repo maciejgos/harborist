@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.application.candidate_message import candidate_message
-from shipyard.domain import Attempt, RunContract
+from harborist.application.candidate_message import candidate_message
+from harborist.domain import Attempt, RunContract
 
 
 def test_candidate_message_rejects_foreign_intent(frozen_contract: RunContract) -> None:

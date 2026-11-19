@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from shipyard.playbooks import MethodologyError, parse_playbook, parse_skill
+from harborist.playbooks import MethodologyError, parse_playbook, parse_skill
 from tests.methodology_helpers import asset, playbook_asset, skill_asset
 
 

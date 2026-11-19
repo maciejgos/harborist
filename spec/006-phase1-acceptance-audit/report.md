@@ -18,7 +18,7 @@ Phase 1 is fully accepted or an authorization to waive requirements.
 - Audited SHA: `37c9fbed47aea7868a7729155d1586c1c1acc272`.
 - Audit started: `2026-10-25T18:42:39Z`.
 - Preexisting working-tree changes: none; `git status --short` was empty.
-- Inspected: every module under `src/shipyard/`, all five domain test files,
+- Inspected: every module under `src/harborist/`, all five domain test files,
   `pyproject.toml`, ARCHITECTURE.md, slice specifications 001–005, and PRD section
   97 Phase 1. PRD §§24–25, 65, 68–69, 89.2, and later implementation phases
   provide scope and allocation context.
@@ -28,7 +28,7 @@ Phase 1 is fully accepted or an authorization to waive requirements.
 All source/test links below refer to files as inspected at this SHA. Use
 `git show <audited-sha>:<path>` to retrieve that exact historical version after
 future changes. Parametrized pytest function selectors identify all collected
-cases of that function. This report is a manual assessment, not Shipyard TEST or
+cases of that function. This report is a manual assessment, not Harborist TEST or
 an independent native-agent REVIEW, and does not confer VERIFIED status.
 
 Statuses: **PASS** means directly supported within the stated requirement scope;
@@ -46,9 +46,9 @@ not project configuration or check selection.
 
 | Exact command | Exit | Observed result |
 |---|---|---|
-| `UV_CACHE_DIR=/private/tmp/shipyard-uv-cache uv run pytest` | 0 | 320 collected, 320 passed; no warnings reported |
-| `UV_CACHE_DIR=/private/tmp/shipyard-uv-cache uv run ruff check .` | 0 | All checks passed |
-| `UV_CACHE_DIR=/private/tmp/shipyard-uv-cache uv run pyright` | 0 | 0 errors, 0 warnings, 0 informations |
+| `UV_CACHE_DIR=/private/tmp/harborist-uv-cache uv run pytest` | 0 | 320 collected, 320 passed; no warnings reported |
+| `UV_CACHE_DIR=/private/tmp/harborist-uv-cache uv run ruff check .` | 0 | All checks passed |
+| `UV_CACHE_DIR=/private/tmp/harborist-uv-cache uv run pyright` | 0 | 0 errors, 0 warnings, 0 informations |
 
 pytest reported Python 3.14.7 and pytest 9.1.1. Pyright is configured in strict
 mode over source and tests. These results establish the existing validation
@@ -109,7 +109,7 @@ be passed to `uv run pytest <selector>` for targeted reproduction.
 
 ### E1 — Run lifecycle, outcomes, and immutability
 
-Source: [run.py](../../src/shipyard/domain/run.py), `Run.validate_state`,
+Source: [run.py](../../src/harborist/domain/run.py), `Run.validate_state`,
 `Run.create`, `start`, `complete`, `fail`, `cancel`, `_require_source`, and the
 three enums.
 
@@ -127,7 +127,7 @@ They do not prove a future executor uses these APIs correctly.
 
 ### E2 — Attempt creation and ownership
 
-Source: [attempt.py](../../src/shipyard/domain/attempt.py), `Attempt.create`
+Source: [attempt.py](../../src/harborist/domain/attempt.py), `Attempt.create`
 and `create_candidate`.
 
 - `tests/domain/test_attempt_candidate.py::test_fresh_attempts_and_candidate_ownership`
@@ -138,8 +138,8 @@ Attempt IDs. They are not calls to real rework/recovery paths.
 
 ### E3 — Candidate and revision syntax
 
-Source: [candidate.py](../../src/shipyard/domain/candidate.py), `Candidate`;
-[revision.py](../../src/shipyard/domain/revision.py), `GitCommitSha`.
+Source: [candidate.py](../../src/harborist/domain/candidate.py), `Candidate`;
+[revision.py](../../src/harborist/domain/revision.py), `GitCommitSha`.
 
 - `tests/domain/test_attempt_candidate.py::test_commit_hash_constraints`
 - `tests/domain/test_attempt_candidate.py::test_constructors_and_factories_apply_hash_validation`
@@ -152,7 +152,7 @@ not resolve Git objects, keep candidates reachable, or attach authoritative chec
 
 ### E4 — Artifact identity
 
-Source: [artifact.py](../../src/shipyard/domain/artifact.py), `ArtifactReference`
+Source: [artifact.py](../../src/harborist/domain/artifact.py), `ArtifactReference`
 and its factory, kind/stage enums, and digest constraints.
 
 - `tests/domain/test_artifact.py::test_known_content_vectors`
@@ -166,7 +166,7 @@ metadata do not establish storage integrity, execution, or authenticity.
 
 ### E5 — Event records
 
-Source: [event.py](../../src/shipyard/domain/event.py), `RunEvent`,
+Source: [event.py](../../src/harborist/domain/event.py), `RunEvent`,
 `AttemptCreatedEvent`, `DomainEvent`, and `_as_utc`.
 
 - `tests/domain/test_event.py::test_run_event_factory`
@@ -182,7 +182,7 @@ was durably appended.
 
 ### E6 — Native-agent output contracts
 
-Source: [stage_result.py](../../src/shipyard/domain/stage_result.py),
+Source: [stage_result.py](../../src/harborist/domain/stage_result.py),
 the four stage-result models, `ReviewStageResult.validate_unique_criteria`,
 `summary`, and `parse_stage_result`.
 
@@ -201,7 +201,7 @@ success, or correspondence to a trusted execution Candidate.
 
 ### E7 — Dependency boundaries and implementation inventory
 
-All eight files under `src/shipyard/domain/`, plus `src/shipyard/__init__.py`,
+All eight files under `src/harborist/domain/`, plus `src/harborist/__init__.py`,
 were inspected. Imports are exclusively stdlib, Pydantic, and local domain
 modules; annotations contain no provider-specific types. pyproject.toml declares
 Pydantic as its only runtime dependency. No dynamic provider-loading code was
@@ -211,8 +211,8 @@ intake, or persistence implementation.
 Reproducible inspection commands:
 
 ```bash
-rg --files src/shipyard
-rg -n '^(from|import) ' src/shipyard
+rg --files src/harborist
+rg -n '^(from|import) ' src/harborist
 ```
 
 The import search supports the full source inspection; a keyword search alone

@@ -3,7 +3,7 @@ id: bounded-repository-change
 version: 1
 stages:
 - stage: intake
-  executor: shipyard
+  executor: harborist
   depends_on: []
   fresh_invocation: false
   read_only: false
@@ -44,7 +44,7 @@ stages:
   read_only: true
   budgeted: true
 - stage: package
-  executor: shipyard
+  executor: harborist
   depends_on:
   - review
   fresh_invocation: false
@@ -59,10 +59,10 @@ The canonical order is INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW 
 - DESIGN uses a fresh native agent to establish spec.md as the acceptance contract.
 - PLAN uses a fresh native agent to produce plan.md from durable upstream artifacts.
 - BUILD uses a fresh native agent to implement the spec and produce a candidate commit.
-- TEST is trusted Shipyard execution against the exact candidate SHA. Mandatory
+- TEST is trusted Harborist execution against the exact candidate SHA. Mandatory
   failures prevent REVIEW and route to PACKAGE.
 - REVIEW uses a fresh independent native agent against that same candidate and spec.
 - PACKAGE records evidence and report.md for every terminal result, outside budget.
 
-Shipyard validates the machine-readable front matter independently of this
+Harborist validates the machine-readable front matter independently of this
 guidance. The routing engine retains authority over stages and executor types.

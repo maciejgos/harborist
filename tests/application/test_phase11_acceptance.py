@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentExecutionError, AgentRequest, AgentResponse
-from shipyard.application.budget import BudgetClock
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract, RunOutcome
-from shipyard.domain.continuation import ContinuationRequest
-from shipyard.domain.stage_result import AgentStage
-from shipyard.persistence.continuation import execution_lock, prepare_continuation
+from harborist.agents.base import AgentExecutionError, AgentRequest, AgentResponse
+from harborist.application.budget import BudgetClock
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract, RunOutcome
+from harborist.domain.continuation import ContinuationRequest
+from harborist.domain.stage_result import AgentStage
+from harborist.persistence.continuation import execution_lock, prepare_continuation
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git
 
@@ -142,7 +142,7 @@ def test_original_worker_loss_reuses_validated_design_and_requires_grant(
             workspace=tmp_path / "first",
             agent=CrashAtPlan(),
         )
-    from shipyard.domain.attempt import Attempt
+    from harborist.domain.attempt import Attempt
 
     previous = Attempt.model_validate_json(
         (store.directory(contract.run_id) / "attempt.json").read_bytes()
@@ -314,7 +314,7 @@ def test_rework_mandatory_failure_still_blocks_review(
 def test_damaged_interrupted_design_fails_closed(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.domain.attempt import Attempt
+    from harborist.domain.attempt import Attempt
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     with pytest.raises(SystemExit):

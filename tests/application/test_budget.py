@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from shipyard.application.budget import BudgetClock, BudgetExceeded
-from shipyard.domain import ExecutionBudget
-from shipyard.domain.artifact import ArtifactStage
+from harborist.application.budget import BudgetClock, BudgetExceeded
+from harborist.domain import ExecutionBudget
+from harborist.domain.artifact import ArtifactStage
 
 
 def test_shared_budget_reserves_verification_and_records_failed_stage() -> None:

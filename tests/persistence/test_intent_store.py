@@ -8,9 +8,9 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import IntentSnapshot
-from shipyard.intake import read_markdown_intent
-from shipyard.persistence import (
+from harborist.domain import IntentSnapshot
+from harborist.intake import read_markdown_intent
+from harborist.persistence import (
     FileIntentStore,
     IntentAlreadyExistsError,
     IntentPersistenceError,
@@ -123,7 +123,7 @@ def test_exclusive_create_protects_against_conflict_after_preflight(
             (directory / "intent.md").write_bytes(b"Another writer's evidence")
         return False
 
-    monkeypatch.setattr("shipyard.persistence.intent.lexists", intervening_writer)
+    monkeypatch.setattr("harborist.persistence.intent.lexists", intervening_writer)
     with pytest.raises(IntentAlreadyExistsError) as caught:
         FileIntentStore(root=tmp_path).save(snapshot)
     assert isinstance(caught.value.__cause__, FileExistsError)

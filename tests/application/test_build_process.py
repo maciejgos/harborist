@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentRequest, AgentResponse
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract
-from shipyard.domain.stage_result import AgentStage
+from harborist.agents.base import AgentRequest, AgentResponse
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract
+from harborist.domain.stage_result import AgentStage
 from tests.application.test_run_execution import FakeAgent, capture
 
 

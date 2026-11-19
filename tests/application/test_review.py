@@ -1,13 +1,13 @@
 import pytest
 
-from shipyard.application.review import evaluate_review
-from shipyard.application.verification import TestExecution as CapturedTest
-from shipyard.domain import Run, RunContract
-from shipyard.domain.artifact import ArtifactStage
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.candidate import Candidate
-from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
-from shipyard.domain.stage_result import (
+from harborist.application.review import evaluate_review
+from harborist.application.verification import TestExecution as CapturedTest
+from harborist.domain import Run, RunContract
+from harborist.domain.artifact import ArtifactStage
+from harborist.domain.attempt import Attempt
+from harborist.domain.candidate import Candidate
+from harborist.domain.playbook_execution import StageReceipt, StepOutcome
+from harborist.domain.stage_result import (
     AgentStage,
     CriterionResult,
     CriterionStatus,
@@ -15,7 +15,7 @@ from shipyard.domain.stage_result import (
     ReviewStageResult,
     StageStatus,
 )
-from shipyard.verification.runner import CheckCollection, CheckResult
+from harborist.verification.runner import CheckCollection, CheckResult
 
 
 def capture(

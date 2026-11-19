@@ -15,8 +15,8 @@ updates the existing subprocess integration to consume those APIs.
 | TEST independently inspects exact SHA | Candidate ref and SHA usable by separate worktree | test_candidate_is_reachable_and_independently_checkoutable |
 
 `tests/application/test_native_execution.py` now runs DESIGN, PLAN and BUILD via
-independent synthetic Codex subprocesses in the Shipyard-created workspace, publishes
-through Shipyard, then performs guarded REVIEW at the candidate SHA. TEST receipts
+independent synthetic Codex subprocesses in the Harborist-created workspace, publishes
+through Harborist, then performs guarded REVIEW at the candidate SHA. TEST receipts
 remain synthetic: no Phase 6 trusted execution or semantic verification is claimed.
 
 Publication rejects HEAD drift, attached HEAD and ignored residue. Hooks/signing

@@ -12,7 +12,7 @@
 
 ## Adapter
 
-Add shipyard.git.GitRepository(path=Path) and GitResolutionError(ValueError).
+Add harborist.git.GitRepository(path=Path) and GitResolutionError(ValueError).
 The constructor performs no I/O. resolve_base(*, ref="HEAD") rejects an empty
 string, copies/sanitizes the environment as specified, and executes the exact
 argument-list command from spec.md with check=True, capture_output=True, no shell,
