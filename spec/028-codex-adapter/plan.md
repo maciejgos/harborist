@@ -4,7 +4,7 @@
 2. Implement an Adapter using subprocess argument arrays and per-call temporary
    files; retain only the final structured message, with a size bound.
 3. Build prompts from explicit requests. Restrict profile arguments so caller
-   settings cannot weaken Shipyard-owned invocation controls.
+   settings cannot weaken Harborist-owned invocation controls.
 4. Verify timeout cleanup, run full checks and commit.
 
 Reference: https://learn.chatgpt.com/docs/developer-commands#codex-exec and local

@@ -2,7 +2,7 @@
 
 ## Acceptance criteria
 
-- **AC-001 — Composition:** Export RunContract through shipyard.domain. Require
+- **AC-001 — Composition:** Export RunContract through harborist.domain. Require
   run_id: UUID, intent: IntentSnapshot, base_sha: GitCommitSha, and
   verification: VerificationConfigSnapshot. Preserve supplied snapshot values
   and identities; generate no IDs, timestamps, or defaults.

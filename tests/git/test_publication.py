@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.git.publication import expected_head, push_candidate
+from harborist.git.publication import expected_head, push_candidate
 from tests.git_helpers import git, init_repository
 
 
@@ -27,7 +27,7 @@ def test_push_lease_preserves_a_concurrently_changed_remote(tmp_path: Path) -> N
     remote = tmp_path / "remote.git"
     remote.mkdir()
     git(remote, "init", "--bare")
-    ref = "refs/heads/shipyard/run"
+    ref = "refs/heads/harborist/run"
     push_candidate(local, str(remote), ref, base, None)
     git(local, "commit", "--allow-empty", "-m", "approved")
     approved = git(local, "rev-parse", "HEAD")

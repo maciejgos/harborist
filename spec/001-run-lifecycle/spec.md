@@ -43,7 +43,7 @@ Defer Attempts, candidates, verification evidence, events, persistence,
 cancellation audit metadata, intake adapters, agents, and orchestration. Omit
 QUEUED for synchronous execution. Cancellation here models terminal state only;
 it does not terminate processes or persist evidence. This slice does not complete
-PRD Phase 1 or implement an executable Shipyard workflow.
+PRD Phase 1 or implement an executable Harborist workflow.
 
 Implementation may revise `plan.md`. Acceptance changes must be explicit; BUILD
 must not silently rewrite this contract.

@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from shipyard.domain import Attempt, Candidate, GitCommitSha, Run
+from harborist.domain import Attempt, Candidate, GitCommitSha, Run
 
 SHA1 = "0123456789abcdef" * 2 + "01234567"
 SHA256 = "abcdef0123456789" * 4

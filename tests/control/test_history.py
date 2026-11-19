@@ -4,10 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.application.execution import execute_run
-from shipyard.control.queue import QueueStore, Submission
-from shipyard.control.service import ControlService
-from shipyard.domain import RunContract
+from harborist.application.execution import execute_run
+from harborist.control.queue import QueueStore, Submission
+from harborist.control.service import ControlService
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -120,12 +120,12 @@ def test_default_history_discovers_home_and_orders_saved_runs(
 ) -> None:
     import os
 
-    from shipyard.domain import IntentSnapshot
-    from shipyard.persistence import FileRunStore
+    from harborist.domain import IntentSnapshot
+    from harborist.persistence import FileRunStore
 
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
-    root = home / ".shipyard" / "runs"
+    root = home / ".harborist" / "runs"
     store = FileRunStore(root=root)
     store.save(frozen_contract)
     second_id = uuid4()

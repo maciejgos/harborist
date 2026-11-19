@@ -10,7 +10,7 @@
           "frontend/src/style.css"
         ],
         "createdAt": "2026-11-19T09:49:11.216Z",
-        "reason": "Agent: Geist is the existing Shipyard font at frontend/src/style.css:2 in commit 02eef12; this scoped runtime and policy-editor extension preserves the incumbent visual system."
+        "reason": "Agent: Geist is the existing Harborist font at frontend/src/style.css:2 in commit 02eef12; this scoped runtime and policy-editor extension preserves the incumbent visual system."
       }
     ]
   }

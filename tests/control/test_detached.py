@@ -7,10 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from shipyard.application.context import ExecutionContext
-from shipyard.control.client import ControlClient
-from shipyard.control.queue import QueueStore
-from shipyard.domain import RunContract
+from harborist.application.context import ExecutionContext
+from harborist.control.client import ControlClient
+from harborist.control.queue import QueueStore
+from harborist.domain import RunContract
 from tests.application.test_run_execution import capture
 
 
@@ -31,8 +31,8 @@ def launch(root: Path) -> subprocess.Popen[bytes]:
     script = """
 import sys, time
 from pathlib import Path
-from shipyard.control.queue import QueueStore
-from shipyard.control.service import ControlService
+from harborist.control.queue import QueueStore
+from harborist.control.service import ControlService
 from tests.application.test_run_execution import FakeAgent
 root = Path(sys.argv[1])
 class Agent(FakeAgent):
@@ -73,7 +73,7 @@ def test_client_exit_does_not_stop_canonical_execution(
                 [
                     sys.executable,
                     "-m",
-                    "shipyard",
+                    "harborist",
                     "run",
                     str(contract.run_id),
                     "--runs-dir",
@@ -127,7 +127,7 @@ def test_killed_service_marks_active_claim_interrupted_on_restart(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
     store, repo, contract = capture(tmp_path, frozen_contract)
-    from shipyard.control.queue import Submission
+    from harborist.control.queue import Submission
 
     with TemporaryDirectory(prefix="sy-", dir="/tmp") as directory:
         root = Path(directory)
@@ -174,7 +174,7 @@ def test_killed_service_marks_active_claim_interrupted_on_restart(
 def test_service_start_detaches_and_stop_shuts_down() -> None:
     with TemporaryDirectory(prefix="sy-", dir="/tmp") as directory:
         root = Path(directory)
-        arguments = [sys.executable, "-m", "shipyard", "service"]
+        arguments = [sys.executable, "-m", "harborist", "service"]
         client = ControlClient(root)
         try:
             for _ in range(2):

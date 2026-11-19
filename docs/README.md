@@ -1,4 +1,4 @@
-# Shipyard documentation
+# Harborist documentation
 
 ## Current PoC
 
@@ -17,7 +17,7 @@ The current architecture describes the PoC. Future product requirements live in
 [Product Requirements Document v1.0](Product%20Requirements%20Document%20v1.0.md).
 
 - [Phase 14 workers and Docker Sandboxes specification](../spec/081-workers-and-docker-sandboxes/spec.md)
-  ([issue #44](https://github.com/maciejgos/shipyard/issues/44)); remote workers remain planned.
+  ([issue #44](https://github.com/maciejgos/harborist/issues/44)); remote workers remain planned.
 - [Local Docker Sandboxes and app policy editing](../spec/082-local-docker-sandboxes/spec.md).
 - [Real-run audit, 2026-10-30](validation/2026-10-30-run-audit.md)
 - [Phase 1 acceptance audit](../spec/006-phase1-acceptance-audit/report.md)
@@ -30,6 +30,15 @@ The current architecture describes the PoC. Future product requirements live in
 - [Phase 8 acceptance audit](../spec/045-phase8-acceptance-audit/report.md)
 
 Historical acceptance contracts, plans and audits remain in [spec/](../spec/).
-Packaged playbooks and skills remain runtime resources under `src/shipyard/`.
+Packaged playbooks and skills remain runtime resources under `src/harborist/`.
 
 - [Background service and CLI migration](background-control-plane.md)
+
+## Upgrading an existing installation
+
+Use `harborist` for new commands and `harborist.yaml` and
+`harborist.settings.yaml` for new repository configurations. Harborist still
+reads the previous filenames when the corresponding new file is absent. It
+continues using an existing `~/.shipyard` data directory if `~/.harborist` has
+not been created. Candidate refs retain their original namespace so previously
+verified revisions can still be checked against the refs that recorded them.

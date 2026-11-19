@@ -3,9 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import ArtifactStage, Attempt, Candidate, Run
-from shipyard.domain.playbook import canonical_playbook
-from shipyard.domain.playbook_execution import (
+from harborist.domain import ArtifactStage, Attempt, Candidate, Run
+from harborist.domain.playbook import canonical_playbook
+from harborist.domain.playbook_execution import (
     InvalidPlaybookTransition,
     PlaybookExecution,
     StageReceipt,

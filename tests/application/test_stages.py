@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentExecutionError, AgentRequest, AgentResponse
-from shipyard.application.stages import execute_stage
-from shipyard.domain import RunContract
-from shipyard.domain.artifact import ArtifactStage
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.playbook_execution import StageReceipt, StepOutcome
-from shipyard.domain.stage_result import AgentStage, InvalidStageOutput
+from harborist.agents.base import AgentExecutionError, AgentRequest, AgentResponse
+from harborist.application.stages import execute_stage
+from harborist.domain import RunContract
+from harborist.domain.artifact import ArtifactStage
+from harborist.domain.attempt import Attempt
+from harborist.domain.playbook_execution import StageReceipt, StepOutcome
+from harborist.domain.stage_result import AgentStage, InvalidStageOutput
 from tests.application.test_review import capture
 from tests.git_helpers import git, init_repository
 
@@ -311,7 +311,7 @@ def test_failed_native_process_retains_bounded_diagnostics(
     frozen_contract: RunContract,
     body: str,
 ) -> None:
-    from shipyard.agents.codex import CodexAgent
+    from harborist.agents.codex import CodexAgent
     from tests.agents.test_codex import fake
 
     workspace = tmp_path / "workspace"
@@ -342,7 +342,7 @@ def test_review_rejects_foreign_process_report_before_invocation(
 ) -> None:
     from uuid import uuid4
 
-    from shipyard.domain.build_process import BuildProcessEvidence, BuildProcessReport
+    from harborist.domain.build_process import BuildProcessEvidence, BuildProcessReport
 
     workspace = tmp_path / "workspace"
     init_repository(workspace)

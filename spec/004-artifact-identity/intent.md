@@ -24,5 +24,5 @@ in-memory bytes without filesystem access.
   and filesystem-based PoC persistence behind its boundary.
 
 Prepare `intent.md → spec.md → plan.md` manually. These documents do not claim an
-executed Shipyard Run or independent agent stages. Preserve earlier specifications.
+executed Harborist Run or independent agent stages. Preserve earlier specifications.
 Storage, lineage, and verification remain future work.

@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.intake import (
+from harborist.intake import (
     GitHubIntakeError,
     IntakeSourceError,
     capture_intent,
     read_github_intent,
 )
-from shipyard.intake.github import ticket_url
+from harborist.intake.github import ticket_url
 
 
 def test_gh_capture_is_explicit_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -32,7 +32,7 @@ def test_gh_capture_is_explicit_and_normalized(monkeypatch: pytest.MonkeyPatch) 
         assert kwargs["timeout"] == 30
         return subprocess.CompletedProcess(args, 0, json.dumps(response).encode())
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     intent = read_github_intent(run_id=uuid4(), source="github:acme/source#42")
     assert calls == [
         [
@@ -68,7 +68,7 @@ def test_bad_selector_rejected_before_process(
     def unexpected(*args: object, **kwargs: object) -> None:
         pytest.fail("Invalid selector must not launch gh")
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", unexpected)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", unexpected)
     with pytest.raises(GitHubIntakeError):
         read_github_intent(run_id=uuid4(), source=source)
 
@@ -87,7 +87,7 @@ def test_invalid_response_is_wrapped(
     def gh(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(["gh"], 0, output)
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError) as caught:
         read_github_intent(run_id=uuid4(), source="github:a/b#1")
     assert caught.value.__cause__ is not None
@@ -107,7 +107,7 @@ def test_gh_failures_preserve_causes(
     def gh(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         raise error
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError) as caught:
         read_github_intent(run_id=uuid4(), source="github:a/b#1")
     assert caught.value.__cause__ is error
@@ -129,7 +129,7 @@ def test_dispatch_preserves_markdown_without_imposing_metadata_schema(
 def test_listing_rejects_a_url_for_a_different_issue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from shipyard.github.issues import list_tickets
+    from harborist.github.issues import list_tickets
 
     def gh(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         assert args[args.index("--repo") + 1] == "acme/source"
@@ -142,7 +142,7 @@ def test_listing_rejects_a_url_for_a_different_issue(
             b'[{"number":42,"title":"Summary","labels":[],"url":"https://github.com/other/source/issues/42"}]',
         )
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError, match="invalid issue list") as caught:
         list_tickets("acme/source")
     assert "other/source" not in str(caught.value)
@@ -168,7 +168,7 @@ def test_capture_keeps_selector_and_canonical_url_after_repository_rename(
             ).encode(),
         )
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     intent = read_github_intent(run_id=uuid4(), source="github:acme/old#42")
     assert intent.source_ref == "github:acme/old#42"
     assert intent.markdown == '# Intake title\n\nLabels: ["bug"]\n\nIntake body'
@@ -192,7 +192,7 @@ def test_capture_keeps_selector_and_canonical_url_after_repository_rename(
 def test_capture_and_provenance_reject_invalid_issue_urls(
     url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.domain import IntentSnapshot
+    from harborist.domain import IntentSnapshot
 
     source = "github:acme/source#42"
     raw = json.dumps({"title": "Issue", "body": "", "labels": [], "url": url}).encode()
@@ -200,7 +200,7 @@ def test_capture_and_provenance_reject_invalid_issue_urls(
     def gh(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(args, 0, raw)
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     with pytest.raises(GitHubIntakeError, match="invalid response"):
         read_github_intent(run_id=uuid4(), source=source)
     saved = IntentSnapshot.create(

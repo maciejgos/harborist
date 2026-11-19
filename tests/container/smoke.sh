@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SHIPYARD_WEB_PORT="${SHIPYARD_WEB_PORT:-18765}"
-project="shipyard-smoke-$$"
+export HARBORIST_WEB_PORT="${HARBORIST_WEB_PORT:-18765}"
+project="harborist-smoke-$$"
 compose=(docker compose --project-name "$project")
-base="http://127.0.0.1:$SHIPYARD_WEB_PORT"
+base="http://127.0.0.1:$HARBORIST_WEB_PORT"
 
 cleanup() {
     status=$?
@@ -26,7 +26,7 @@ wait_for_web() {
     return 1
 }
 
-if [[ -z ${SHIPYARD_IMAGE:-} ]]; then
+if [[ -z ${HARBORIST_IMAGE:-} ]]; then
     "${compose[@]}" build service
 fi
 "${compose[@]}" up --no-build --wait --wait-timeout 60
@@ -38,8 +38,8 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --header 'Host: unrelated.example' "$base/api/health")" = 403
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --header 'Origin: http://unrelated.example' \
-    --header 'X-Shipyard-Workspace: 1' --json '{}' "$base/api/workspaces")" = 403
-"${compose[@]}" exec -T service sh -c 'touch "$HOME/.shipyard/smoke-marker"'
+    --header 'X-Harborist-Workspace: 1' --json '{}' "$base/api/workspaces")" = 403
+"${compose[@]}" exec -T service sh -c 'touch "$HOME/.harborist/smoke-marker"'
 "${compose[@]}" up --no-build --force-recreate --wait --wait-timeout 60
 wait_for_web
-"${compose[@]}" exec -T service sh -c 'test -f "$HOME/.shipyard/smoke-marker"'
+"${compose[@]}" exec -T service sh -c 'test -f "$HOME/.harborist/smoke-marker"'

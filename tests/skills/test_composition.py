@@ -3,9 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import ArtifactStage, ExecutionSnapshot
-from shipyard.domain.playbook import ExecutorType
-from shipyard.skills import compile_methodology, compose_guidance
+from harborist.domain import ArtifactStage, ExecutionSnapshot
+from harborist.domain.playbook import ExecutorType
+from harborist.skills import compile_methodology, compose_guidance
 from tests.methodology_helpers import playbook_asset, skill_asset
 
 
@@ -60,7 +60,7 @@ def test_prose_cannot_change_workflow(execution: ExecutionSnapshot) -> None:
 @pytest.mark.parametrize(
     "stage", [ArtifactStage.INTAKE, ArtifactStage.TEST, ArtifactStage.PACKAGE]
 )
-def test_shipyard_stages_do_not_receive_agent_skills(
+def test_harborist_stages_do_not_receive_agent_skills(
     execution: ExecutionSnapshot, stage: ArtifactStage
 ) -> None:
     snapshot = ExecutionSnapshot.model_validate(

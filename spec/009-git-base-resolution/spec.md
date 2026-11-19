@@ -3,7 +3,7 @@
 ## Acceptance criteria
 
 - **AC-001 — API:** Export GitRepository and GitResolutionError through
-  shipyard.git. GitRepository(path=Path) stores the supplied path without I/O.
+  harborist.git. GitRepository(path=Path) stores the supplied path without I/O.
   resolve_base(*, ref: str = "HEAD") returns a GitCommitSha. Each call resolves
   afresh; no symbolic-ref caching or implicit refresh of returned values occurs.
 - **AC-002 — Native resolution:** Invoke system Git through subprocess.run with

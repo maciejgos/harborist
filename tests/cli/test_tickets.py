@@ -4,8 +4,8 @@ from uuid import UUID, uuid4
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
-from shipyard.control.client import ControlClient
+from harborist.cli import app
+from harborist.control.client import ControlClient
 
 
 def test_ticket_commands_request_fresh_listings_and_queue_explicitly(

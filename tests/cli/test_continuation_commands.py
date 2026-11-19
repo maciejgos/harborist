@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.application.execution import execute_run
-from shipyard.cli import app
-from shipyard.domain import RunContract
+from harborist.application.execution import execute_run
+from harborist.cli import app
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -21,7 +21,7 @@ def test_foreground_rework_reports_latest_attempt_and_can_apply(
         workspace=tmp_path / "work",
         agent=FakeAgent("changes"),
     )
-    monkeypatch.setattr("shipyard.cli.continuation.CodexAgent", lambda: FakeAgent())
+    monkeypatch.setattr("harborist.cli.continuation.CodexAgent", lambda: FakeAgent())
     root = store.directory(contract.run_id).parent
     runner = CliRunner()
     result = runner.invoke(
@@ -64,8 +64,8 @@ def test_foreground_rework_reports_latest_attempt_and_can_apply(
 def test_background_continuation_uses_service_and_returns_acceptance(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.control.queue import QueueStore
-    from shipyard.control.service import ControlService
+    from harborist.control.queue import QueueStore
+    from harborist.control.service import ControlService
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     root = store.directory(contract.run_id).parent
@@ -86,7 +86,7 @@ def test_background_continuation_uses_service_and_returns_acceptance(
     ) -> dict[str, object]:
         return service.dispatch(method, path, json.dumps(payload).encode())
 
-    monkeypatch.setattr("shipyard.cli.continuation.ControlClient.request", request)
+    monkeypatch.setattr("harborist.cli.continuation.ControlClient.request", request)
     result = CliRunner().invoke(
         app,
         [

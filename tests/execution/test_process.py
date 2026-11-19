@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from shipyard.execution.process import capture_process
+from harborist.execution.process import capture_process
 
 
 def test_detached_descendant_cannot_keep_capture_open(tmp_path: Path) -> None:
@@ -34,7 +34,7 @@ def test_detached_descendant_cannot_keep_capture_open(tmp_path: Path) -> None:
 def test_cancel_stops_running_process_group(tmp_path: Path) -> None:
     import pytest
 
-    from shipyard.execution.cancellation import cancellation_check
+    from harborist.execution.cancellation import cancellation_check
 
     marker = tmp_path / "started"
     token = cancellation_check.set(marker.exists)

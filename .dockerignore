@@ -3,7 +3,7 @@
 !pyproject.toml
 !uv.lock
 !src/
-!src/shipyard/
-!src/shipyard/**
+!src/harborist/
+!src/harborist/**
 **/__pycache__/
 **/*.pyc

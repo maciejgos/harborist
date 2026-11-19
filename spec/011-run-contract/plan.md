@@ -3,7 +3,7 @@
 1. Record intent and acceptance criteria before code.
 2. Add focused domain tests and observe the missing-contract failure.
 3. Implement a frozen RunContract record with an after-validator for ownership and
-   exact base consistency; export it from shipyard.domain. Use composition and
+   exact base consistency; export it from harborist.domain. Use composition and
    existing Pydantic APIs without new factories, protocols, or infrastructure.
 4. Verify deterministic compact JSON, validated round-trips, mismatch rejection,
    and representative immutability/extra-field behavior. Avoid repeating nested

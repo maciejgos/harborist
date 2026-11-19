@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.control.queue import QueueStore, Submission
-from shipyard.control.service import ControlService
-from shipyard.domain import RunContract
+from harborist.control.queue import QueueStore, Submission
+from harborist.control.service import ControlService
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -32,11 +32,11 @@ def test_cancel_queued_run_prevents_claim(
 def test_supersede_active_run_stops_execution_and_queues_fresh_contract(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.agents.base import AgentRequest, AgentResponse
-    from shipyard.application.context import ExecutionContext
-    from shipyard.application.intake import create_run
-    from shipyard.control.queue import DeliveryState
-    from shipyard.persistence.retirement import RetirementRequest
+    from harborist.agents.base import AgentRequest, AgentResponse
+    from harborist.application.context import ExecutionContext
+    from harborist.application.intake import create_run
+    from harborist.control.queue import DeliveryState
+    from harborist.persistence.retirement import RetirementRequest
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     run_id = contract.run_id
@@ -93,8 +93,8 @@ def test_supersede_active_run_stops_execution_and_queues_fresh_contract(
 def test_cancel_completed_candidate_preserves_evidence_and_blocks_publication(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application.execution import execute_run
-    from shipyard.application.publication import publish_run
+    from harborist.application.execution import execute_run
+    from harborist.application.publication import publish_run
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     run_id = contract.run_id

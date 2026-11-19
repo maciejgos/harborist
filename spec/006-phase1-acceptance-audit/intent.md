@@ -10,7 +10,7 @@ changing production code, tests, the PRD, or existing specifications.
 - Audit started: `2026-10-25T18:42:39Z`.
 - Preexisting working-tree changes: none (`git status --short` was empty).
 
-These values describe the inspected repository, not a Shipyard Run or a verified
+These values describe the inspected repository, not a Harborist Run or a verified
 software candidate.
 
 ## Requested outcome

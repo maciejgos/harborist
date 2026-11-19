@@ -31,7 +31,7 @@ PLAN:
 {"stage": "plan", "status": "needs_rescoping"}
 ```
 
-BUILD (Candidate creation/binding occurs later in Shipyard-controlled code):
+BUILD (Candidate creation/binding occurs later in Harborist-controlled code):
 
 ```json
 {"stage": "build", "status": "needs_clarification"}

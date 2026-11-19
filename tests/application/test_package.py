@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.budget import BudgetClock
-from shipyard.domain import FailureReason, Run, RunContract, RunOutcome
-from shipyard.evidence.package import package_run
+from harborist.application.budget import BudgetClock
+from harborist.domain import FailureReason, Run, RunContract, RunOutcome
+from harborist.evidence.package import package_run
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_package_rejects_nonterminal_and_symlinks(
 def test_package_prunes_only_validated_workspace_and_retains_evidence_validation(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.persistence.workspace import WorkspaceLayout
+    from harborist.persistence.workspace import WorkspaceLayout
 
     (tmp_path / "workspace-layout.json").write_text(
         WorkspaceLayout(run_id=frozen_contract.run_id).model_dump_json()
@@ -120,7 +120,7 @@ def test_package_prunes_only_validated_workspace_and_retains_evidence_validation
 def test_package_rejects_workspace_root_symlink(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.persistence.workspace import WorkspaceLayout
+    from harborist.persistence.workspace import WorkspaceLayout
 
     (tmp_path / "workspace-layout.json").write_text(
         WorkspaceLayout(run_id=frozen_contract.run_id).model_dump_json()

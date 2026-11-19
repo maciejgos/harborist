@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.domain.sandbox import CODEX_KIT
-from shipyard.execution.process import ProcessCapture
-from shipyard.sandbox.host_runtime import HostRuntime
+from harborist.domain.sandbox import CODEX_KIT
+from harborist.execution.process import ProcessCapture
+from harborist.sandbox.host_runtime import HostRuntime
 
-NAME = "shipyard-build-0123456789abcdef"
+NAME = "harborist-build-0123456789abcdef"
 CREATE = (
     "create",
     "--name",

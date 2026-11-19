@@ -4,12 +4,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from shipyard.configuration.execution import (
+from harborist.configuration.execution import (
     configure_sandbox_policy,
     load_execution_settings,
     sandbox_policy_status,
 )
-from shipyard.domain.sandbox import SandboxPolicy
+from harborist.domain.sandbox import SandboxPolicy
 from tests.settings_helpers import write_settings
 
 
@@ -40,7 +40,7 @@ def test_network_rules_reject_unsafe_or_overbroad_values(resource: str) -> None:
 def test_policy_freezes_docker_baseline_at_intake(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.sandbox.docker import DockerSandboxRuntime
+    from harborist.sandbox.docker import DockerSandboxRuntime
 
     path = write_settings(tmp_path)
     configure_sandbox_policy(path, SandboxPolicy())

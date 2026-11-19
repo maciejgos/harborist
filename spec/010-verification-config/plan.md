@@ -35,8 +35,8 @@ GitReadError; leave invalid caller SHA validation as a Pydantic error.
 Verification: parse_verification_config(source: bytes) returns VerificationConfig.
 Decode UTF-8, use safe YAML constructors, reject duplicate mapping keys, and
 validate domain settings. load_verification_config(*, repository, base_sha) requests
-shipyard.yaml at the supplied base, parses it, and constructs a snapshot using the
-source-byte SHA-256. Errors retain original causes and identify shipyard.yaml/base
+harborist.yaml at the supplied base, parses it, and constructs a snapshot using the
+source-byte SHA-256. Errors retain original causes and identify harborist.yaml/base
 context without including source contents. No ref refresh or command execution.
 
 ## Verification mapping

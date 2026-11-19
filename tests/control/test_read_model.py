@@ -3,11 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.control.queue import QueueStore, Submission
-from shipyard.control.read_model import read_record
-from shipyard.control.service import ControlService
-from shipyard.domain import RunContract
-from shipyard.persistence import FileRunStore
+from harborist.control.queue import QueueStore, Submission
+from harborist.control.read_model import read_record
+from harborist.control.service import ControlService
+from harborist.domain import RunContract
+from harborist.persistence import FileRunStore
 from tests.application.test_run_execution import FakeAgent, capture
 
 

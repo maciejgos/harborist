@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner, Result
 
-from shipyard.cli import app
-from shipyard.configuration import load_execution_settings
-from shipyard.domain import RunContract, RunOutcome
-from shipyard.git import GitRepository
-from shipyard.persistence import FileRunStore
-from shipyard.sandbox.docker import DockerSandboxRuntime
-from shipyard.skills import compile_methodology
+from harborist.cli import app
+from harborist.configuration import load_execution_settings
+from harborist.domain import RunContract, RunOutcome
+from harborist.git import GitRepository
+from harborist.persistence import FileRunStore
+from harborist.sandbox.docker import DockerSandboxRuntime
+from harborist.skills import compile_methodology
 from tests.application.test_run_execution import FakeAgent
 from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
@@ -27,7 +27,7 @@ runner = CliRunner()
 def target(tmp_path: Path) -> Path:
     target = tmp_path / "target"
     init_repository(target)
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'test -f requested.txt'}]\n"
     )
     git(target, "add", ".")
@@ -36,7 +36,7 @@ def target(tmp_path: Path) -> Path:
 
 
 def conventional(target: Path) -> Path:
-    path = target / "shipyard.settings.yaml"
+    path = target / "harborist.settings.yaml"
     write_settings(target).rename(path)
     return path
 
@@ -86,16 +86,16 @@ def test_other_target_subdirectory_wins_over_caller_and_nested_files(
     conventional(caller).write_text("invalid caller")
     nested = target / "nested"
     nested.mkdir()
-    (nested / "shipyard.settings.yaml").write_text("invalid nested")
+    (nested / "harborist.settings.yaml").write_text("invalid nested")
     monkeypatch.chdir(caller)
     result = invoke(tmp_path, "--repo", str(nested), "--json")
     assert result.exit_code == 0, result.output
     contract = RunContract.model_validate_json(result.stdout)
     assert contract.execution == load_execution_settings(
-        path=target / "shipyard.settings.yaml"
+        path=target / "harborist.settings.yaml"
     )
     assert shlex.split(result.stderr) == [
-        "shipyard",
+        "harborist",
         "run",
         str(contract.run_id),
         "--runs-dir",
@@ -141,7 +141,7 @@ def test_explicit_external_relative_override(
 def test_selected_settings_failure_stops_before_capture(
     tmp_path: Path, target: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
-    import shipyard.intake.source as source_adapter
+    import harborist.intake.source as source_adapter
 
     path = conventional(target)
     options = ["--repo", str(target)]
@@ -191,19 +191,19 @@ def test_selected_settings_failure_stops_before_capture(
 def test_discovery_freezes_local_settings_and_base_checks_for_execution(
     tmp_path: Path, target: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import shipyard.configuration.execution as settings_module
-    from shipyard.agents.base import AgentRequest, AgentResponse
-    from shipyard.application import capture as application_capture
-    from shipyard.application.execution import execute_run
+    import harborist.configuration.execution as settings_module
+    from harborist.agents.base import AgentRequest, AgentResponse
+    from harborist.application import capture as application_capture
+    from harborist.application.execution import execute_run
 
     path = conventional(target)
     base = git(target, "rev-parse", "HEAD")
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: changed, command: 'false'}]\n"
     )
-    git(target, "add", "shipyard.yaml")
+    git(target, "add", "harborist.yaml")
     git(target, "commit", "-m", "new checks")
-    (target / "shipyard.yaml").write_text("invalid live verification")
+    (target / "harborist.yaml").write_text("invalid live verification")
     result = invoke(tmp_path, "--repo", str(target), "--ref", base, "--json")
     assert result.exit_code == 0, result.output
     contract = RunContract.model_validate_json(result.stdout)
@@ -253,7 +253,7 @@ def test_help_documents_selection_policy() -> None:
     result = runner.invoke(app, ["intake", "--help"])
     text = " ".join(strip_ansi(result.stdout).split())
     for value in (
-        "shipyard.settings.yaml",
+        "harborist.settings.yaml",
         "target checkout root",
         "precedence",
         "invocation directory",
@@ -274,7 +274,7 @@ def test_repository_and_explicit_example_settings_compile(
 
     monkeypatch.setattr(DockerSandboxRuntime, "baseline_digest", baseline_digest)
     for path in (
-        root / "shipyard.settings.yaml",
+        root / "harborist.settings.yaml",
         root / "examples/intake/settings.yaml",
     ):
         snapshot = load_execution_settings(path=path)

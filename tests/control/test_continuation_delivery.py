@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from shipyard.control.queue import DeliveryState, QueueStore, Submission
-from shipyard.control.worker import Worker
-from shipyard.domain import RunContract
-from shipyard.domain.continuation import ContinuationRequest
+from harborist.control.queue import DeliveryState, QueueStore, Submission
+from harborist.control.worker import Worker
+from harborist.domain import RunContract
+from harborist.domain.continuation import ContinuationRequest
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -19,7 +19,7 @@ def test_service_serial_rework_and_idempotent_old_delivery(
     queue.submit(initial)
     assert Worker(queue, agent=FakeAgent("changes")).execute_next()
     previous = store.load_state(contract.run_id)
-    from shipyard.domain.attempt import Attempt
+    from harborist.domain.attempt import Attempt
 
     attempt = Attempt.model_validate_json(
         (store.directory(contract.run_id) / "attempt.json").read_bytes()
@@ -51,9 +51,9 @@ def test_service_serial_rework_and_idempotent_old_delivery(
 def test_latest_projection_uses_current_attempt_and_reused_spec(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.application.execution import execute_run
-    from shipyard.control.read_model import read_saved
-    from shipyard.persistence.continuation import prepare_continuation
+    from harborist.application.execution import execute_run
+    from harborist.control.read_model import read_saved
+    from harborist.persistence.continuation import prepare_continuation
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     root = store.directory(contract.run_id).parent

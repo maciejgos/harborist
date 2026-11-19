@@ -6,14 +6,14 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import (
+from harborist.domain import (
     IntentSnapshot,
     RunContract,
     VerificationCheck,
     VerificationConfig,
     VerificationConfigSnapshot,
 )
-from shipyard.domain.execution import ExecutionSnapshot
+from harborist.domain.execution import ExecutionSnapshot
 
 
 @pytest.fixture

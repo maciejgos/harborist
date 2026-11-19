@@ -11,8 +11,8 @@ Source: [PRD §§20–40, 90, 97, and 98](../../docs/Product%20Requirements%20Do
 
 ## GitHub collaboration evidence
 
-- Record PR state, review feedback, bounded CI evidence, current head, and merge provenance separately from historical Shipyard verification.
-- Mark a divergent current PR head as unverified by Shipyard. Keep the original candidate's verification even when GitHub CI later fails.
+- Record PR state, review feedback, bounded CI evidence, current head, and merge provenance separately from historical Harborist verification.
+- Mark a divergent current PR head as unverified by Harborist. Keep the original candidate's verification even when GitHub CI later fails.
 - Allow explicitly selected feedback to guide a fresh rework Attempt under the frozen spec. Human commits used as inputs require fresh verification before publication.
 
 ## Run cancellation

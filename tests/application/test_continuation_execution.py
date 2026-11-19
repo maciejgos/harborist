@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from shipyard.agents.base import AgentRequest, AgentResponse
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract, RunOutcome
-from shipyard.domain.continuation import ContinuationRequest
-from shipyard.domain.stage_result import AgentStage
-from shipyard.persistence.continuation import prepare_continuation
+from harborist.agents.base import AgentRequest, AgentResponse
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract, RunOutcome
+from harborist.domain.continuation import ContinuationRequest
+from harborist.domain.stage_result import AgentStage
+from harborist.persistence.continuation import prepare_continuation
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.git_helpers import git
 
@@ -59,7 +59,7 @@ class FailingStageAgent(FakeAgent):
 
     def execute(self, request: AgentRequest) -> AgentResponse:
         if request.stage == self.failed_stage:
-            from shipyard.agents.base import AgentExecutionError
+            from harborist.agents.base import AgentExecutionError
 
             self.calls.append(request.stage)
             raise AgentExecutionError("provider unavailable")

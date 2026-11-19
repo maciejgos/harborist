@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Shipyard is a local, single-user MVP with a background execution service, CLI client and read-only browser monitor. The execution core remains synchronous. Phase 11 rework/recovery is complete; GitHub publication remains a later phase. Read `ARCHITECTURE.md` before making structural changes.
+Harborist is a local, single-user MVP with a background execution service, CLI client and read-only browser monitor. The execution core remains synchronous. Phase 11 rework/recovery is complete; GitHub publication remains a later phase. Read `ARCHITECTURE.md` before making structural changes.
 
 ## Commands
 
@@ -40,7 +40,7 @@ uv run pyright
 - For bug fixes, start with a regression test that reproduces the defect. Derive feature tests from acceptance criteria and observable behavior.
 - Prefer representative cases, boundary cases, and meaningful failure paths. Use exhaustive combinations only when each combination exercises a distinct rule, such as lifecycle transitions.
 - Keep parametrization small and purposeful. Avoid Cartesian products of independent fields and repeated assertions of the same invariant through every API path.
-- Test domain rules and integration boundaries. Avoid tests that merely mirror implementation details or recheck library behavior without a Shipyard-specific requirement.
+- Test domain rules and integration boundaries. Avoid tests that merely mirror implementation details or recheck library behavior without a Harborist-specific requirement.
 - Use small fakes at external boundaries when useful; verify real Git, filesystem, and subprocess behavior with focused integration tests when those integrations are implemented.
 - Documentation-only and mechanical changes do not require new tests. Keep existing required validation checks; test count is not a quality target.
 
@@ -66,7 +66,7 @@ uv run pyright
 - Keep execution local: one background service runs one Run at a time through the synchronous execution core. Preserve explicit foreground compatibility and the read-only browser adapter. Do not introduce databases, remote workers, team access or other broader infrastructure unless explicitly requested.
 - Preserve the canonical flow: `INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE`.
 - `DESIGN`, `PLAN`, `BUILD`, and `REVIEW` use fresh native-agent invocations. Do not rely on agent-session continuity.
-- `TEST` is trusted Shipyard-controlled execution, not an agent decision. A failed mandatory check prevents `REVIEW`.
+- `TEST` is trusted Harborist-controlled execution, not an agent decision. A failed mandatory check prevents `REVIEW`.
 - `REVIEW` evaluates the exact candidate revision independently.
 - `spec.md` is the acceptance contract. `BUILD` may update `plan.md`, but must not silently change `spec.md`.
 - Verification belongs to an exact Git commit SHA. Never transfer verification to changed code.

@@ -32,7 +32,7 @@ This is the acceptance contract for another subset of the PoC domain foundation.
   and deletion. Metadata errors raise Pydantic validation errors. Valid references
   round-trip through JSON unchanged; serialized data contains no content.
 - **AC-007 — Public interface and boundaries:** Export ArtifactKind,
-  ArtifactStage, ArtifactSha256, and ArtifactReference through shipyard.domain.
+  ArtifactStage, ArtifactSha256, and ArtifactReference through harborist.domain.
   Add no dependencies, storage fields, filesystem operations, or integration into
   existing models. Existing domain behavior, including rejection of VERIFIED,
   remains unchanged.

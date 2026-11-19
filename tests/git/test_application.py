@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.git.repository import GitRepository
+from harborist.git.repository import GitRepository
 from tests.git_helpers import git, init_repository
 
 

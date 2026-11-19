@@ -1,1 +1,1 @@
-"""Shipyard tests and shared integration helpers."""
+"""Harborist tests and shared integration helpers."""

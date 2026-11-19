@@ -12,7 +12,7 @@ retaining YAML text. Commands remain opaque strings and are not executed.
 
 ## Requested outcome
 
-Read shipyard.yaml from one exact base commit and return immutable validated
+Read harborist.yaml from one exact base commit and return immutable validated
 configuration, unaffected by index/worktree edits or branch advancement. Reject
 missing or invalid configuration synchronously without invoking an agent or
 changing Run outcomes.

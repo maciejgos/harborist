@@ -6,9 +6,9 @@ from threading import Thread
 
 import pytest
 
-from shipyard.execution.process import ProcessCapture
-from shipyard.sandbox.host_runtime import HostRuntime
-from shipyard.sandbox.host_transport import Request, create_server, request_host
+from harborist.execution.process import ProcessCapture
+from harborist.sandbox.host_runtime import HostRuntime
+from harborist.sandbox.host_transport import Request, create_server, request_host
 
 
 @contextmanager
@@ -59,7 +59,7 @@ def test_disconnect_interrupts_running_adapter(tmp_path: Path) -> None:
     from threading import Event
     from time import sleep
 
-    from shipyard.execution.cancellation import check_cancellation
+    from harborist.execution.cancellation import check_cancellation
 
     entered = Event()
     interrupted = Event()

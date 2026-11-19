@@ -4,15 +4,15 @@
 
 ## Storage, workspaces and saved context
 
-Use `uv run shipyard run <run-id>` when running from the development checkout, or install the
-`shipyard` entry point on PATH to run the emitted command from any directory.
+Use `uv run harborist run <run-id>` when running from the development checkout, or install the
+`harborist` entry point on PATH to run the emitted command from any directory.
 The locator records absolute resolved repository and Runs-root paths, so the
-short command automatically loads `~/.shipyard/runs/<run-id>/execution-context.json`
+short command automatically loads `~/.harborist/runs/<run-id>/execution-context.json`
 and selects the captured repository independently of cwd. For custom storage the
 emitted command adds only the resolved storage locator, for example:
 
 ```bash
-shipyard run <run-id> --runs-dir '/absolute/custom runs'
+harborist run <run-id> --runs-dir '/absolute/custom runs'
 ```
 
 Custom storage requires `--runs-dir`: there is no global registry, recursive search,
@@ -20,11 +20,11 @@ or discovery across repositories. Commands are quoted for the local POSIX shell,
 including spaces and shell metacharacters. Storage inside the target checkout
 still requires an external workspace override as described below.
 
-Shipyard resolves its data root from the current user's home directory at command
+Harborist resolves its data root from the current user's home directory at command
 execution, independently of cwd and the target repository:
 
 ```text
-~/.shipyard/runs/<run-id>/
+~/.harborist/runs/<run-id>/
   contract.json
   intent.md
   intent.json
@@ -77,14 +77,14 @@ remain authoritative (`execution-workspace.json`, or a retained `workspace.json`
 selection when present). Admission writes its own create-only execution association
 without rewriting a historical selection. Legacy CREATED captures without a
 recorded selection use
-`~/.shipyard/workspaces/<run-id>` regardless of `--runs-dir`. Existing destinations
+`~/.harborist/workspaces/<run-id>` regardless of `--runs-dir`. Existing destinations
 remain retained and fail freshness checks, rather than being reused or deleted.
 No migration, deduplication, deletion, or ordinary filesystem move of linked
 worktrees occurs. Historical evidence without a workspace path stays readable
 with its path unknown. No source candidate application is performed here.
 
 Workspaces remain available for inspection; there is no automatic cleanup or
-retry of terminal Runs. Terminal Shipyard records and evidence are immutable;
+retry of terminal Runs. Terminal Harborist records and evidence are immutable;
 the retained checkout remains mutable. PACKAGE prunes the validated workspace
 child before traversal, excluding its `.git` link, repository files and symlinks
 from artifact hashing. Evidence outside the workspace keeps strict validation.
@@ -97,7 +97,7 @@ source contains the default workspace location, supply a fresh external
 `--workspace` and retry the captured Run. There is no fallback location. Symlink
 aliases are resolved for overlap checks. Directory obstructions and access errors
 identify the affected path; correct directory access or choose a valid override.
-Shipyard does not overwrite obstructing files or require elevated privileges.
+Harborist does not overwrite obstructing files or require elevated privileges.
 
 Explicit `--context` takes precedence over automatic lookup and selects its own
 repository and storage root when those options are omitted. For both explicit and
@@ -106,7 +106,7 @@ conflicts fail with the expected location. Resolved aliases and repository
 subdirectories are accepted:
 
 ```bash
-shipyard run <run-id> --context /absolute/runs/<run-id>/execution-context.json \
+harborist run <run-id> --context /absolute/runs/<run-id>/execution-context.json \
   --repo /path/to/repository --runs-dir /absolute/runs --workspace /fresh/build
 # A different --repo or --runs-dir fails with the expected location.
 ```
@@ -118,18 +118,18 @@ Only an absent automatic locator permits the legacy invocation for historical
 captures. From elsewhere, supply the repository and any nondefault storage root:
 
 ```bash
-shipyard run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
+harborist run <run-id> --repo /path/to/repository --runs-dir /path/to/runs
 ```
 
-Existing captures under `~/.shipyard/runs` remain accessible with
-`shipyard inspect <run-id>` and `shipyard methodology <run-id>`. For captures in
+Existing captures under `~/.harborist/runs` remain accessible with
+`harborist inspect <run-id>` and `harborist methodology <run-id>`. For captures in
 other locations, add `--runs-dir /path/to/runs` to either command; execute them
 with the explicit legacy command above when saved context is unavailable.
-Shipyard does not migrate, recapture or backfill context into historical captures,
-and terminal Shipyard records remain immutable.
+Harborist does not migrate, recapture or backfill context into historical captures,
+and terminal Harborist records remain immutable.
 
 When the automatic context is absent, omitted repository and Runs options select cwd and
-`~/.shipyard/runs`; workspace selection follows the capture layout described above.
+`~/.harborist/runs`; workspace selection follows the capture layout described above.
 Moving repositories or Runs storage does not repair locators or permit bypassing
 an existing invalid locator. Historical captures without locators use the explicit
 legacy invocation; no frozen artifacts are rewritten. The locator is an invocation
@@ -141,7 +141,7 @@ The PoC uses filesystem-only persistence:
 
 The directory layout is shown in [storage, workspaces and saved context](#storage-workspaces-and-saved-context).
 
-Terminal Shipyard records and evidence are immutable; checkout contents remain mutable.
+Terminal Harborist records and evidence are immutable; checkout contents remain mutable.
 
 The implemented `FileIntentStore` persists captured intent under an explicit
 Runs root. `intent.md` holds exact UTF-8 bytes; `intent.json` holds only source
@@ -184,7 +184,7 @@ partial PACKAGE is retained and cannot be silently retried.
 ## Phase 10 delivery persistence
 
 The background service stores delivery snapshots separately in
-`~/.shipyard/control/queue`. Run/Attempt evidence remains in the existing Runs
+`~/.harborist/control/queue`. Run/Attempt evidence remains in the existing Runs
 root. Queue snapshots are locked and atomically replaced; they do not make Run
 journals, Git and PACKAGE transactional. Interrupted claims are retained without
 automatic retry, session resume or evidence mutation. See the

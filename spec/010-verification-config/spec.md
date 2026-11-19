@@ -24,7 +24,7 @@
   forbid extra fields, and preserve valid state through JSON round-trips. Retain
   neither source text nor generated IDs/timestamps.
 - **AC-005 — Base-only loading:** load_verification_config takes repository and
-  base_sha, reads the fixed root path shipyard.yaml only at that exact commit,
+  base_sha, reads the fixed root path harborist.yaml only at that exact commit,
   calculates SHA-256 of original bytes, and returns the snapshot. Do not resolve
   HEAD. Staged/unstaged edits and later commits cannot alter existing snapshots;
   repeated loading of the same base serializes identically.
@@ -33,9 +33,9 @@
   and source context. Direct domain construction raises Pydantic validation errors.
   Add no agent execution or Run outcome mapping; missing/invalid configuration
   fails before callers can proceed to future execution.
-- **AC-007 — Interfaces and documentation:** Export models through shipyard.domain,
-  GitReadError through shipyard.git, and parsing/loading/error APIs through
-  shipyard.verification. Add PyYAML, update the lockfile, and provide type stubs
+- **AC-007 — Interfaces and documentation:** Export models through harborist.domain,
+  GitReadError through harborist.git, and parsing/loading/error APIs through
+  harborist.verification. Add PyYAML, update the lockfile, and provide type stubs
   if required by strict Pyright. Document the schema/API and implemented capability
   in README/ARCHITECTURE.md. Preserve previous behavior and specifications.
 

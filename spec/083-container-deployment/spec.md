@@ -1,6 +1,6 @@
 # Local container deployment
 
-An operator can install and run Shipyard locally using a single deployment
+An operator can install and run Harborist locally using a single deployment
 command. The service and browser UI share a small Linux image. Local Docker
 Sandboxes microVMs run on the host using the existing 0.54.x integration.
 The service still owns one Run at a time and stores its state on disk.
@@ -9,7 +9,7 @@ The service still owns one Run at a time and stores its state on disk.
 
 - **AC-1 · Runtime image.** Use a multi-stage build with digest-pinned inputs,
   Python 3.14, and locked production dependencies. Use the smallest supported
-  base that can run Shipyard and system Git on Linux arm64 and amd64. Use
+  base that can run Harborist and system Git on Linux arm64 and amd64. Use
   Alpine when locked wheels and system Git are available. Record the final
   image size on each supported architecture. Keep build tooling, development dependencies, and local
   credentials out of the final image. Run as a non-root user.

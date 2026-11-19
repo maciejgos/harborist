@@ -1,6 +1,6 @@
 import pytest
 
-from shipyard.github.collaboration import Feedback, select_feedback
+from harborist.github.collaboration import Feedback, select_feedback
 
 
 def test_selection_only_uses_explicit_feedback() -> None:

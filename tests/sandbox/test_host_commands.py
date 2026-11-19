@@ -1,10 +1,10 @@
 import pytest
 
-from shipyard.domain.sandbox import CODEX_KIT
-from shipyard.sandbox.host_commands import host_command
+from harborist.domain.sandbox import CODEX_KIT
+from harborist.sandbox.host_commands import host_command
 
-NAME = "shipyard-build-0123456789abcdef"
-OTHER = "shipyard-build-fedcba9876543210"
+NAME = "harborist-build-0123456789abcdef"
+OTHER = "harborist-build-fedcba9876543210"
 CREATE = (
     "create",
     "--name",
@@ -62,18 +62,18 @@ def test_host_permissions_are_scoped_to_owned_sandboxes(
 
 def test_guest_transfers_use_stdio_and_fixed_guest_paths() -> None:
     assert host_command(
-        ("upload", NAME, "/tmp/shipyard-source.bundle"), owned={NAME}
+        ("upload", NAME, "/tmp/harborist-source.bundle"), owned={NAME}
     ) == (
         "exec",
         "-i",
         "--",
         NAME,
         "dd",
-        "of=/tmp/shipyard-source.bundle",
+        "of=/tmp/harborist-source.bundle",
         "status=none",
     )
     assert host_command(
-        ("download", NAME, "/tmp/shipyard-final.json"), owned={NAME}
-    ) == ("exec", "--", NAME, "cat", "/tmp/shipyard-final.json")
+        ("download", NAME, "/tmp/harborist-final.json"), owned={NAME}
+    ) == ("exec", "--", NAME, "cat", "/tmp/harborist-final.json")
     with pytest.raises(ValueError):
         host_command(("download", NAME, "/tmp/../etc/passwd"), owned={NAME})

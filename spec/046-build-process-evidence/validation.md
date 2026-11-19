@@ -38,4 +38,4 @@ Raw evaluation artifacts and candidate bundles are not retained in this reposito
 The replay observations above are a historical summary, not reproducible evidence
 shipped with this change.
 Independent chronology proof remains outside this slice: these records are
-explicitly agent-reported, never trusted Shipyard-controlled test receipts.
+explicitly agent-reported, never trusted Harborist-controlled test receipts.

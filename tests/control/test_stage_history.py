@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.execution import execute_run
-from shipyard.control.read_model import read_saved
-from shipyard.domain import RunContract
+from harborist.application.execution import execute_run
+from harborist.control.read_model import read_saved
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
