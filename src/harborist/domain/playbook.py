@@ -1,5 +1,7 @@
 """Canonical workflow topology and executor authority, without execution."""
 
+from __future__ import annotations
+
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
@@ -15,7 +17,7 @@ class ExecutorType(StrEnum):
     TRUSTED_TEST = "trusted_test"
 
     @classmethod
-    def _missing_(cls, value: object) -> Self | None:
+    def _missing_(cls, value: object) -> ExecutorType | None:
         # Existing playbooks and frozen Runs still contain this executor name.
         return cls.HARBORIST if value == "shipyard" else None
 
