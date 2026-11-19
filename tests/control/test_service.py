@@ -171,7 +171,7 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
             id=uuid4(),
             name="Target",
             repository=repository,
-            settings=Path("shipyard.settings.yaml").resolve(),
+            settings=Path("examples/intake/settings.yaml").resolve(),
             timeout=900,
             verification_reserve=200,
         )

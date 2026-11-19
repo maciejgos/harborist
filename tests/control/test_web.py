@@ -202,7 +202,7 @@ def test_browser_capture_retry_reuses_the_same_run(
     root = repo.checkout_root()
     request = tmp_path / "request.md"
     request.write_text("# Browser request\n")
-    settings = Path("shipyard.settings.yaml").resolve()
+    settings = Path("examples/intake/settings.yaml").resolve()
     service = ControlService(
         QueueStore(tmp_path / "control"),
         agent=FakeAgent(),
@@ -305,7 +305,7 @@ def test_saved_workspace_validates_and_reloads_checkout(
         id=uuid4(),
         name="Shipyard",
         repository=repo.checkout_root(),
-        settings=Path("shipyard.settings.yaml").resolve(),
+        settings=Path("examples/intake/settings.yaml").resolve(),
     )
     root = tmp_path / "workspaces"
     saved = WorkspaceStore(root).save(workspace)
