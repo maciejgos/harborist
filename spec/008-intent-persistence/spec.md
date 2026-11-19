@@ -3,7 +3,7 @@
 ## Acceptance criteria
 
 - **AC-001 — API and paths:** Export FileIntentStore, IntentPersistenceError,
-  and IntentAlreadyExistsError through shipyard.persistence. Construction accepts
+  and IntentAlreadyExistsError through harborist.persistence. Construction accepts
   keyword-only root Path and performs no I/O. save(snapshot) returns None;
   load(run_id) returns IntentSnapshot. Use <root>/<run-id>/intent.md and intent.json;
   no implicit home directory or additional store hierarchy is introduced.

@@ -1,37 +1,41 @@
-# Shipyard
+# Harborist
 
-Shipyard turns engineering requests into independently verified code candidates
+[harborist.dev](https://harborist.dev)
+
+**Autonomous engineering. Verified delivery.**
+
+Harborist turns engineering requests into independently verified code candidates
 with durable evidence. The local MVP accepts Markdown or GitHub issues, runs one
 request at a time in the background, and lets an operator inspect each Attempt,
 recover or rework a Run, and approve publication of the exact verified commit.
 
 ## Quick start
 
-Install [uv](https://docs.astral.sh/uv/). Shipyard pins Python 3.14; uv downloads it if needed. Install and authenticate Codex CLI before executing agent stages.
+Install [uv](https://docs.astral.sh/uv/). Harborist pins Python 3.14; uv downloads it if needed. Install and authenticate Codex CLI before executing agent stages.
 GitHub issue intake and PR delivery also require an installed, authenticated `gh`.
-The target repository must have committed mandatory checks in `shipyard.yaml`
-and local operator configuration in `shipyard.settings.yaml`; this checkout
+The target repository must have committed mandatory checks in `harborist.yaml`
+and local operator configuration in `harborist.settings.yaml`; this checkout
 includes both. See [configuration](docs/configuration.md) for another repository.
 
 From this development checkout:
 
 ```bash
 uv sync
-uv run shipyard service start
-uv run shipyard run file:examples/intake/issue.md
+uv run harborist service start
+uv run harborist run file:examples/intake/issue.md
 ```
 
 The command captures and queues the request, then returns its Run ID. The
-service executes independently of the terminal. Run `uv run shipyard web` in
+service executes independently of the terminal. Run `uv run harborist web` in
 another terminal to open the [local workspace](http://127.0.0.1:8765). You can
 submit Runs, follow progress, inspect evidence, and approve GitHub publication there.
 View the result with
-`uv run shipyard status <run-id> --wait`, or use `run --foreground` for
+`uv run harborist status <run-id> --wait`, or use `run --foreground` for
 synchronous execution and terminal result exit codes. Review the report/evidence.
 For a VERIFIED Run, apply its candidate to an existing local branch explicitly:
 
 ```bash
-uv run shipyard apply <run-id> --branch <existing-local-branch>
+uv run harborist apply <run-id> --branch <existing-local-branch>
 ```
 
 Application requires the branch to be eligible for advancement. See
@@ -46,25 +50,25 @@ and operational requirements.
 
 | Command | Purpose |
 | --- | --- |
-| `shipyard run <source>` | Capture and submit a request. |
-| `shipyard intake <source>` | Capture frozen inputs without executing. |
-| `shipyard run <run-id>` | Submit a saved CREATED Run. |
-| `shipyard rework <run-id> --feedback "..."` | Start a fresh Attempt after rejected software. |
-| `shipyard recover <run-id>` | Explicitly recover an eligible execution failure. |
-| `shipyard service serve/start/status/stop` | Manage background execution. |
-| `shipyard runs` / `shipyard status <run-id> --wait` | Inspect saved history and service delivery/results. |
-| `shipyard web` | Operate the local workspace at http://127.0.0.1:8765. |
-| `shipyard inspect <run-id>` | Validate and print the frozen contract. |
-| `shipyard methodology <run-id>` | Preview frozen playbook and skills. |
-| `shipyard apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate. |
-| `shipyard publish <run-id> --approve <sha> --destination <owner/repo> --base <branch>` | Explicitly publish a VERIFIED candidate to GitHub. |
-| `shipyard github-status <run-id>` | Fetch and save published PR evidence. |
-| `shipyard cancel <run-id> --reason "..."` | Record Run cancellation through the service. |
-| `shipyard supersede <run-id> <source> --reason "..."` | Capture and queue a replacement request. |
+| `harborist run <source>` | Capture and submit a request. |
+| `harborist intake <source>` | Capture frozen inputs without executing. |
+| `harborist run <run-id>` | Submit a saved CREATED Run. |
+| `harborist rework <run-id> --feedback "..."` | Start a fresh Attempt after rejected software. |
+| `harborist recover <run-id>` | Explicitly recover an eligible execution failure. |
+| `harborist service serve/start/status/stop` | Manage background execution. |
+| `harborist runs` / `harborist status <run-id> --wait` | Inspect saved history and service delivery/results. |
+| `harborist web` | Operate the local workspace at http://127.0.0.1:8765. |
+| `harborist inspect <run-id>` | Validate and print the frozen contract. |
+| `harborist methodology <run-id>` | Preview frozen playbook and skills. |
+| `harborist apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate. |
+| `harborist publish <run-id> --approve <sha> --destination <owner/repo> --base <branch>` | Explicitly publish a VERIFIED candidate to GitHub. |
+| `harborist github-status <run-id>` | Fetch and save published PR evidence. |
+| `harborist cancel <run-id> --reason "..."` | Record Run cancellation through the service. |
+| `harborist supersede <run-id> <source> --reason "..."` | Capture and queue a replacement request. |
 
 Sources accept `file:path/to/issue.md` or `'github:owner/repo#42'`.
 Prefix commands with `uv run` from the development checkout. Use
-`shipyard <command> --help` for options or read the [usage guide](docs/usage.md).
+`harborist <command> --help` for options or read the [usage guide](docs/usage.md).
 
 ## Workflow
 
@@ -72,7 +76,7 @@ Prefix commands with `uv run` from the development checkout. Use
 INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE
 ```
 
-Shipyard freezes inputs and configuration, uses fresh native-agent invocations
+Harborist freezes inputs and configuration, uses fresh native-agent invocations
 for DESIGN, PLAN, BUILD and REVIEW, and runs mandatory TEST checks itself.
 Verification belongs to the exact candidate commit. PACKAGE writes durable reports
 and evidence. Local application and GitHub publication require explicit operator action.

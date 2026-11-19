@@ -1,6 +1,6 @@
 # Local Docker Sandboxes execution and app policy editing
 
-[GitHub issue #44](https://github.com/maciejgos/shipyard/issues/44)
+[GitHub issue #44](https://github.com/maciejgos/harborist/issues/44)
 
 Operators can select Docker Sandboxes execution and edit its policy from
 Integrations for a saved Workspace. This implements the local runtime portion
@@ -49,7 +49,7 @@ synchronous core. Trusted-local execution remains an explicit compatible choice.
   loading host user configuration. DESIGN/PLAN/REVIEW use read-only mode.
   Reject a changed starting HEAD or hidden index flags. Export BUILD's bounded
   binary Git patch into the owned host worktree; reject readonly-stage changes.
-  Shipyard creates the candidate commit and immutable Run-owned ref. Keep a
+  Harborist creates the candidate commit and immutable Run-owned ref. Keep a
   complete candidate bundle, digest, size, and candidate attribution outside
   all VMs before TEST. Agent output alone cannot establish verification.
 - **AC-6 · Trusted TEST and exact revision.** Execute the frozen mandatory
@@ -57,7 +57,7 @@ synchronous core. Trusted-local execution remains an explicit compatible choice.
   a Docker-selected Run. Collect command exit codes and bounded logs outside
   the VM. Check the candidate revision, index tracking, and changes after TEST;
   disposable ignored files may be cleaned. Mandatory failures block REVIEW.
-  REVIEW receives that exact candidate and Shipyard's TEST receipt. Existing
+  REVIEW receives that exact candidate and Harborist's TEST receipt. Existing
   validated lifecycle, criterion coverage, PACKAGE, and verification rules apply.
 - **AC-7 · Cancellation, export, and cleanup.** Honor guest deadlines as well
   as host cancellation. Stop/remove the VM itself, not just the `sbx` client.
@@ -67,7 +67,7 @@ synchronous core. Trusted-local execution remains an explicit compatible choice.
   for operator inspection; recovery starts fresh rather than attaching to it.
   Record cleanup failures and package available evidence without claiming
   successful verification. No global reset/prune operations are permitted.
-- **AC-8 · Policy boundaries.** Apply saved rules to each new Shipyard sandbox
+- **AC-8 · Policy boundaries.** Apply saved rules to each new Harborist sandbox
   before repository checkout or model invocation. They supplement the frozen
   machine policy and pinned kit policy; deny rules prevail and an additional
   allow cannot override an existing deny. Use Docker's host-managed OpenAI

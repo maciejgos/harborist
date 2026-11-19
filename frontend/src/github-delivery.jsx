@@ -18,7 +18,7 @@ function Publish({ id, record, receipt, disabled, refresh, destination }) {
       <dt>Run</dt><dd className="mono">{id}</dd>
       <dt>Attempt</dt><dd className="mono">{record.attempt_id}</dd>
       <dt>Verified commit</dt><dd className="mono">{record.candidate_sha}</dd>
-      <dt>Branch</dt><dd className="mono">shipyard/{id}</dd>
+      <dt>Branch</dt><dd className="mono">harborist/{id}</dd>
       {receipt?.pull && <><dt>Existing PR</dt><dd>#{receipt.pull}</dd>
         <dt>Expected head</dt><dd className="mono">{receipt.candidate}</dd></>}
     </dl>

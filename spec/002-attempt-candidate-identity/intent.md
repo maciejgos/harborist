@@ -24,6 +24,6 @@ REVIEW evidence a revision to reference.
   and exact candidate identity.
 
 Prepare `intent.md → spec.md → plan.md` manually, as in slice 001. These artifacts
-do not claim an executed Shipyard Run or independent native-agent stages.
+do not claim an executed Harborist Run or independent native-agent stages.
 This slice models identities only; orchestration, Git operations, and verification
 remain future work.

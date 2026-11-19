@@ -48,9 +48,9 @@ PRD §4.9 fields applicable to the PoC are represented:
   model selection or provider calls during intake.
 - Sandbox policy: the sole supported PoC policy, `trusted-local`, is explicit.
 - Execution-semantic project configuration: the currently supported project
-  configuration is the base-revision `shipyard.yaml` verification configuration;
+  configuration is the base-revision `harborist.yaml` verification configuration;
   unsupported project fields are rejected rather than silently left unfrozen.
-- Execution budget: Shipyard supplies 1800 seconds overall and 300 reserved for
+- Execution budget: Harborist supplies 1800 seconds overall and 300 reserved for
   verification, or accepts explicit operator/application overrides. Budget cannot
   come from repository YAML. Runtime enforcement and PACKAGE handling are later
   execution work; PACKAGE remains outside the declared budget.
@@ -65,8 +65,8 @@ At the audited clean implementation revision:
 - `uv run pytest -q`: **483 passed**.
 - `uv run ruff check .`: **passed**.
 - `uv run pyright`: **0 errors, 0 warnings**.
-- Installed `shipyard --help` and module `python -m shipyard intake --help`: passed.
-- Shipped settings and methodology assets load; root `shipyard.yaml` parses with
+- Installed `harborist --help` and module `python -m harborist intake --help`: passed.
+- Shipped settings and methodology assets load; root `harborist.yaml` parses with
   three mandatory checks (tests, lint, types).
 
 A writable UV_CACHE_DIR override was used for the local execution environment.
@@ -76,11 +76,11 @@ VERIFIED outcome is claimed.
 Installed CLI smoke test against this repository's actual committed base:
 
 1. Copy example issue/settings/playbook/skill into a temporary input directory.
-2. Execute `uv run shipyard intake` targeting this repository, saving outside it.
+2. Execute `uv run harborist intake` targeting this repository, saving outside it.
 3. Confirm the frozen base is exactly the audited SHA, three checks are captured,
    the default budget is frozen, and `run.json` remains CREATED.
 4. Delete all copied source/settings/methodology files.
-5. Execute `uv run shipyard inspect`; confirm identical complete contract JSON.
+5. Execute `uv run harborist inspect`; confirm identical complete contract JSON.
 
 All five steps passed; the repository working tree remained unchanged.
 

@@ -1,0 +1,23 @@
+version: 1
+playbook:
+  name: bounded-repository-change
+  version: '1'
+  path: src/harborist/playbooks/bounded-repository-change.md
+skills:
+- name: engineering
+  version: '2'
+  path: src/harborist/skills/engineering.md
+agent_profile:
+  name: local-codex
+  version: '1'
+  provider: codex
+  model: gpt-6.1-sol
+  arguments: []
+sandbox_policy:
+  kind: docker-sandboxes
+  template: docker.io/sbx/codex@sha256:7d283f7cacf5c069b6f61cdcba87ce3b570a0c5a43c36d88d3f8873732503162
+  cpus: 2
+  memory_mib: 2048
+  allow: []
+  deny: []
+  baseline_sha256: null

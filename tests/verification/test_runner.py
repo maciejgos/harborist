@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from shipyard.domain import VerificationCheck, VerificationConfig
-from shipyard.verification.runner import run_checks
+from harborist.domain import VerificationCheck, VerificationConfig
+from harborist.verification.runner import run_checks
 
 
 def test_collects_all_checks_after_failure(tmp_path: Path) -> None:

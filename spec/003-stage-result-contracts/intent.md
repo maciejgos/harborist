@@ -27,5 +27,5 @@ Stage contracts do not execute stages, advance Runs, or establish verification.
   infrastructure-independent domain models, and trusted execution boundaries.
 
 Follow the manually prepared `intent.md → spec.md → plan.md` pattern from earlier
-slices. These documents do not claim an executed Shipyard Run or independent
+slices. These documents do not claim an executed Harborist Run or independent
 native-agent stage invocations. Existing specifications remain unchanged.

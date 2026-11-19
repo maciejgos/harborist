@@ -4,16 +4,16 @@
 
 ## Canonical playbook definition
 
-`shipyard.domain.playbook.canonical_playbook(version="1")` returns an immutable
+`harborist.domain.playbook.canonical_playbook(version="1")` returns an immutable
 seven-stage definition with fixed dependencies and executor authority. TEST is
-trusted Shipyard execution; agent stages require fresh invocations; REVIEW is
+trusted Harborist execution; agent stages require fresh invocations; REVIEW is
 read-only and PACKAGE is outside budget. Modified/omitted stages or weakened
 metadata are rejected. This defines topology without executing it. See
 [canonical playbook specification](../spec/019-canonical-playbook/spec.md).
 
 ## Frozen methodology documents
 
-`shipyard.playbooks.parse_playbook` and `parse_skill` compile captured assets with
+`harborist.playbooks.parse_playbook` and `parse_skill` compile captured assets with
 leading YAML front matter. Playbooks declare `id`, `version` and canonical `stages`;
 skills declare `id`, `version`, `description` and their agent `stages`. Front-matter
 identity must match the frozen asset. Skill metadata cannot declare dependencies,
@@ -26,7 +26,7 @@ matter. See [methodology document specification](../spec/020-methodology-documen
 
 ## Stage guidance composition
 
-`shipyard.skills.compile_methodology(execution)` parses all frozen methodology
+`harborist.skills.compile_methodology(execution)` parses all frozen methodology
 inputs. `compose_guidance(compiled, stage=ArtifactStage.BUILD)` selects skills for
 the requested agent stage in configured order. It returns immutable sections with
 exact bodies, descriptions and content-bound identities. A stage may have no
@@ -52,9 +52,9 @@ performs no I/O and does not grant VERIFIED. See the
 
 ## Bundled methodology
 
-Shipyard includes canonical playbook v1 and engineering skill v2, scoped to all
+Harborist includes canonical playbook v1 and engineering skill v2, scoped to all
 four agent stages. The standalone files under `examples/intake`
-match the package resources. `shipyard.skills.defaults.load_default_methodology()`
+match the package resources. `harborist.skills.defaults.load_default_methodology()`
 returns frozen assets independently of the caller's working directory; an explicit
 agent profile is still required when adopting them into an execution snapshot.
 No existing Run is migrated. See [bundled methodology specification](../spec/023-bundled-methodology/spec.md).

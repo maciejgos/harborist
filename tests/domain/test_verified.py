@@ -3,22 +3,22 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import (
+from harborist.domain import (
     VerificationCheck,
     VerificationConfig,
     VerificationConfigSnapshot,
 )
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.run import Run, RunLifecycle, RunOutcome
-from shipyard.domain.stage_result import (
+from harborist.domain.attempt import Attempt
+from harborist.domain.run import Run, RunLifecycle, RunOutcome
+from harborist.domain.stage_result import (
     AgentStage,
     CriterionResult,
     CriterionStatus,
     ReviewStageResult,
     StageStatus,
 )
-from shipyard.domain.verification_gate import CheckEvidence, VerificationRecord
-from shipyard.review.criteria import extract_criteria
+from harborist.domain.verification_gate import CheckEvidence, VerificationRecord
+from harborist.review.criteria import extract_criteria
 
 
 def record(run: Run) -> VerificationRecord:

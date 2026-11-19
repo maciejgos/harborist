@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.domain import Run, RunContract
-from shipyard.persistence import (
+from harborist.domain import Run, RunContract
+from harborist.persistence import (
     FileRunStore,
     RunAlreadyExistsError,
     RunPersistenceError,
@@ -97,8 +97,8 @@ def test_root_io_error_is_wrapped(tmp_path: Path, frozen_contract: RunContract) 
 def test_legacy_capture_remains_readable_without_silent_migration(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.playbooks import MethodologyError
-    from shipyard.skills import compile_methodology
+    from harborist.playbooks import MethodologyError
+    from harborist.skills import compile_methodology
     from tests.methodology_helpers import asset
 
     snapshot = frozen_contract.execution.model_dump()

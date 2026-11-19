@@ -4,8 +4,8 @@ import hashlib
 
 import yaml
 
-from shipyard.domain import MethodologyAsset
-from shipyard.domain.playbook import canonical_playbook
+from harborist.domain import MethodologyAsset
+from harborist.domain.playbook import canonical_playbook
 
 
 def asset(*, name: str, version: str, content: str) -> MethodologyAsset:

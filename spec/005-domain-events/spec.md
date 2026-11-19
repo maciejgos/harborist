@@ -30,7 +30,7 @@ This is the acceptance contract for the event-record building block of Phase 1.
   fields, and inconsistent snapshots are rejected with Pydantic validation errors.
   Derived ownership properties are not serialized.
 - **AC-007 — Public interfaces:** Export RunEventType, RunEvent,
-  AttemptCreatedEvent, and DomainEvent through shipyard.domain. DomainEvent is a
+  AttemptCreatedEvent, and DomainEvent through harborist.domain. DomainEvent is a
   Pydantic union discriminated by event_type, usable with TypeAdapter for JSON.
 - **AC-008 — Compatibility and documentation:** Preserve Run/Attempt APIs and
   existing behavior. Add no dependencies or infrastructure. Update README with

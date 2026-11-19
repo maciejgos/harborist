@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -21,7 +21,7 @@ from tests.application.test_run_execution import FakeAgent, capture
 def test_progress_lifecycle(
     tmp_path: Path, frozen_contract: RunContract, mode: str, check: str, reason: str
 ) -> None:
-    from shipyard.application.progress import ProgressUpdate
+    from harborist.application.progress import ProgressUpdate
 
     updates: list[ProgressUpdate] = []
     store, repo, contract = capture(tmp_path, frozen_contract, check)
@@ -67,8 +67,8 @@ def test_progress_streams_while_synchronous_work_is_blocked(
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from shipyard.application import execution
-    from shipyard.cli.progress import ProgressReporter
+    from harborist.application import execution
+    from harborist.cli.progress import ProgressReporter
 
     entered = threading.Event()
     release = threading.Event()
@@ -87,7 +87,7 @@ def test_progress_streams_while_synchronous_work_is_blocked(
     }[boundary]
     original = getattr(execution, name)
 
-    from shipyard.domain.stage_result import AgentStage
+    from harborist.domain.stage_result import AgentStage
 
     def blocking(**kwargs: object) -> object:
         if boundary != "design" or kwargs["stage"] == AgentStage.DESIGN:
@@ -128,7 +128,7 @@ def test_progress_streams_while_synchronous_work_is_blocked(
 def test_progress_failure_and_early_outcome_reasons(
     tmp_path: Path, frozen_contract: RunContract, mode: str
 ) -> None:
-    from shipyard.application.progress import ProgressUpdate
+    from harborist.application.progress import ProgressUpdate
 
     updates: list[ProgressUpdate] = []
     store, repo, contract = capture(tmp_path, frozen_contract)
@@ -148,8 +148,8 @@ def test_progress_failure_and_early_outcome_reasons(
 def test_candidate_publication_failure_does_not_complete_build(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application.progress import ProgressUpdate
-    from shipyard.git.repository import GitWorkspace, GitWorkspaceError
+    from harborist.application.progress import ProgressUpdate
+    from harborist.git.repository import GitWorkspace, GitWorkspaceError
 
     def broken(self: GitWorkspace, *, message: str) -> None:
         raise GitWorkspaceError("sensitive task content")

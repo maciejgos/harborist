@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import Run
-from shipyard.intake import MarkdownIntakeError, read_markdown_intent
+from harborist.domain import Run
+from harborist.intake import MarkdownIntakeError, read_markdown_intent
 
 
 @pytest.mark.parametrize(

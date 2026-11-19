@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from shipyard.configuration import SettingsError, load_execution_settings
-from shipyard.domain.execution import ExecutionBudget, ExecutionSnapshot
+from harborist.configuration import SettingsError, load_execution_settings
+from harborist.domain.execution import ExecutionBudget, ExecutionSnapshot
 from tests.settings_helpers import write_settings
 
 

@@ -1,8 +1,8 @@
 # Background execution (Phase 10)
 
-Start `shipyard service start` before using `shipyard run`. Runs now submit to
-the service and return promptly. Use `shipyard status <run-id> --wait` to view
-the result. For a visual timeline, run `shipyard web` in another terminal and
+Start `harborist service start` before using `harborist run`. Runs now submit to
+the service and return promptly. Use `harborist status <run-id> --wait` to view
+the result. For a visual timeline, run `harborist web` in another terminal and
 open http://127.0.0.1:8765. Add `--foreground` to run examples below when synchronous output or
 terminal exit codes are needed. See the [service guide](background-control-plane.md)
 for migration, JSON response semantics and interruption behavior.
@@ -14,17 +14,17 @@ for migration, JSON response semantics and interruption behavior.
 ## Available commands
 
 From the development checkout, prefix commands with `uv run` (for example,
-`uv run shipyard --help`). An installed `shipyard` entry point and
-`uv run python -m shipyard` expose the same CLI.
+`uv run harborist --help`). An installed `harborist` entry point and
+`uv run python -m harborist` expose the same CLI.
 
 | Command | Purpose |
 | --- | --- |
-| `shipyard intake <source>` | Capture a CREATED Run with frozen inputs, then print its summary and execution command without running agents or checks. |
-| `shipyard run <source>` | Capture a source and execute the delivery workflow synchronously. |
-| `shipyard run <run-id>` | Execute a previously captured CREATED Run using its frozen inputs. |
-| `shipyard inspect <run-id>` | Validate and print the saved contract as JSON without rereading the original inputs. |
-| `shipyard apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate to an existing local branch. |
-| `shipyard methodology <run-id>` | Preview the frozen playbook and skills as JSON without executing or modifying the Run. |
+| `harborist intake <source>` | Capture a CREATED Run with frozen inputs, then print its summary and execution command without running agents or checks. |
+| `harborist run <source>` | Capture a source and execute the delivery workflow synchronously. |
+| `harborist run <run-id>` | Execute a previously captured CREATED Run using its frozen inputs. |
+| `harborist inspect <run-id>` | Validate and print the saved contract as JSON without rereading the original inputs. |
+| `harborist apply <run-id> --branch <branch>` | Apply a packaged VERIFIED candidate to an existing local branch. |
+| `harborist methodology <run-id>` | Preview the frozen playbook and skills as JSON without executing or modifying the Run. |
 
 `<source>` accepts `file:path/to/issue.md` or `github:owner/repo#42` (quote
 GitHub selectors in shell commands). `<run-id>` is the captured Run's UUID.
@@ -33,15 +33,15 @@ Available options:
 
 | Applies to | Options |
 | --- | --- |
-| All commands | `--runs-dir PATH` selects Run storage (default: `~/.shipyard/runs`); `--help` shows command usage. |
-| `intake` and `run <source>` | `--repo PATH` selects the target repository (default: current directory); `--settings PATH` overrides the target root's `shipyard.settings.yaml`; `--ref TEXT` selects the base commit-ish (default: `HEAD`); `--timeout INTEGER` sets the total budget (default: 1800 seconds); `--verification-reserve INTEGER` reserves verification time (default: 300 seconds). The total budget must exceed the reserve. |
+| All commands | `--runs-dir PATH` selects Run storage (default: `~/.harborist/runs`); `--help` shows command usage. |
+| `intake` and `run <source>` | `--repo PATH` selects the target repository (default: current directory); `--settings PATH` overrides the target root's `harborist.settings.yaml`; `--ref TEXT` selects the base commit-ish (default: `HEAD`); `--timeout INTEGER` sets the total budget (default: 1800 seconds); `--verification-reserve INTEGER` reserves verification time (default: 300 seconds). The total budget must exceed the reserve. |
 | `intake` | `--json` prints the full frozen contract instead of the human-readable summary. |
 | Both `run` forms | `--workspace PATH` selects a fresh isolated workspace; `--json` prints the full Run result instead of the human-readable summary. |
 | `run <run-id>` | `--context PATH` selects an explicit saved context locator; `--repo PATH` constrains the saved repository. `--runs-dir` must also match saved context when present. Source-capture options cannot override frozen inputs. |
 | `apply` | `--branch TEXT` is required; `--repo PATH` constrains the saved repository. |
 | `methodology` | `--stage STAGE` previews composed guidance for one native-agent stage: `design`, `plan`, `build`, or `review`. |
 
-Use `shipyard --help` for the command list, or `shipyard <command> --help`
+Use `harborist --help` for the command list, or `harborist <command> --help`
 for full usage. The top-level `--install-completion` and `--show-completion`
 options install or display shell completion.
 
@@ -49,27 +49,27 @@ options install or display shell completion.
 
 Run repository examples from the repository root.
 
-The target repository must have a committed root `shipyard.yaml` with its mandatory
-checks. Shipyard includes its own verification and execution configuration.
-Intake defaults to `shipyard.settings.yaml` at the resolved target checkout root.
+The target repository must have a committed root `harborist.yaml` with its mandatory
+checks. Harborist includes its own verification and execution configuration.
+Intake defaults to `harborist.settings.yaml` at the resolved target checkout root.
 This checkout supplies an explicit model/profile and canonical playbook/skill
 sources; intake freezes these inputs without invoking the selected model.
 
 ```bash
-uv run shipyard intake 'github:maciejgos/shipyard#7'
+uv run harborist intake 'github:maciejgos/harborist#7'
 
-uv run shipyard intake file:examples/intake/issue.md
+uv run harborist intake file:examples/intake/issue.md
 
 # Existing explicit invocations remain supported.
-uv run shipyard intake file:examples/intake/issue.md \
+uv run harborist intake file:examples/intake/issue.md \
   --repo . --settings examples/intake/settings.yaml
 
-uv run shipyard intake 'github:owner/repo#42' \
+uv run harborist intake 'github:owner/repo#42' \
   --repo /path/to/target --settings /path/to/operator.yaml
 
-uv run shipyard inspect RUN_UUID
-uv run shipyard methodology RUN_UUID
-uv run shipyard methodology RUN_UUID --stage build
+uv run harborist inspect RUN_UUID
+uv run harborist methodology RUN_UUID
+uv run harborist methodology RUN_UUID --stage build
 ```
 
 Intake first validates methodology metadata, then prints a concise human-readable
@@ -82,14 +82,14 @@ original inputs. `methodology` previews the frozen playbook and skills as JSON;
 `--stage` selects composed guidance for an agent stage. All commands accept
 `--runs-dir`; intake also accepts `--ref`,
 `--timeout` and `--verification-reserve`. Defaults are HEAD, 1800 seconds overall,
-300 seconds reserved, and `~/.shipyard/runs`. A shorter timeout must still exceed
+300 seconds reserved, and `~/.harborist/runs`. A shorter timeout must still exceed
 the reserve; override both when needed. Expected failures return nonzero status.
-`uv run python -m shipyard --help` provides the same commands. See the
+`uv run python -m harborist --help` provides the same commands. See the
 [CLI specification](../spec/017-intake-cli/spec.md).
 
 ## Saved methodology preview
 
-`shipyard methodology RUN_UUID` loads the saved capture and prints compiled
+`harborist methodology RUN_UUID` loads the saved capture and prints compiled
 playbook/skill metadata, guidance and exact content identities. Add `--stage build`
 (or design/plan/review) for composed guidance. It never reads current methodology
 files, executes stages or changes the saved contract. `inspect` remains available
@@ -100,7 +100,7 @@ for those captures. See [preview specification](../spec/025-methodology-preview/
 
 New captures using the example settings adopt engineering guidance v2. BUILD can
 return a bounded `process_report` with red/green command records and limitations.
-Shipyard saves it as `build/build-process.json`, supplies it to REVIEW, and indexes
+Harborist saves it as `build/build-process.json`, supplies it to REVIEW, and indexes
 it in PACKAGE independently of diagnostic truncation. These records are explicitly
 agent-reported: they cannot override trusted TEST or prove historical execution
 order. Routine TDD policy stays in operating guidance; explicitly requested proof
@@ -110,11 +110,11 @@ See the [process-evidence contract](../spec/046-build-process-evidence/spec.md).
 Capture and execute synchronously in one command:
 
 ```bash
-shipyard run 'github:maciejgos/shipyard#7'
-shipyard run file:./issue.md
+harborist run 'github:maciejgos/harborist#7'
+harborist run file:./issue.md
 # From a development checkout:
-uv run shipyard run 'github:maciejgos/shipyard#7'
-uv run shipyard run file:./issue.md
+uv run harborist run 'github:maciejgos/harborist#7'
+uv run harborist run file:./issue.md
 ```
 
 Source mode calls intake once, saves one CREATED Run and executes that same
@@ -126,7 +126,7 @@ timeout retry, or invalid-response corrections without exposing response bodies.
 
 Source mode accepts `--settings`, `--ref` (default HEAD), `--timeout` (1800 seconds),
 and `--verification-reserve` (300 seconds) with their intake meanings. Settings
-default to `shipyard.settings.yaml` at the resolved target checkout root, including
+default to `harborist.settings.yaml` at the resolved target checkout root, including
 from a subdirectory. Explicit `--settings PATH` takes precedence, resolving relative
 to the invocation directory; unavailable or invalid selected settings never fall
 back. Capture freezes settings, methodology, base revision and budget.
@@ -153,8 +153,8 @@ execute that UUID rather than capturing again. Custom storage needs its locator;
 workspace placement errors need a fresh external path, for example:
 
 ```bash
-shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
-uv run shipyard run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+harborist run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
+uv run harborist run <run-id> --runs-dir '/absolute/custom runs' --workspace '/absolute/fresh external workspace'
 ```
 
 The original source and live settings are unnecessary for recovery; saved context
@@ -164,16 +164,16 @@ terminal Runs remain immutable.
 For capture-only use, keep `intake`, then copy its execution command when ready:
 
 ```bash
-shipyard intake file:./issue.md --repo /path/to/repository
+harborist intake file:./issue.md --repo /path/to/repository
 # stdout: a human-readable summary including a command such as:
-shipyard run <run-id>
+harborist run <run-id>
 ```
 
 To capture the full frozen contract as JSON instead (the command hint remains on
 stderr):
 
 ```bash
-shipyard intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository --json > contract.json
+harborist intake file:./issue.md --settings ./operator.yaml --repo /path/to/repository --json > contract.json
 ```
 
 See [storage and recovery](storage-and-recovery.md) for context locators,
@@ -193,8 +193,8 @@ and absolute report/evidence paths. Unavailable work is identified explicitly.
 Verification does not apply the candidate to the target branch.
 
 ```bash
-shipyard run <run-id>
-shipyard run <run-id> --json
+harborist run <run-id>
+harborist run <run-id> --json
 ```
 
 Scripts consuming the previous default JSON stdout must add `--json`. This option
@@ -205,7 +205,7 @@ persist the same evidence, and use the same exit codes. Full check and criterion
 records remain in saved artifacts. `inspect` continues to return the frozen
 contract after execution.
 
-The application entry point is `shipyard.application.execution.execute_run`, with
+The application entry point is `harborist.application.execution.execute_run`, with
 explicit `FileRunStore`, Run ID, `GitRepository` and `NativeAgent` parameters,
 plus an optional fresh workspace path. Existing individual stage APIs remain
 available for lower-level use.
@@ -248,7 +248,7 @@ is described in the service guide. No live-provider evaluation is claimed.
 
 See the [Phase 8 acceptance audit](../spec/045-phase8-acceptance-audit/report.md).
 
-During `shipyard run`, progress appears automatically on stderr: the requested
+During `harborist run`, progress appears automatically on stderr: the requested
 Run ID, stage starts, measured completion durations, failures, cancellations and
 skipped stages. Active stages print an elapsed-time line every 15 seconds,
 including while agent calls, trusted checks or packaging block. These lines mean
@@ -261,7 +261,7 @@ for a single JSON document. Progress stays on stderr in either mode. Plain lines
 are flushed immediately and remain readable in redirected logs, for example:
 
 ```bash
-shipyard run <run-id> --context /absolute/execution-context.json --json \
+harborist run <run-id> --context /absolute/execution-context.json --json \
   >result.json 2>progress.log
 ```
 
@@ -273,14 +273,14 @@ awaiting application” with a shell-quoted command. Replace
 `REPLACE_WITH_LOCAL_BRANCH` with an existing local branch:
 
 ```bash
-shipyard apply <run-id> --branch main
-shipyard apply <run-id> --branch release --repo '/path/to/repository' --runs-dir '/path/to/custom runs'
+harborist apply <run-id> --branch main
+harborist apply <run-id> --branch release --repo '/path/to/repository' --runs-dir '/path/to/custom runs'
 ```
 
 Application is a separate synchronous user operation. It does not invoke agents,
 rerun verification, create commits, or push. Saved execution context selects the
 original repository independently of cwd. Custom storage requires `--runs-dir`;
-the default is `~/.shipyard/runs`. Explicit repository/storage options must match
+the default is `~/.harborist/runs`. Explicit repository/storage options must match
 the saved context after resolving aliases and repository subdirectories. Invalid
 existing context fails closed. Only absent context permits legacy `--repo`/cwd
 and default storage resolution.
@@ -326,14 +326,14 @@ checkout/file writers remain outside the local PoC guarantees.
 Rework a TEST_FAILED or CHANGES_REQUIRED result with a fresh Attempt in the same Run:
 
 ```bash
-shipyard rework <run-id> --feedback 'Fix the failing AC-002 behavior'
-shipyard status <run-id> --wait
+harborist rework <run-id> --feedback 'Fix the failing AC-002 behavior'
+harborist status <run-id> --wait
 ```
 
 Recover an eligible infrastructure/output failure:
 
 ```bash
-shipyard recover <run-id>
+harborist recover <run-id>
 ```
 
 Both commands queue through the local service by default. Add `--foreground` to
@@ -362,7 +362,7 @@ conservatively charges the entire previous allowance, so the grant must exceed
 the frozen verification reserve. For example:
 
 ```bash
-shipyard recover <run-id> --additional-seconds 600
+harborist recover <run-id> --additional-seconds 600
 ```
 
 The service never automatically retries an INTERRUPTED claim. Stop the old
@@ -378,22 +378,22 @@ its original paths; subsequent captures are under
 `<runs-root>/<run-id>/attempts/000001`, `000002`, and so on. Later default checkouts
 are `<runs-root-parent>/workspaces/<run-id>/<attempt-id>`; use `--workspace` for
 custom placement. The original execution-context locator stays at the Run root.
-`shipyard apply` validates and applies only the latest VERIFIED candidate.
+`harborist apply` validates and applies only the latest VERIFIED candidate.
 Rework/recovery does not publish to GitHub or apply code automatically.
 
 ## Publish a verified candidate to GitHub
 
 Use authenticated GitHub CLI for PR operations and a Git credential for HTTPS
-pushes. Supply the exact candidate SHA printed by Shipyard, the destination
+pushes. Supply the exact candidate SHA printed by Harborist, the destination
 repository, and an existing PR base branch.
 
 ```sh
-shipyard publish RUN_ID --approve CANDIDATE_SHA --destination OWNER/REPO --base main
-shipyard github-status RUN_ID
+harborist publish RUN_ID --approve CANDIDATE_SHA --destination OWNER/REPO --base main
+harborist github-status RUN_ID
 ```
 
 For a later verified Attempt, add `--expect-head PREVIOUSLY_PUBLISHED_SHA`.
-Shipyard uses a dedicated branch for the Run and checks that the previous head
+Harborist uses a dedicated branch for the Run and checks that the previous head
 is still current and is an ancestor of the approved candidate. If a push or PR
 creation fails midway, retry with the same arguments. Publication records and
 observations live under `publications/RUN_ID/` in Runs storage.
@@ -404,7 +404,7 @@ on specific feedback, pass that path and one or more feedback IDs from the
 snapshot.
 
 ```sh
-shipyard rework RUN_ID --observation SNAPSHOT_PATH --feedback-id review:123
+harborist rework RUN_ID --observation SNAPSHOT_PATH --feedback-id review:123
 ```
 
 The new Attempt starts from the local verified candidate, uses the frozen spec,
@@ -414,8 +414,8 @@ never imported implicitly.
 ## Cancel or replace a Run
 
 ```sh
-shipyard cancel RUN_ID --reason "Request withdrawn"
-shipyard supersede RUN_ID file:./updated-request.md --reason "Requirements changed"
+harborist cancel RUN_ID --reason "Request withdrawn"
+harborist supersede RUN_ID file:./updated-request.md --reason "Requirements changed"
 ```
 
 Both commands use the local service. Active execution stops at a cancellation
@@ -426,7 +426,7 @@ available for human handling.
 
 Supersession captures and queues a new Run. Status on the original shows the
 replacement ID. If the service request fails after capture, retry with
-`shipyard supersede RUN_ID --replacement REPLACEMENT_ID --reason "Requirements changed"`.
+`harborist supersede RUN_ID --replacement REPLACEMENT_ID --reason "Requirements changed"`.
 
 ## Set up local Codex
 
@@ -434,7 +434,7 @@ In **Integrations → Codex**, select **Check Codex** to check the CLI and login
 used by the background service. Sign in with `codex login` in a terminal if
 credentials are unavailable. After installing the CLI or changing environment
 variables used by the service, restart the service from that environment.
-Shipyard discards the login command's output and displays a diagnostic message.
+Harborist discards the login command's output and displays a diagnostic message.
 The check uses local login status. A Run exercises access to the chosen model.
 
 Under **Execution profile**, select a saved Workspace and choose **Edit profile**
@@ -447,8 +447,8 @@ From a terminal, the equivalent commands use the terminal's Codex environment
 and the selected checkout's settings:
 
 ```sh
-shipyard agent check --repo /path/to/checkout
-shipyard agent configure --repo /path/to/checkout --model gpt-6.1-sol --effort high
+harborist agent check --repo /path/to/checkout
+harborist agent configure --repo /path/to/checkout --model gpt-6.1-sol --effort high
 ```
 
 Use `--settings PATH` to select an explicit settings file. Omit `--effort` in
@@ -469,9 +469,9 @@ repository.
 Use the same service commands from the CLI:
 
 ```bash
-shipyard tickets list owner/source
-shipyard tickets refresh owner/source
-shipyard tickets queue 'owner/source#42' --workspace WORKSPACE_ID
+harborist tickets list owner/source
+harborist tickets refresh owner/source
+harborist tickets queue 'owner/source#42' --workspace WORKSPACE_ID
 ```
 
 Find the saved Workspace UUID on the **Workspaces** page. Each command accepts
@@ -482,4 +482,4 @@ from GitHub. If a queue response is uncertain, repeat the same command with
 The service fetches the issue again at intake and saves the resulting title,
 body, labels, and issue link before queue admission. Later edits do not change
 that Run. The browser Run detail links to the source ticket, and
-`shipyard inspect RUN_ID` shows its saved identity and URL.
+`harborist inspect RUN_ID` shows its saved identity and URL.

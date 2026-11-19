@@ -11,7 +11,7 @@ resulting pull request from the Run detail page.
   action. Show stale approvals and branch-head conflicts with refreshed state.
 - Show publication receipts and observed PR status, head SHA, CI checks,
   feedback, and merge result when available. Present GitHub observations
-  alongside the Shipyard verification for the exact candidate.
+  alongside the Harborist verification for the exact candidate.
 - Allow eligible GitHub feedback to be selected for an explicitly approved
   rework Attempt.
 - Validate the packaged experience from submission through verified

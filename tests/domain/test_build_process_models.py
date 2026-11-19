@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain.build_process import BuildProcessReport
+from harborist.domain.build_process import BuildProcessReport
 
 
 def test_process_report_preserves_reported_failures_without_granting_success() -> None:

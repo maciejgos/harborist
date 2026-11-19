@@ -5,7 +5,7 @@ commit's real TEST/native-stage integration. No live Codex invocation is claimed
 
 | Requirement | Implementation / evidence |
 |---|---|
-| shipyard.yaml and base freezing | Existing verification config loader and frozen RunContract; tests/verification/test_config.py |
+| harborist.yaml and base freezing | Existing verification config loader and frozen RunContract; tests/verification/test_config.py |
 | Mandatory executor and complete collection | verification/runner.py; tests/verification/test_runner.py checks failure continuation, output and timeout continuation |
 | Every configured check runs | Ordered iteration, including nonzero/timeout failures; complete collection tests |
 | Failed mandatory checks prevent REVIEW | TEST_FAILED receipt; existing tests/playbooks/test_routing.py and tests/application/test_stages.py guard routing/REVIEW; trusted execution failure test |

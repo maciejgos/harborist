@@ -3,7 +3,7 @@
 - AC-001: Define immutable typed stage definitions and executor types for exactly
   INTAKE → DESIGN → PLAN → BUILD → TEST → REVIEW → PACKAGE. Reuse ArtifactStage
   as the existing seven-stage identifier rather than introducing another enum.
-- AC-002: INTAKE/PACKAGE are Shipyard execution, DESIGN/PLAN/BUILD/REVIEW are fresh
+- AC-002: INTAKE/PACKAGE are Harborist execution, DESIGN/PLAN/BUILD/REVIEW are fresh
   native-agent execution, TEST is trusted check execution. REVIEW is read-only;
   PACKAGE is outside budget. Freeze these declarations in the definition.
 - AC-003: Every stage depends on its immediate predecessor; INTAKE has no dependency.

@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import VerificationConfig, VerificationConfigSnapshot
-from shipyard.verification import VerificationConfigError, parse_verification_config
+from harborist.domain import VerificationConfig, VerificationConfigSnapshot
+from harborist.verification import VerificationConfigError, parse_verification_config
 
 SOURCE = b'version: 1\nchecks:\n  - id: tests\n    command: " pytest -q "\n  - id: lint\n    command: ruff check .\n'
 
@@ -34,7 +34,7 @@ def test_invalid_yaml_is_wrapped_with_source_context(source: bytes) -> None:
         parse_verification_config(source)
     assert isinstance(caught.value, ValueError)
     assert caught.value.__cause__ is not None
-    assert "shipyard.yaml" in str(caught.value)
+    assert "harborist.yaml" in str(caught.value)
 
 
 @pytest.mark.parametrize(

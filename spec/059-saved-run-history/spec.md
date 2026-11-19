@@ -1,6 +1,6 @@
 # Specification: Complete local Run history
 
-- AC-001: Run listing includes all UUID Run directories under ~/.shipyard/runs, plus service submissions, deduplicated by matching identity/location. Historical foreground Runs require no queue record, source checkout or execution-context locator.
+- AC-001: Run listing includes all UUID Run directories under ~/.harborist/runs, plus service submissions, deduplicated by matching identity/location. Historical foreground Runs require no queue record, source checkout or execution-context locator.
 - AC-002: Detail and allowlisted report/evidence reads work for historical Runs. Discovery is read-only and never submits, claims, repairs, resumes or mutates saved Runs.
 - AC-003: Preserve validated lifecycle/outcome, Attempt and exact verified candidate attribution. Historical records have no fabricated delivery state or per-stage success. Corrupt/partial Run captures remain visibly unavailable without hiding healthy Runs.
 - AC-004: Order history consistently by recorded/submission time. Missing roots and unrelated files are harmless; symlink Run directories are excluded. Conflicting UUIDs in different roots fail explicitly rather than mixing evidence.

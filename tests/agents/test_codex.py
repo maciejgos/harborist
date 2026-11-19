@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import AgentExecutionError
-from shipyard.agents.codex import CodexAgent
+from harborist.agents.base import AgentExecutionError
+from harborist.agents.codex import CodexAgent
 from tests.agents.test_base import request
 
 

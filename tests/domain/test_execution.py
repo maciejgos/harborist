@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import ExecutionBudget, ExecutionSnapshot
+from harborist.domain import ExecutionBudget, ExecutionSnapshot
 
 
 @pytest.mark.parametrize(

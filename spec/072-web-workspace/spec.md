@@ -1,6 +1,6 @@
 # Web workspace and Run inbox
 
-The local operator opens `shipyard web` to see which Runs are active, queued,
+The local operator opens `harborist web` to see which Runs are active, queued,
 or need attention and to find completed work. The workspace uses React and
 [shadcn/ui](https://ui.shadcn.com/), with [Linear](https://linear.app/) as the
 reference for compact navigation, scannable lists, consistent interaction
@@ -18,14 +18,14 @@ patterns, and keyboard ergonomics.
   focus, responsive layouts, and readable status cues with text.
 - Each applicable screen has designed loading, empty, error, and disconnected
   states. After reconnection, the workspace refreshes from the service.
-- Development builds the React frontend into assets packaged with Shipyard.
+- Development builds the React frontend into assets packaged with Harborist.
   The installed browser workspace runs locally without a frontend dev server
   or runtime downloads. Existing monitor reads remain available during rollout.
 
 ## Implementation
 
 The React source lives in `frontend/`. Run `npm ci` and `npm run build`
-there to regenerate the checked-in assets served by `shipyard web`.
+there to regenerate the checked-in assets served by `harborist web`.
 The initial workspace ships the grouped inbox, search and filters, deep
 links, live refresh, disconnected state, and the original evidence reads.
 Browser smoke testing confirmed the packaged application renders and the

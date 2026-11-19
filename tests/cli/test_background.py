@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
-from shipyard.control.client import ControlClient
-from shipyard.domain import RunContract
+from harborist.cli import app
+from harborist.control.client import ControlClient
+from harborist.domain import RunContract
 from tests.application.test_run_execution import capture
 
 
@@ -74,7 +74,7 @@ def test_source_capture_submits_once_and_retains_frozen_context(
 ) -> None:
     from uuid import UUID
 
-    from shipyard.control.queue import QueueStore, Submission
+    from harborist.control.queue import QueueStore, Submission
     from tests.settings_helpers import write_settings
 
     store, repo, _ = capture(tmp_path, frozen_contract)

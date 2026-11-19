@@ -1,7 +1,7 @@
 # Phase 8 acceptance audit
 
 Phase 8 implements PACKAGE and evidence for the local synchronous PoC. One
-`shipyard run <run-id>` now connects the previously independent stage boundaries,
+`harborist run <run-id>` now connects the previously independent stage boundaries,
 including failure mapping, shared deadlines and terminal lifecycle persistence.
 No background control plane, recovery, database or publication workflow was added.
 
@@ -32,7 +32,7 @@ Each behavior slice started with focused tests and was validated with the full
 pytest, Ruff and Pyright set before its commit. Tests were first observed failing
 for the absent API or missing behavior, then passing after implementation. The
 budget slice used an isolated implementation file during the red check. uv's
-cache was redirected to `/tmp/shipyard-uv-cache` because the default cache is
+cache was redirected to `/tmp/harborist-uv-cache` because the default cache is
 outside the permitted write locations; this changes no application behavior.
 
 The audit reproduced and corrected two integration defects: verification from a
@@ -49,7 +49,7 @@ verification independently of the new application orchestration suite.
 
 ## Public operation and limits
 
-- Capture with `shipyard intake`, then execute with `shipyard run <run-id> --repo
+- Capture with `harborist intake`, then execute with `harborist run <run-id> --repo
   <repository>`. Report/evidence paths and terminal state are returned as JSON.
 - The current Codex adapter does not extract provider token/billing counters.
   Their values stay unknown; no cost estimate is presented as an actual charge.

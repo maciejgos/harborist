@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from shipyard.git import GitReadError, GitRepository, GitResolutionError
-from shipyard.verification import (
+from harborist.git import GitReadError, GitRepository, GitResolutionError
+from harborist.verification import (
     VerificationConfigError,
     load_verification_config,
 )
@@ -168,7 +168,7 @@ def test_missing_git_preserves_launch_error(
     ) -> subprocess.CompletedProcess[bytes]:
         raise error
 
-    monkeypatch.setattr("shipyard.git.command.subprocess.run", missing_git)
+    monkeypatch.setattr("harborist.git.command.subprocess.run", missing_git)
     with pytest.raises(GitResolutionError) as caught:
         GitRepository(path=tmp_path).resolve_base()
     assert caught.value.__cause__ is error
@@ -197,7 +197,7 @@ def test_malformed_successful_output_is_rejected(
             args=["git"], returncode=0, stdout=stdout, stderr=b""
         )
 
-    monkeypatch.setattr("shipyard.git.command.subprocess.run", malformed_git)
+    monkeypatch.setattr("harborist.git.command.subprocess.run", malformed_git)
     with pytest.raises(GitResolutionError) as caught:
         GitRepository(path=tmp_path).resolve_base()
     assert isinstance(caught.value.__cause__, cause)
@@ -245,7 +245,7 @@ def test_subprocess_environment_preserves_configuration_without_repo_overrides(
             args=args, returncode=0, stdout=b"a" * 40 + b"\n", stderr=b""
         )
 
-    monkeypatch.setattr("shipyard.git.command.subprocess.run", inspect_git)
+    monkeypatch.setattr("harborist.git.command.subprocess.run", inspect_git)
     assert GitRepository(path=tmp_path).resolve_base() == "a" * 40
     assert calls == 1
     assert all(os.environ[name] == "caller-repository-override" for name in overrides)
@@ -315,9 +315,9 @@ def test_verification_snapshot_ignores_checkout_and_later_commits(
     repository_path: Path,
 ) -> None:
     source = b"version: 1\nchecks:\n  - id: tests\n    command: pytest\n"
-    path = repository_path / "shipyard.yaml"
+    path = repository_path / "harborist.yaml"
     path.write_bytes(source)
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     git(repository_path, "commit", "-m", "Committed verification config")
     repository = GitRepository(path=repository_path)
     base = repository.resolve_base()
@@ -326,7 +326,7 @@ def test_verification_snapshot_ignores_checkout_and_later_commits(
     assert snapshot.base_sha == base
     assert snapshot.source_sha256 == hashlib.sha256(source).hexdigest()
     path.write_bytes(b"version: 1\nchecks: [{id: tests, command: staged-command}]\n")
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     path.write_bytes(b"Invalid uncommitted configuration")
     index = repository_path / ".git" / "index"
     before_index = index.read_bytes()
@@ -353,16 +353,16 @@ def test_verification_snapshot_ignores_checkout_and_later_commits(
 def test_verification_source_digest_captures_yaml_formatting(
     repository_path: Path,
 ) -> None:
-    path = repository_path / "shipyard.yaml"
+    path = repository_path / "harborist.yaml"
     path.write_bytes(b"version: 1\nchecks: [{id: tests, command: pytest}]\n")
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     git(repository_path, "commit", "-m", "Initial config")
     repository = GitRepository(path=repository_path)
     before = load_verification_config(
         repository=repository, base_sha=repository.resolve_base()
     )
     path.write_bytes(path.read_bytes() + b"# formatting provenance\n")
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     git(repository_path, "commit", "-m", "Add config comment")
     after = load_verification_config(
         repository=repository, base_sha=repository.resolve_base()
@@ -375,14 +375,14 @@ def test_verification_source_digest_captures_yaml_formatting(
 def test_verification_reads_original_commit_despite_git_replacement(
     repository_path: Path,
 ) -> None:
-    path = repository_path / "shipyard.yaml"
+    path = repository_path / "harborist.yaml"
     path.write_bytes(b"version: 1\nchecks: [{id: tests, command: original-check}]\n")
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     git(repository_path, "commit", "-m", "Original base")
     repository = GitRepository(path=repository_path)
     base = repository.resolve_base()
     path.write_bytes(b"version: 1\nchecks: [{id: tests, command: replacement-check}]\n")
-    git(repository_path, "add", "shipyard.yaml")
+    git(repository_path, "add", "harborist.yaml")
     git(repository_path, "commit", "-m", "Replacement commit")
     replacement = repository.resolve_base()
     git(repository_path, "replace", base, replacement)
@@ -397,19 +397,52 @@ def test_verification_reads_original_commit_despite_git_replacement(
 def test_configuration_load_failures_include_base_context(
     repository_path: Path, failure: str
 ) -> None:
-    path = repository_path / "shipyard.yaml"
+    path = repository_path / "harborist.yaml"
     if failure == "directory":
         path.mkdir()
         (path / "nested").write_bytes(b"not a config file")
     elif failure == "invalid-config":
         path.write_bytes(b"version: 2\nchecks: []\n")
     if path.exists():
-        git(repository_path, "add", "shipyard.yaml")
+        git(repository_path, "add", "harborist.yaml")
         git(repository_path, "commit", "-m", "Invalid config target")
     repository = GitRepository(path=repository_path)
     base = "0" * 40 if failure == "nonexistent-commit" else repository.resolve_base()
     with pytest.raises(VerificationConfigError) as caught:
         load_verification_config(repository=repository, base_sha=base)
     assert base in str(caught.value)
-    assert "shipyard.yaml" in str(caught.value)
+    assert "harborist.yaml" in str(caught.value)
     assert caught.value.__cause__ is not None
+
+
+def test_legacy_verification_config_is_used_until_new_path_exists(
+    repository_path: Path,
+) -> None:
+    legacy = repository_path / "shipyard.yaml"
+    legacy.write_text("version: 1\nchecks: [{id: legacy, command: pytest}]\n")
+    git(repository_path, "add", legacy.name)
+    git(repository_path, "commit", "-m", "Add legacy verification settings")
+
+    repository = GitRepository(path=repository_path)
+    legacy_base = repository.resolve_base()
+    snapshot = load_verification_config(repository=repository, base_sha=legacy_base)
+    assert snapshot.config.checks[0].id == "legacy"
+
+    current = repository_path / "harborist.yaml"
+    current.write_text("version: 1\nchecks: [{id: current, command: pytest}]\n")
+    git(repository_path, "add", current.name)
+    git(repository_path, "commit", "-m", "Add current verification settings")
+    snapshot = load_verification_config(
+        repository=repository, base_sha=repository.resolve_base()
+    )
+    assert snapshot.config.checks[0].id == "current"
+
+    current.unlink()
+    current.mkdir()
+    (current / "config.yaml").write_text(legacy.read_text())
+    git(repository_path, "add", current.name)
+    git(repository_path, "commit", "-m", "Replace current settings with directory")
+    with pytest.raises(VerificationConfigError):
+        load_verification_config(
+            repository=repository, base_sha=repository.resolve_base()
+        )

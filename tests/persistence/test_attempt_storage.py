@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.execution import execute_run
-from shipyard.domain import RunContract
-from shipyard.domain.continuation import ContinuationRequest
-from shipyard.persistence.continuation import prepare_continuation
+from harborist.application.execution import execute_run
+from harborist.domain import RunContract
+from harborist.domain.continuation import ContinuationRequest
+from harborist.persistence.continuation import prepare_continuation
 from tests.application.test_run_execution import FakeAgent, capture
 
 

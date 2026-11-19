@@ -30,7 +30,7 @@ This is the acceptance contract for another subset of the PoC domain foundation.
   applicable. Direct model construction raises Pydantic validation errors.
 - **AC-006 — Public interfaces:** Export AgentStage, StageStatus,
   CriterionStatus, CriterionResult, ReviewSummary, all four stage-result models,
-  StageResult, InvalidStageOutput, and parse_stage_result through shipyard.domain.
+  StageResult, InvalidStageOutput, and parse_stage_result through harborist.domain.
 - **AC-007 — Authority and compatibility:** No agent execution, process checks,
   artifact I/O, workflow transitions, or TEST contracts are added. BUILD contains
   no agent-asserted Candidate. REVIEW's candidate is a declaration pending trusted

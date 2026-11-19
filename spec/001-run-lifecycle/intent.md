@@ -26,4 +26,4 @@ slice implements revision-bound verification.
   Pydantic contracts, and infrastructure-independent domain code.
 
 Apply `intent.md → spec.md → plan.md` manually. These documents do not claim
-execution by Shipyard or independent native-agent stage invocations.
+execution by Harborist or independent native-agent stage invocations.

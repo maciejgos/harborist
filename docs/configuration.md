@@ -4,7 +4,7 @@
 
 ## Frozen verification configuration
 
-Target repositories commit a narrow `shipyard.yaml`:
+Target repositories commit a narrow `harborist.yaml`:
 
 ```yaml
 version: 1
@@ -18,13 +18,13 @@ unique and commands nonblank. Unknown fields, unsupported versions, duplicate YA
 keys, and unsafe object tags are rejected. Command strings retain their exact text.
 
 ```python
-from shipyard.verification import load_verification_config
+from harborist.verification import load_verification_config
 
 base_sha = repository.resolve_base()
 verification = load_verification_config(repository=repository, base_sha=base_sha)
 ```
 
-The loader reads the root `shipyard.yaml` from that exact commit, ignoring index
+The loader reads the root `harborist.yaml` from that exact commit, ignoring index
 and working-tree edits. Its immutable snapshot retains validated settings, base
 SHA, and a SHA-256 of the original file bytes. Git replacement refs cannot substitute
 other content for committed-file reads. YAML source text is not retained.
@@ -34,7 +34,7 @@ This loader does not execute checks or change Run outcomes. `execute_test` perfo
 
 ## Operator execution settings
 
-The CLI selects exactly `<resolved-target-checkout-root>/shipyard.settings.yaml`
+The CLI selects exactly `<resolved-target-checkout-root>/harborist.settings.yaml`
 when `--settings` is omitted. `--repo` selects the target (default: `.`); Git
 resolves its root even from a subdirectory. Caller configuration cannot override
 another target repository. Explicit `--settings PATH` takes precedence, supports
@@ -47,7 +47,7 @@ diagnostic names the path and instructs you to supply `--settings PATH`. An inva
 explicit override never falls back. Existing Runs use their frozen settings and
 methodology and never reload or rediscover these files. Execution settings are
 local intake inputs independent of `--ref`; mandatory checks remain in
-`shipyard.yaml` at the frozen base SHA and cannot be overridden by settings.
+`harborist.yaml` at the frozen base SHA and cannot be overridden by settings.
 GitHub examples require an installed, authenticated `gh` with issue access.
 
 `load_execution_settings(path=Path("operator.yaml"))` captures a version 1 YAML
@@ -63,7 +63,7 @@ The local adapter accepts `provider: codex` and a model identifier. Use
 `minimal`, `low`, `medium`, `high`, and `xhigh`. See
 [local Codex setup](usage.md#set-up-local-codex) for diagnostics and editing.
 
-Budget is excluded from YAML. Shipyard defaults to 1800 total seconds with 300
+Budget is excluded from YAML. Harborist defaults to 1800 total seconds with 300
 reserved for verification; callers may pass an explicit `ExecutionBudget` to the
 loader. The target repository cannot set it. Unknown fields, duplicate YAML keys,
 unsupported versions, invalid records and unreadable assets fail with
@@ -98,7 +98,7 @@ and policy reads fail closed; they never fall back to host execution. Existing
 Install Docker Sandboxes 0.54.x on a supported host, then complete `sbx login`,
 initialize a Docker network policy, and configure OpenAI authentication with
 `sbx secret set openai --oauth` or `sbx secret set openai`. Run these commands as
-the OS user that runs the Shipyard service. Restart an already-running Shipyard
+the OS user that runs the Harborist service. Restart an already-running Harborist
 service after installation/upgrading. Docker Desktop alone does not supply this
 standalone runtime. The app readiness check does not spend model allowance.
 
@@ -111,7 +111,7 @@ prefixes and ports, not URLs, CIDRs, HTTP-path rules, or global allow-all rules.
 
 Every agent stage, TEST, and REVIEW receives a fresh mountless VM. Only committed
 repository state, explicit inputs, and bounded outputs cross the boundary.
-BUILD changes return as a Git patch; Shipyard commits them and retains a complete
+BUILD changes return as a Git patch; Harborist commits them and retains a complete
 `sandbox/candidate.bundle` and checksum receipt. Runtime receipts under the same
 Attempt directory record VM identities, export state, and cleanup. Docker's
 generated OAuth configuration is preserved; host Codex configuration is absent.

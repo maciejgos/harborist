@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.control.queue import Progress, QueueStore, Submission
-from shipyard.control.service import ControlService
-from shipyard.domain import RunContract
-from shipyard.web.server import WebApplication
+from harborist.control.queue import Progress, QueueStore, Submission
+from harborist.control.service import ControlService
+from harborist.domain import RunContract
+from harborist.web.server import WebApplication
 from tests.application.test_run_execution import FakeAgent, capture
 
 
@@ -69,12 +69,12 @@ def test_artifact_api_only_reads_named_terminal_artifacts(
 
 
 def test_web_adapter_is_read_only_and_has_no_filesystem_routes(tmp_path: Path) -> None:
-    from shipyard.control.client import ControlClient
+    from harborist.control.client import ControlClient
 
     app = WebApplication(ControlClient(tmp_path))
     status, mime, body = app.respond("GET", "/")
     assert status == 200 and "text/html" in mime
-    assert b"Shipyard" in body
+    assert b"Harborist" in body
     for method, route in (
         ("POST", "/api/runs"),
         ("POST", "/api/stop"),
@@ -92,7 +92,7 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
     import http.client
     from threading import Thread
 
-    from shipyard.web.server import create_server
+    from harborist.web.server import create_server
 
     server = create_server(control_dir=tmp_path, port=0)
     thread = Thread(target=server.serve_forever)
@@ -103,7 +103,7 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         response = connection.getresponse()
         assert response.status == 200
         assert response.getheader("Content-Security-Policy")
-        assert b"Shipyard" in response.read()
+        assert b"Harborist" in response.read()
         connection.request("GET", "/", headers={"Host": "other.example"})
         response = connection.getresponse()
         assert response.status == 403
@@ -113,7 +113,7 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
         assert response.status == 405
         response.read()
         origin = f"http://127.0.0.1:{server.server_port}"
-        headers = {"Content-Type": "application/json", "X-Shipyard-Workspace": "1"}
+        headers = {"Content-Type": "application/json", "X-Harborist-Workspace": "1"}
         for value in ("https://other.example", "null"):
             connection.request(
                 "POST", "/api/workspace/runs", "{}", {**headers, "Origin": value}
@@ -155,7 +155,7 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
 def test_workspace_deep_link_serves_packaged_react_assets(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.control.client import ControlClient
+    from harborist.control.client import ControlClient
 
     app = WebApplication(ControlClient(tmp_path))
     for route in (f"/runs/{frozen_contract.run_id}", "/tickets"):
@@ -202,7 +202,7 @@ def test_browser_capture_retry_reuses_the_same_run(
     root = repo.checkout_root()
     request = tmp_path / "request.md"
     request.write_text("# Browser request\n")
-    settings = Path("shipyard.settings.yaml").resolve()
+    settings = Path("harborist.settings.yaml").resolve()
     service = ControlService(
         QueueStore(tmp_path / "control"),
         agent=FakeAgent(),
@@ -228,8 +228,8 @@ def test_browser_capture_retry_reuses_the_same_run(
 def test_browser_publication_uses_verified_application_operation(
     tmp_path: Path, frozen_contract: RunContract, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from shipyard.application import publication
-    from shipyard.application.publication import Branch, PullRequest
+    from harborist.application import publication
+    from harborist.application.publication import Branch, PullRequest
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     queue = QueueStore(tmp_path / "control")
@@ -254,7 +254,7 @@ def test_browser_publication_uses_verified_application_operation(
             number=1,
             html_url="https://github.com/example/project/pull/1",
             state="open",
-            head=Branch(ref="shipyard", sha=sha),
+            head=Branch(ref="harborist", sha=sha),
             base=Branch(ref="main", sha=sha),
             body=None,
         )
@@ -278,11 +278,11 @@ def test_browser_publication_uses_verified_application_operation(
 
 
 def test_browser_accepts_pasted_issue_and_home_paths() -> None:
-    from shipyard.control.workspace import normalize_path, normalize_source
+    from harborist.control.workspace import normalize_path, normalize_source
 
     assert (
-        normalize_path(Path("~/Code/shipyard"), "Repository path")
-        == Path.home() / "Code/shipyard"
+        normalize_path(Path("~/Code/harborist"), "Repository path")
+        == Path.home() / "Code/harborist"
     )
     assert (
         normalize_source("https://github.com/example/repo/issues/6?foo=bar")
@@ -298,14 +298,14 @@ def test_saved_workspace_validates_and_reloads_checkout(
 ) -> None:
     from uuid import uuid4
 
-    from shipyard.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
+    from harborist.control.saved_workspaces import WorkspaceSettings, WorkspaceStore
 
     _, repo, _ = capture(tmp_path, frozen_contract)
     workspace = WorkspaceSettings(
         id=uuid4(),
-        name="Shipyard",
+        name="Harborist",
         repository=repo.checkout_root(),
-        settings=Path("shipyard.settings.yaml").resolve(),
+        settings=Path("harborist.settings.yaml").resolve(),
     )
     root = tmp_path / "workspaces"
     saved = WorkspaceStore(root).save(workspace)
@@ -321,7 +321,7 @@ def test_github_integration_distinguishes_login_and_repository_errors(
 ) -> None:
     import subprocess
 
-    from shipyard.control import integrations
+    from harborist.control import integrations
 
     def run(args: list[str], **_: object) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(args, 0 if args[1] == "auth" else 1)
@@ -337,20 +337,20 @@ def test_codex_integration_updates_only_selected_workspace_settings(
 ) -> None:
     from uuid import uuid4
 
-    from shipyard.agents.codex import CodexAgent
-    from shipyard.control.saved_workspaces import WorkspaceSettings
+    from harborist.agents.codex import CodexAgent
+    from harborist.control.saved_workspaces import WorkspaceSettings
     from tests.git_helpers import git, init_repository
     from tests.settings_helpers import write_settings
 
     repository = tmp_path / "checkout"
     init_repository(repository)
-    (repository / "shipyard.yaml").write_text(
+    (repository / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'true'}]\n"
     )
     git(repository, "add", ".")
     git(repository, "commit", "-m", "base")
     settings = write_settings(repository)
-    default = repository / "shipyard.settings.yaml"
+    default = repository / "harborist.settings.yaml"
     default.write_bytes(settings.read_bytes())
     service = ControlService(
         QueueStore(tmp_path / "control"),

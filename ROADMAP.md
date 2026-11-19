@@ -1,10 +1,10 @@
-# Shipyard roadmap
+# Harborist roadmap
 
 The proof of concept and local MVP are complete. The project owner accepted the
 local workflow after real use. Two recorded publications of verified candidates
 resulted in merged GitHub PRs. One Run also retained CI checks and observations
-of the PR before and after merge. [PR #13](https://github.com/maciejgos/shipyard/pull/13) ·
-[PR #51](https://github.com/maciejgos/shipyard/pull/51)
+of the PR before and after merge. [PR #13](https://github.com/maciejgos/harborist/pull/13) ·
+[PR #51](https://github.com/maciejgos/harborist/pull/51)
 
 Product Milestone 1 is the next development focus. Its goal is reliable, repeat
 use by an engineering team across several repositories. Phase 13 starts with
@@ -55,11 +55,11 @@ through 92 and the implementation sequence in section 97.
 | Feature | Description | Status | Details |
 | --- | --- | --- | --- |
 | Phase 13 · Team identity and GitHub App | Add one Organization, Projects, user roles, stable actor mapping, and authorized GitHub commands. | Next | [Identity and GitHub App spec](spec/067-team-product/spec.md#phase-13-team-identity-and-github-app) |
-| Phase 14 · Remote workers and sandboxes | Assign work to capable workers via leases and export evidence with scoped credentials. The local Docker runtime is implemented; remote workers remain planned. | In progress | [Worker and Docker Sandboxes spec](spec/081-workers-and-docker-sandboxes/spec.md) · [Issue #44](https://github.com/maciejgos/shipyard/issues/44) |
+| Phase 14 · Remote workers and sandboxes | Assign work to capable workers via leases and export evidence with scoped credentials. The local Docker runtime is implemented; remote workers remain planned. | In progress | [Worker and Docker Sandboxes spec](spec/081-workers-and-docker-sandboxes/spec.md) · [Issue #44](https://github.com/maciejgos/harborist/issues/44) |
 | Local Docker Sandboxes and policy editor | Select isolated execution and edit Workspace CPU, memory, and network rules in Integrations. Freeze policy at intake and use fresh VMs for agents, TEST, and REVIEW. | Done | [Local integration spec](spec/082-local-docker-sandboxes/spec.md) |
 | Phase 15 · Product persistence | Store control-plane state in PostgreSQL and persist candidate bundles and evidence with integrity and retention controls. | Todo | [Persistence spec](spec/067-team-product/spec.md#phase-15-product-persistence) |
 | Phase 16 · Scheduling and governance | Set queue priorities and concurrency limits, and share capacity fairly across Projects. Define who controls methodology, agent profiles, and execution policies. | Todo | [Governance spec](spec/067-team-product/spec.md#phase-16-scheduling-and-governance) |
 | Phase 17 · Headless public control plane | Expose a versioned REST API and Service Account access, with MCP, CLI, and web clients using the same contract. | Todo | [Headless control plane spec](spec/067-team-product/spec.md#phase-17-headless-public-control-plane) |
 | Phase 18 · Self-hosted operations | Support portable deployment, audit, telemetry, notifications, secret resolution, backup and restore, and controlled upgrades. | Todo | [Operations spec](spec/067-team-product/spec.md#phase-18-operations) |
 | Phase 19 · Analytics and learning | Report delivery outcomes and generate evidence-backed proposals for human review and activation. | Todo | [Analytics spec](spec/067-team-product/spec.md#phase-19-analytics-and-learning) |
-| Product acceptance | Show that Shipyard works reliably in day-to-day use by a real engineering team across several repositories. | Todo | [Product acceptance spec](spec/067-team-product/spec.md#product-acceptance) |
+| Product acceptance | Show that Harborist works reliably in day-to-day use by a real engineering team across several repositories. | Todo | [Product acceptance spec](spec/067-team-product/spec.md#product-acceptance) |

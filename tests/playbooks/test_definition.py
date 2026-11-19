@@ -6,8 +6,8 @@ from itertools import pairwise
 import pytest
 from pydantic import ValidationError
 
-from shipyard.domain import ArtifactStage
-from shipyard.domain.playbook import (
+from harborist.domain import ArtifactStage
+from harborist.domain.playbook import (
     ExecutorType,
     PlaybookDefinition,
     canonical_playbook,
@@ -20,8 +20,7 @@ def test_canonical_definition_has_fixed_authority_and_dependencies() -> None:
     assert tuple(step.stage for step in stages) == tuple(ArtifactStage)
     assert stages[0].depends_on == ()
     assert all(
-        step.depends_on == (previous.stage,)
-        for previous, step in pairwise(stages)
+        step.depends_on == (previous.stage,) for previous, step in pairwise(stages)
     )
     assert stages[4].executor == ExecutorType.TRUSTED_TEST
     assert stages[5].read_only

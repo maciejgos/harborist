@@ -2,12 +2,12 @@
 
 import io
 
-from shipyard.application.progress import ProgressUpdate
-from shipyard.domain.artifact import ArtifactStage
+from harborist.application.progress import ProgressUpdate
+from harborist.domain.artifact import ArtifactStage
 
 
 def test_reporter_deadlines_and_terminal_output() -> None:
-    from shipyard.cli.progress import ProgressReporter
+    from harborist.cli.progress import ProgressReporter
 
     ticks = [0.0]
     output = io.StringIO()
@@ -36,7 +36,7 @@ def test_reporting_thread_wakes_and_joins_on_exception() -> None:
 
     import pytest
 
-    from shipyard.cli.progress import ProgressReporter
+    from harborist.cli.progress import ProgressReporter
 
     emitted = threading.Event()
 
@@ -63,7 +63,7 @@ def test_reporting_thread_wakes_and_joins_on_exception() -> None:
 
 
 def test_broken_stderr_is_presentation_only() -> None:
-    from shipyard.cli.progress import ProgressReporter
+    from harborist.cli.progress import ProgressReporter
 
     class Broken(io.StringIO):
         def write(self, text: str) -> int:

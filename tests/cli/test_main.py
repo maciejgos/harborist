@@ -7,8 +7,8 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.cli import app
-from shipyard.domain import RunContract
+from harborist.cli import app
+from harborist.domain import RunContract
 from tests.cli.conftest import strip_ansi
 from tests.git_helpers import git, init_repository
 from tests.settings_helpers import write_settings
@@ -19,10 +19,10 @@ runner = CliRunner()
 def test_intake_and_inspect_round_trip(tmp_path: Path) -> None:
     target = tmp_path / "target"
     init_repository(target)
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: tests, command: pytest}]\n"
     )
-    git(target, "add", "shipyard.yaml")
+    git(target, "add", "harborist.yaml")
     git(target, "commit", "-m", "Config")
     issue = tmp_path / "issue.md"
     issue.write_text("Fix it")
@@ -107,7 +107,7 @@ def test_expected_failures_are_nonzero_without_tracebacks(tmp_path: Path) -> Non
 def test_saved_methodology_preview_is_frozen_and_stage_scoped(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.persistence import FileRunStore
+    from harborist.persistence import FileRunStore
     from tests.methodology_helpers import skill_asset
 
     contract = RunContract.model_validate(
@@ -144,7 +144,7 @@ def test_saved_methodology_preview_is_frozen_and_stage_scoped(
 def test_legacy_inspection_still_works_but_compilation_reports_error(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.persistence import FileRunStore
+    from harborist.persistence import FileRunStore
     from tests.methodology_helpers import asset
 
     legacy = RunContract.model_validate(
@@ -174,7 +174,7 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
 
     target = tmp_path / "target"
     init_repository(target)
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'true'}]\n"
     )
     git(target, "add", ".")
@@ -202,7 +202,7 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
     tokens = shlex.split(result.stderr.strip())
     context = runs / str(contract.run_id) / "execution-context.json"
     assert tokens == [
-        "shipyard",
+        "harborist",
         "run",
         str(contract.run_id),
         "--runs-dir",
@@ -220,13 +220,13 @@ def test_intake_emits_context_command(tmp_path: Path) -> None:
 def test_intake_summary_and_json_preserve_capture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_kind: str
 ) -> None:
-    import shipyard.intake.source as source_adapter
-    from shipyard.domain import IntentSnapshot
-    from shipyard.persistence import FileRunStore
+    import harborist.intake.source as source_adapter
+    from harborist.domain import IntentSnapshot
+    from harborist.persistence import FileRunStore
 
     target = tmp_path / "target"
     init_repository(target)
-    (target / "shipyard.yaml").write_text(
+    (target / "harborist.yaml").write_text(
         "version: 1\nchecks: [{id: test, command: 'true'}]\n"
     )
     git(target, "add", ".")

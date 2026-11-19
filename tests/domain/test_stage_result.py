@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from shipyard.domain import (
+from harborist.domain import (
     AgentStage,
     BuildStageResult,
     Candidate,

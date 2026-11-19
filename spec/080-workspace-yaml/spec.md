@@ -1,6 +1,6 @@
 # Import and export Workspace configuration as YAML
 
-[GitHub issue #15](https://github.com/maciejgos/shipyard/issues/15)
+[GitHub issue #15](https://github.com/maciejgos/harborist/issues/15)
 
 Operators can export a saved local Workspace as YAML, review its configuration
 in the browser or CLI, and import it as a new Workspace or into an explicitly
@@ -15,7 +15,7 @@ checkout, execution settings file, and integration credentials.
   UTF-8 YAML mapping with `version: 1`, `name`, `repository`, `ref`,
   `timeout`, `verification_reserve`, and optional `settings` and
   `github_repository`. The timeout and reserve are integer seconds. Omitted
-  or null `settings` selects `shipyard.settings.yaml` at the checkout root.
+  or null `settings` selects `harborist.settings.yaml` at the checkout root.
   Omitted or null `github_repository` uses existing GitHub origin discovery.
   Reject malformed YAML, multiple documents, duplicate keys, unsafe tags,
   unsupported versions, unknown fields, and values of the wrong type.
@@ -49,7 +49,7 @@ checkout, execution settings file, and integration credentials.
 - **AC-5 · Frozen Run settings.** Workspace import and export leave repository
   files, Run contracts, and verification evidence unchanged. A future Run
   captures the saved defaults at intake. Existing Runs and their rework or
-  recovery Attempts continue to use frozen settings. The root `shipyard.yaml`
+  recovery Attempts continue to use frozen settings. The root `harborist.yaml`
   remains verification-only and is read from the exact frozen base commit.
   Workspace YAML cannot supply or override mandatory checks.
 

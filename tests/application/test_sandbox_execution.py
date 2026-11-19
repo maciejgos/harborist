@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.agents.base import NativeAgent
-from shipyard.application import execution
-from shipyard.domain import RunContract
-from shipyard.domain.sandbox import SandboxPolicy
-from shipyard.domain.stage_result import AgentStage
-from shipyard.execution.process import ProcessCapture
+from harborist.agents.base import NativeAgent
+from harborist.application import execution
+from harborist.domain import RunContract
+from harborist.domain.sandbox import SandboxPolicy
+from harborist.domain.stage_result import AgentStage
+from harborist.execution.process import ProcessCapture
 from tests.application.test_run_execution import FakeAgent, capture
 
 

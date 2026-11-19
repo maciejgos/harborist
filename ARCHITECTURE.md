@@ -1,6 +1,6 @@
-# Shipyard Architecture
+# Harborist Architecture
 
-This document describes the **Shipyard execution core** and the completed Phase 11 local rework/recovery workflow. Broader Product infrastructure remains out of scope.
+This document describes the **Harborist execution core** and the completed Phase 11 local rework/recovery workflow. Broader Product infrastructure remains out of scope.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -9,7 +9,7 @@ See the [Phase 8 audit](spec/045-phase8-acceptance-audit/report.md).
 
 ## Bird's Eye View
 
-Shipyard accepts a Markdown file or GitHub Issue, freezes the Run contract,
+Harborist accepts a Markdown file or GitHub Issue, freezes the Run contract,
 executes one canonical playbook around a native coding agent, verifies the
 resulting Git commit, and writes durable evidence to the local filesystem.
 The CLI submits to a local background service by default; `--foreground` invokes
@@ -17,7 +17,7 @@ the same synchronous execution core in the client process.
 
 ```mermaid
 flowchart TB
-    USER[Engineer] --> CLI[Shipyard CLI]
+    USER[Engineer] --> CLI[Harborist CLI]
     CLI --> RUN[execute_run / one Attempt]
     RUN --> GIT[Isolated Git worktree]
     RUN --> AGENT[NativeAgent / Codex]
@@ -37,7 +37,7 @@ The local MVP uses a small stack:
 - `uv` for dependency and environment management
 - Typer + Rich for the CLI
 - Pydantic for structured domain and stage contracts
-- PyYAML for `shipyard.yaml`
+- PyYAML for `harborist.yaml`
 - system `git` and external tools via subprocess
 - Codex CLI behind the `NativeAgent` boundary
 - filesystem-backed persistence
@@ -54,15 +54,15 @@ The execution core uses no web framework, database or cloud infrastructure. Phas
 5. BUILD may update the plan but may not silently rewrite the spec.
 6. BUILD produces an exact candidate Git commit before TEST.
 7. Verification belongs to the exact candidate SHA.
-8. TEST is Shipyard-controlled and authoritative. Any mandatory failure produces `TEST_FAILED`; REVIEW does not run.
+8. TEST is Harborist-controlled and authoritative. Any mandatory failure produces `TEST_FAILED`; REVIEW does not run.
 9. REVIEW is independent, read-only, and evaluates the exact candidate against `spec.md` and TEST evidence.
 10. Required criteria are `PASS`, `FAIL`, or `UNVERIFIED`. Only all-`PASS` can produce `VERIFIED`.
 11. Workflow state comes from validated structured stage results, never prose inference.
 12. The Run freezes input intent, base SHA, playbook/skills, verification configuration, agent profile, and execution budget.
-13. `shipyard.yaml` is read from the frozen base revision; BUILD cannot change how its candidate is judged.
+13. `harborist.yaml` is read from the frozen base revision; BUILD cannot change how its candidate is judged.
 14. The PoC is trusted-local. Git worktrees isolate workspace state but are not a security boundary.
 15. Every terminal result produces `report.md` and machine-readable evidence.
-16. Terminal Shipyard records and evidence are immutable; retained checkout data is separate.
+16. Terminal Harborist records and evidence are immutable; retained checkout data is separate.
 
 ## Execution Flow
 
@@ -83,7 +83,7 @@ flowchart LR
 | DESIGN | Define what must be true | `spec.md` + stage result |
 | PLAN | Define implementation approach | `plan.md` + stage result |
 | BUILD | Implement and create candidate commit | candidate SHA + stage result |
-| TEST | Run all mandatory `shipyard.yaml` checks | deterministic evidence |
+| TEST | Run all mandatory `harborist.yaml` checks | deterministic evidence |
 | REVIEW | Independently assess required criteria | `review.md` + stage result |
 | PACKAGE | Finalize human and machine evidence | `report.md`, `evidence.json` |
 
@@ -116,7 +116,7 @@ flowchart LR
 
 Artifacts, not agent-session continuity, carry state between stages.
 
-BUILD may also return a bounded agent-reported process report. Shipyard stores
+BUILD may also return a bounded agent-reported process report. Harborist stores
 `build/build-process.json` with Run/Attempt attribution and supplies it optionally
 to REVIEW, which validates ownership and records its exact input digest. It is
 separate from truncated diagnostics, trusted TEST, and independent proof of TDD
@@ -124,16 +124,16 @@ chronology. Engineering guidance v2 keeps routine process policy separate from
 product acceptance; explicitly required historical proof remains UNVERIFIED when
 the evidence cannot establish it. Existing frozen methodology is unchanged.
 
-The candidate remains reachable through a Shipyard-owned ref such as:
+The candidate remains reachable through a Harborist-owned ref such as:
 
 ```text
-refs/shipyard/runs/<run-id>/candidate
+refs/harborist/runs/<run-id>/candidate
 ```
 
 ## Code Map
 
 ```text
-src/shipyard/
+src/harborist/
 ├── cli/            # CLI entry point, service client and presentation
 ├── control/        # local queue, service ownership, execution and read model
 ├── web/            # loopback browser adapter and packaged static assets
@@ -145,7 +145,7 @@ src/shipyard/
 ├── skills/         # stage guidance composition and packaged engineering skill
 ├── agents/         # NativeAgent boundary and Codex adapter
 ├── git/            # commit resolution; isolated worktrees and candidate publication
-├── verification/   # frozen shipyard.yaml and sequential trusted checks
+├── verification/   # frozen harborist.yaml and sequential trusted checks
 ├── review/         # semantic review result handling
 ├── evidence/       # evidence model and PACKAGE/report generation
 └── persistence/    # frozen captures and exclusive lifecycle journals
@@ -222,7 +222,7 @@ timestamps describe events; elapsed monotonic time controls deadlines.
 
 ### Stage contracts
 
-Each agent stage produces a human-readable artifact and a validated structured stage result. Invalid structured output produces `INVALID_STAGE_OUTPUT`; Shipyard does not repair or infer it from prose.
+Each agent stage produces a human-readable artifact and a validated structured stage result. Invalid structured output produces `INVALID_STAGE_OUTPUT`; Harborist does not repair or infer it from prose.
 
 ### Evidence
 
@@ -276,7 +276,7 @@ PoC evidence and waiving the planned matched direct-Codex comparison as an exit
 requirement. See the Phase 9 status in the PRD.
 
 
-The Phase 10 browser monitor (`shipyard web`, specification 058) is a separate,
+The Phase 10 browser monitor (`harborist web`, specification 058) is a separate,
 replaceable, read-only adapter. It serves packaged HTML/CSS/JavaScript on
 127.0.0.1 and proxies allowlisted GETs through ControlClient to the existing
 Unix-socket service. It does not read Run storage directly or own execution,
@@ -288,7 +288,7 @@ rerun verification or change Run state. Named report/evidence
 viewing is a bounded control-plane read, not unrestricted filesystem serving.
 
 
-Run history (specification 059) merges saved captures in ~/.shipyard/runs with
+Run history (specification 059) merges saved captures in ~/.harborist/runs with
 service delivery records through a read-only catalog. Historical Runs retain
 validated lifecycle/evidence but have no fabricated queue state or execution
 locator. Discovery never submits, mutates or resumes work. The browser still
@@ -318,7 +318,7 @@ time spending and explicit grants. The clock preserves the frozen verification
 reserve, subtracts all prior spending and adds only recorded grants. PACKAGE stays
 outside the budget. Every new candidate runs fresh trusted TEST and independent
 REVIEW, with no inherited verification. Later candidates use immutable
-`refs/shipyard/runs/<run>/attempts/<attempt>/candidate` refs; the original candidate
+`refs/harborist/runs/<run>/attempts/<attempt>/candidate` refs; the original candidate
 ref remains intact. Explicit application validates the selected Attempt's ref.
 
 The queue retains earlier delivery snapshots under `deliveries/<run>/` and uses a
@@ -355,8 +355,8 @@ same serial queue. Run status exposes the link and historical Attempt outcome.
 
 The browser workspace extends the loopback adapter described in Phase 10.
 React and shadcn/ui own presentation, navigation, and local interaction state.
-A frontend build produces static assets packaged with Shipyard and served by
-`shipyard web`. The Python adapter serves assets and forwards allowlisted
+A frontend build produces static assets packaged with Harborist and served by
+`harborist web`. The Python adapter serves assets and forwards allowlisted
 requests through ControlClient to the local service. The critical execution
 path remains synchronous and the service continues to process one Run at a
 time. The filesystem remains the source of durable state.

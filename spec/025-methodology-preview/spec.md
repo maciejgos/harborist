@@ -1,10 +1,10 @@
 # Specification: Saved methodology preview CLI
 
-- AC-001: Add shipyard methodology UUID --runs-dir ROOT. Load and validate the saved
+- AC-001: Add harborist methodology UUID --runs-dir ROOT. Load and validate the saved
   capture, compile only its frozen assets and print JSON containing playbook
   identity/definition/guidance plus skill identity/metadata/guidance.
 - AC-002: Optional --stage selects composed guidance for DESIGN/PLAN/BUILD/REVIEW,
-  preserving configured order and exact bodies. Shipyard-owned stages are rejected
+  preserving configured order and exact bodies. Harborist-owned stages are rejected
   as in the composition boundary. No stage execution or lifecycle changes.
 - AC-003: Expected compile/load failures return nonzero with stderr JSON and no
   traceback. Legacy captures remain inspectable through the existing inspect

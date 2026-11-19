@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.application.verification import execute_test
-from shipyard.domain import (
+from harborist.application.verification import execute_test
+from harborist.domain import (
     RunContract,
 )
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.playbook_execution import StepOutcome
-from shipyard.git import GitRepository
-from shipyard.verification.config import load_verification_config
+from harborist.domain.attempt import Attempt
+from harborist.domain.playbook_execution import StepOutcome
+from harborist.git import GitRepository
+from harborist.verification.config import load_verification_config
 from tests.git_helpers import git, init_repository
 
 
@@ -26,7 +26,7 @@ def test_exact_candidate_frozen_checks(
 ) -> None:
     workspace = tmp_path / "repo"
     init_repository(workspace)
-    (workspace / "shipyard.yaml").write_text(
+    (workspace / "harborist.yaml").write_text(
         f'version: 1\nchecks:\n  - id: frozen\n    command: "{command}"\n'
     )
     git(workspace, "add", ".")
@@ -41,7 +41,7 @@ def test_exact_candidate_frozen_checks(
         verification=snapshot,
         execution=frozen_contract.execution,
     )
-    (workspace / "shipyard.yaml").write_text("invalid candidate config")
+    (workspace / "harborist.yaml").write_text("invalid candidate config")
     git(workspace, "commit", "-am", "candidate")
     attempt = Attempt.create(contract.run_id, base)
     candidate = attempt.create_candidate(repository.resolve_base())

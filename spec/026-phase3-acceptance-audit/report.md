@@ -16,7 +16,7 @@ specifications and commits 019–025, followed by this audit slice.
 | Canonical playbook definition | Frozen PlaybookDefinition and canonical_playbook factory; packaged v1 Markdown | `test_canonical_definition_has_fixed_authority_and_dependencies`; defaults compilation test |
 | Stages | Exactly INTAKE, DESIGN, PLAN, BUILD, TEST, REVIEW, PACKAGE | Full successful receipt history test; weakened-workflow rejection tests |
 | Dependencies | Fixed immediate predecessors; immutable validated receipt history | `test_rejects_weakened_workflow`; `test_cannot_skip_test_or_erase_it_in_rehydrated_history` |
-| Executor types | Shipyard INTAKE/PACKAGE, fresh native agents for DESIGN/PLAN/BUILD/REVIEW, trusted TEST; read-only REVIEW and unbudgeted PACKAGE | Canonical authority test; engine gating and Candidate drift tests |
+| Executor types | Harborist INTAKE/PACKAGE, fresh native agents for DESIGN/PLAN/BUILD/REVIEW, trusted TEST; read-only REVIEW and unbudgeted PACKAGE | Canonical authority test; engine gating and Candidate drift tests |
 | Skill composition | Strict skill front matter and ordered stage filtering into immutable guidance sections | `test_stage_composition_preserves_scope_order_and_exact_bodies`; trusted-stage rejection tests |
 | Version identities | Header/asset name-version matching and identity including kind/name/version/exact source SHA-256 | `test_parse_preserves_content_and_binds_version_identity`; invalid metadata/version tests |
 
@@ -61,9 +61,9 @@ At the audited clean implementation revision:
 - `uv run pytest -q`: **528 passed**.
 - `uv run ruff check .`: **passed**.
 - `uv run pyright`: **0 errors, 0 warnings**.
-- Installed `shipyard methodology --help`: passed.
+- Installed `harborist methodology --help`: passed.
 - Offline wheel build: passed. Both Markdown resources were verified inside the
-  wheel. A fresh Python process imported Shipyard directly from the wheel and
+  wheel. A fresh Python process imported Harborist directly from the wheel and
   successfully loaded/parsed both bundled methodology assets.
 
 A writable UV_CACHE_DIR override was used for this local environment.
@@ -71,7 +71,7 @@ A writable UV_CACHE_DIR override was used for this local environment.
 Installed CLI and pure-engine smoke check against the audited committed SHA:
 
 1. Copy standalone example issue/settings/playbook/skill to a temporary directory.
-2. Create a Run through installed `shipyard intake`, targeting this repository.
+2. Create a Run through installed `harborist intake`, targeting this repository.
 3. Confirm the frozen base equals the audited SHA; delete all copied input files.
 4. Preview saved methodology and REVIEW guidance through installed CLI commands.
    Confirm seven stages, matching playbook digest and engineering skill scope.

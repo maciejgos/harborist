@@ -8,10 +8,10 @@ from uuid import uuid4
 import pytest
 from typer.testing import CliRunner
 
-from shipyard.agents import codex
-from shipyard.application import execution
-from shipyard.cli import app
-from shipyard.domain import RunContract
+from harborist.agents import codex
+from harborist.application import execution
+from harborist.cli import app
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent, capture
 from tests.cli.conftest import strip_ansi
 
@@ -128,7 +128,7 @@ def test_default_summary(
         "PACKAGE started",
     ):
         assert hidden not in text
-    assert ("shipyard apply" in text) == (outcome == "VERIFIED")
+    assert ("harborist apply" in text) == (outcome == "VERIFIED")
     assert "PACKAGE started" in result.stderr
     assert "PACKAGE completed" in result.stderr
 
@@ -227,8 +227,8 @@ def test_output_selection_only_renders_packaged_evidence(
 def test_unvalidated_evidence_is_unavailable(
     tmp_path: Path, frozen_contract: RunContract
 ) -> None:
-    from shipyard.cli.run_summary import render_summary
-    from shipyard.domain.stage_result import AgentStage
+    from harborist.cli.run_summary import render_summary
+    from harborist.domain.stage_result import AgentStage
 
     store, repo, contract = capture(tmp_path, frozen_contract)
     evidence = execution.execute_run(

@@ -1,7 +1,7 @@
 # Execution dashboard acceptance — 2026-10-31
 
 The browser monitor corrects the initial Phase 10 delivery, which exposed JSON
-without a visible UI. `shipyard web` is a separate loopback-only, read-only
+without a visible UI. `harborist web` is a separate loopback-only, read-only
 adapter over the canonical Unix-socket service. It adds no execution authority.
 
 ## Validation
@@ -50,5 +50,5 @@ browser; other browser engines were not separately tested.
 ## Saved-history follow-up
 
 Specification 059 supersedes the initial submission-only limitation. The monitor
-now discovers saved foreground Runs under ~/.shipyard/runs without importing
+now discovers saved foreground Runs under ~/.harborist/runs without importing
 them into the queue.

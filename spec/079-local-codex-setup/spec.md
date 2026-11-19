@@ -1,6 +1,6 @@
 # Local Codex setup and diagnostics
 
-[GitHub issue #14](https://github.com/maciejgos/shipyard/issues/14)
+[GitHub issue #14](https://github.com/maciejgos/harborist/issues/14)
 
 Operators can check whether the local Codex CLI is available and choose
 the model and reasoning effort that future Runs will use.
@@ -8,7 +8,7 @@ the model and reasoning effort that future Runs will use.
 ## Acceptance criteria
 
 - **AC-1 · Readiness.** Integrations provides an on-demand Codex login check in
-  the background service environment. `shipyard agent check` uses the invoking
+  the background service environment. `harborist agent check` uses the invoking
   terminal's environment. Both use the Codex adapter and distinguish missing
   CLI, unavailable credentials, failed checks, and a reported login. The check
   discards Codex output and does not invoke model execution.
@@ -20,7 +20,7 @@ the model and reasoning effort that future Runs will use.
   command exits with status 1 when either check needs attention.
 - **AC-3 · Profile setup.** The operator can set a model and select the Codex
   default or one of `minimal`, `low`, `medium`, `high`, and `xhigh` in
-  Integrations or with `shipyard agent configure`. The browser uses the saved
+  Integrations or with `harborist agent configure`. The browser uses the saved
   Workspace's settings path or its checkout-root default. The CLI uses the
   checkout-root default or an explicit `--settings` path. Saving validates and
   atomically replaces the existing YAML, retaining other settings values.

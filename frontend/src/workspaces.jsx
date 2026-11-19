@@ -18,7 +18,7 @@ function WorkspaceEditor({ workspace, onDone }) {
     <Field label="GitHub repository (optional)" name="github_repository" placeholder="owner/repository" defaultValue={workspace?.github_repository} />
     <details className="advanced">
       <summary>Advanced</summary>
-      <Field label="Settings path (optional)" name="settings" placeholder="shipyard.settings.yaml in the checkout" defaultValue={workspace?.settings} />
+      <Field label="Settings path (optional)" name="settings" placeholder="harborist.settings.yaml in the checkout" defaultValue={workspace?.settings} />
       <Field label="Base Git ref" name="ref" defaultValue={workspace?.ref || "HEAD"} required />
       <div className="field-pair">
         <Field label="Total time (seconds)" name="timeout" type="number" min="1" defaultValue={workspace?.timeout || 1800} required />

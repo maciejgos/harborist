@@ -7,11 +7,11 @@ from uuid import UUID
 
 import pytest
 
-from shipyard.agents.base import AgentRequest, AgentResponse
-from shipyard.control.client import ControlClient
-from shipyard.control.queue import QueueStore
-from shipyard.control.service import ControlService, ServiceOwnership
-from shipyard.domain import RunContract
+from harborist.agents.base import AgentRequest, AgentResponse
+from harborist.control.client import ControlClient
+from harborist.control.queue import QueueStore
+from harborist.control.service import ControlService, ServiceOwnership
+from harborist.domain import RunContract
 from tests.application.test_run_execution import FakeAgent
 
 
@@ -79,9 +79,9 @@ def test_stop_drains_active_run_and_preserves_pending_claims(
 ) -> None:
     from threading import Event
 
-    from shipyard.control.queue import DeliveryState, Submission
-    from shipyard.domain import IntentSnapshot, RunContract
-    from shipyard.persistence import FileRunStore
+    from harborist.control.queue import DeliveryState, Submission
+    from harborist.domain import IntentSnapshot, RunContract
+    from harborist.persistence import FileRunStore
     from tests.application.test_run_execution import capture
 
     entered, release = Event(), Event()
@@ -154,9 +154,9 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
 
     from typer.testing import CliRunner
 
-    from shipyard.cli import app
-    from shipyard.control.saved_workspaces import WorkspaceSettings
-    from shipyard.persistence import FileRunStore
+    from harborist.cli import app
+    from harborist.control.saved_workspaces import WorkspaceSettings
+    from harborist.persistence import FileRunStore
     from tests.application.test_run_execution import capture
     from tests.git_helpers import git
 
@@ -171,7 +171,7 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
             id=uuid4(),
             name="Target",
             repository=repository,
-            settings=Path("shipyard.settings.yaml").resolve(),
+            settings=Path("harborist.settings.yaml").resolve(),
             timeout=900,
             verification_reserve=200,
         )
@@ -203,7 +203,7 @@ def test_ticket_is_recaptured_for_the_independent_workspace(
             raise subprocess.CalledProcessError(1, args, stderr=b"private diagnostic")
         return subprocess.CompletedProcess(args, 0, json.dumps(data).encode())
 
-    monkeypatch.setattr("shipyard.github.issues.subprocess.run", gh)
+    monkeypatch.setattr("harborist.github.issues.subprocess.run", gh)
     listing = b'{"repository":"acme/source"}'
     assert service.dispatch("POST", "/tickets/list", listing) == {
         "issues": [
@@ -268,9 +268,9 @@ def test_older_saved_contract_shows_its_ticket_without_recapture(
 ) -> None:
     from typer.testing import CliRunner
 
-    from shipyard.cli import app
-    from shipyard.domain import IntentSnapshot
-    from shipyard.persistence import FileRunStore
+    from harborist.cli import app
+    from harborist.domain import IntentSnapshot
+    from harborist.persistence import FileRunStore
 
     root = tmp_path / "runs"
     run_id = frozen_contract.run_id

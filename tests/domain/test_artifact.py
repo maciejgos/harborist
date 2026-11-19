@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from shipyard.domain import (
+from harborist.domain import (
     ArtifactKind,
     ArtifactReference,
     ArtifactSha256,

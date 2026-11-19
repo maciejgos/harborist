@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from shipyard.domain import ArtifactStage, ExecutionSnapshot
-from shipyard.skills import compile_methodology, compose_guidance
-from shipyard.skills.defaults import load_default_methodology
+from harborist.domain import ArtifactStage, ExecutionSnapshot
+from harborist.skills import compile_methodology, compose_guidance
+from harborist.skills.defaults import load_default_methodology
 
 
 def test_defaults_compile_from_package_and_match_standalone_examples(

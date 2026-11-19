@@ -2,9 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-from shipyard.domain.attempt import Attempt
-from shipyard.domain.continuation import ContinuationRequest, authorize_continuation
-from shipyard.domain.run import FailureReason, Run, RunOutcome
+from harborist.domain.attempt import Attempt
+from harborist.domain.continuation import ContinuationRequest, authorize_continuation
+from harborist.domain.run import FailureReason, Run, RunOutcome
 
 
 def test_rework_uses_previous_candidate_and_fresh_identity() -> None:
