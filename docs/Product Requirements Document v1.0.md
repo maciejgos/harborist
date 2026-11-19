@@ -1958,6 +1958,10 @@ No merge authority is required.
 
 Product Milestone 1 uses Docker Sandboxes as the first isolation backend.
 
+Workers use the standalone `sbx` CLI with sandbox compute local to the worker.
+The [Phase 14 acceptance contract](../spec/081-workers-and-docker-sandboxes/spec.md)
+defines this runtime choice and its isolation, ownership, and export requirements.
+
 Shipyard depends on a small:
 
 ```text
@@ -3592,7 +3596,7 @@ Build:
 - leases;
 - heartbeats;
 - SandboxRuntime;
-- Docker Sandbox adapter;
+- Docker Sandboxes adapter using worker-local `sbx`;
 - temporary credentials;
 - artifact export.
 

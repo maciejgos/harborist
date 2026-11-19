@@ -11,8 +11,12 @@ Source: [PRD §§91–98](../../docs/Product%20Requirements%20Document%20v1.0.md
 ## Phase 14 Workers and sandboxes
 
 - Register remote workers and match work to capabilities using pull leases and heartbeats. Surface unschedulable work and require explicit recovery after uncertain lease loss.
-- Run each Attempt in a fresh sandbox through a runtime boundary with a Docker adapter, network policy, and temporary execution credentials. Keep publication credentials outside execution.
+- Run each Attempt in a fresh Docker Sandboxes microVM through `SandboxRuntime` and the worker-local `sbx` CLI adapter, with frozen network policy and temporary execution credentials. Keep publication credentials outside workers and sandboxes.
 - Require candidate and evidence export before accepting Attempt completion. Verify that lease expiry cannot silently duplicate execution.
+
+The [Phase 14 acceptance contract](../081-workers-and-docker-sandboxes/spec.md)
+defines worker ownership, Docker Sandboxes isolation, trusted verification,
+export, recovery, and cleanup. Implementation remains planned.
 
 ## Phase 15 Product persistence
 
