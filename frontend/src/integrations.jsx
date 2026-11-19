@@ -3,6 +3,7 @@ import { Plug } from "lucide-react";
 import { useResource } from "./api";
 import { Field, write } from "./run-actions";
 import { Button } from "./ui";
+import { SandboxIntegration } from "./sandbox-policy";
 
 function CodexProfile({ workspace }) {
   const path = `/integrations/codex/profile/${workspace.id}`;
@@ -134,6 +135,7 @@ export function Integrations({ resource }) {
         {result && <p role="status" className={result.status === "connected" ? "integration-connected" : "notice"}>{result.message}</p>}
       </section>
       <CodexIntegration workspaces={workspaces} />
+      <SandboxIntegration workspaces={workspaces} />
     </div>
   </main>;
 }

@@ -17,7 +17,8 @@ The current architecture describes the PoC. Future product requirements live in
 [Product Requirements Document v1.0](Product%20Requirements%20Document%20v1.0.md).
 
 - [Phase 14 workers and Docker Sandboxes specification](../spec/081-workers-and-docker-sandboxes/spec.md)
-  ([issue #44](https://github.com/maciejgos/shipyard/issues/44)); planned Product execution.
+  ([issue #44](https://github.com/maciejgos/shipyard/issues/44)); remote workers remain planned.
+- [Local Docker Sandboxes and app policy editing](../spec/082-local-docker-sandboxes/spec.md).
 - [Real-run audit, 2026-10-30](validation/2026-10-30-run-audit.md)
 - [Phase 1 acceptance audit](../spec/006-phase1-acceptance-audit/report.md)
 - [Phase 2 acceptance audit](../spec/018-phase2-acceptance-audit/report.md)

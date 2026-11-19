@@ -5,8 +5,9 @@
 Product workers execute Attempts in fresh Docker Sandboxes microVMs. A worker
 may run on a different machine from the control plane; sandbox compute stays
 local to that worker. Docker Sandboxes replaces the phase outline's generic
-Docker adapter choice. The existing local MVP continues to use explicitly
-labeled `trusted-local` execution until sandboxed execution is implemented.
+Docker adapter choice. The [local runtime and app policy editor](../082-local-docker-sandboxes/spec.md)
+are implemented as an initial increment. Existing captures retain explicitly
+labeled `trusted-local` execution; new captures can select Docker Sandboxes.
 
 This is the Phase 14 acceptance contract, expanding
 [Product Milestone 1](../067-team-product/spec.md#phase-14-workers-and-sandboxes)
@@ -14,8 +15,8 @@ and [PRD §§52–58](../../docs/Product%20Requirements%20Document%20v1.0.md#52-
 Phase 13 supplies Organization, Project, and actor authority. Phase 15 supplies
 Product persistence, retention, and publication reconstruction. Docker-managed
 cloud compute, other sandbox providers, scheduler fairness, and a new public API
-are outside this phase. This specification does not claim implementation or
-change existing frozen Runs.
+are outside this phase. Remote-worker acceptance remains planned; the local
+increment does not change existing frozen Runs or complete this whole phase.
 
 ## Acceptance criteria
 
@@ -68,8 +69,10 @@ change existing frozen Runs.
   silently change queued Runs, active Attempts, or continuations. Legacy
   `trusted-local` captures retain their semantics and cannot be relabeled as
   sandboxed or silently migrated.
-- **AC-6 · One fresh sandbox per Attempt.** Provision a unique mountless
-  sandbox and populate a private repository at the exact Attempt start SHA.
+- **AC-6 · Fresh sandboxes owned by one Attempt.** Provision unique mountless
+  sandboxes and populate private repositories at the exact Attempt start SHA.
+  Agent stages, trusted TEST, and independent REVIEW use separate fresh VMs
+  so an earlier stage cannot contaminate the next stage's tools or processes.
   Initial Attempts use the frozen base; rework and recovery use their validated
   continuation inputs. Never attach to an existing sandbox on a naming
   collision or reuse an earlier Attempt's VM, agent sessions, writable volumes,

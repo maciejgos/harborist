@@ -21,6 +21,7 @@ from shipyard.domain.continuation import ContinuationRequest, GitHubFeedbackSele
 from shipyard.git import GitRepository
 from shipyard.persistence import FileRunStore
 from shipyard.persistence.continuation import prepare_continuation
+from shipyard.sandbox.docker import DockerSandboxRuntime
 
 
 def _continue(
@@ -102,6 +103,7 @@ def _continue(
                 repository=git,
                 workspace=workspace,
                 agent=CodexAgent(),
+                runtime=DockerSandboxRuntime(),
                 progress=reporter.update,
             )
         directory = selected.directory(run_id)

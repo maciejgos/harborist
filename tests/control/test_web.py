@@ -131,6 +131,8 @@ def test_loopback_http_rejects_foreign_hosts_and_mutations(tmp_path: Path) -> No
             "/api/tickets/list",
             "/api/tickets/queue",
             "/api/integrations/codex/check",
+            "/api/integrations/sandbox/check",
+            "/api/integrations/sandbox/policy/2b3f1d4d-bedd-4eb6-9d87-706fb6d540d7",
             "/api/integrations/codex/profile/2b3f1d4d-bedd-4eb6-9d87-706fb6d540d7",
         ):
             connection.request(

@@ -16,7 +16,8 @@ Source: [PRD §§91–98](../../docs/Product%20Requirements%20Document%20v1.0.md
 
 The [Phase 14 acceptance contract](../081-workers-and-docker-sandboxes/spec.md)
 defines worker ownership, Docker Sandboxes isolation, trusted verification,
-export, recovery, and cleanup. Implementation remains planned.
+export, recovery, and cleanup. The [local runtime and policy editor](../082-local-docker-sandboxes/spec.md)
+are implemented; remote workers and leases remain planned.
 
 ## Phase 15 Product persistence
 

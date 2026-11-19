@@ -78,8 +78,11 @@ Verification belongs to the exact candidate commit. PACKAGE writes durable repor
 and evidence. Local application and GitHub publication require explicit operator action.
 
 Execution runs locally, serially in the background service or explicitly in the
-foreground. Git worktrees isolate workspace state;
-they do not provide hostile-code isolation.
+foreground. Select Docker Sandboxes and edit network/resource policies in
+**Integrations → Docker Sandboxes** for a saved Workspace. Docker mode uses fresh
+VMs for agents, TEST, and REVIEW. Existing trusted-local settings use Git worktrees,
+which isolate workspace state without providing a security boundary. See
+[sandbox configuration](docs/configuration.md#docker-sandboxes-execution).
 
 ## Development
 

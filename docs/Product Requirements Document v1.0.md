@@ -1973,10 +1973,14 @@ contract rather than spreading Docker-specific concepts throughout the domain.
 Sandbox lifetime:
 
 ```text
-one sandbox per Attempt
+one fresh sandbox per stage, owned by one Attempt
 ```
 
 Recovery and rework receive fresh sandboxes.
+
+The local integration uses separate VMs for DESIGN, PLAN, BUILD, TEST, and
+REVIEW so earlier agent/tool state cannot carry into verification. See the
+[implemented local contract](../spec/082-local-docker-sandboxes/spec.md).
 
 No Attempt inherits a potentially corrupted environment from another Attempt.
 

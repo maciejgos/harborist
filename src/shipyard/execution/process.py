@@ -31,6 +31,7 @@ def capture_process(
     timeout: float,
     limit: int,
     input_bytes: bytes = b"",
+    env: dict[str, str] | None = None,
 ) -> ProcessCapture:
     if limit < 0 or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError(
@@ -58,6 +59,7 @@ def capture_process(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
+                env=env,
             ) as process,
             selectors.DefaultSelector() as selector,
         ):
