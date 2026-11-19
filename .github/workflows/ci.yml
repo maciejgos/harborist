@@ -5,18 +5,84 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: '0.11.20'
 
-      - run: uv sync
+      - run: uv sync --locked
 
-      - run: uv run pytest
+      - run: uv run --locked pytest
 
-      - run: uv run ruff check .
+      - run: uv run --locked ruff check .
 
-      - run: uv run pyright
+      - run: uv run --locked pyright
+
+  container:
+    runs-on: ubuntu-24.04
+    env:
+      HARBORIST_IMAGE: harborist:${{ github.sha }}
+      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Enable OCI image storage
+        run: |
+          sudo mkdir -p /etc/docker
+          sudo sh -c 'test -f /etc/docker/daemon.json || echo "{}" > /etc/docker/daemon.json'
+          sudo jq '.features["containerd-snapshotter"] = true' /etc/docker/daemon.json > "$RUNNER_TEMP/daemon.json"
+          sudo install -m 0644 "$RUNNER_TEMP/daemon.json" /etc/docker/daemon.json
+          sudo systemctl restart docker
+
+      - name: Scan repository
+        run: |
+          docker run --rm -v "$PWD:/source:ro" "$TRIVY_IMAGE" fs \
+            --scanners secret --skip-dirs /source/.git --exit-code 1 /source
+          docker run --rm -v "$PWD:/source:ro" "$TRIVY_IMAGE" fs \
+            --scanners vuln,misconfig --skip-dirs /source/.git \
+            --severity HIGH,CRITICAL --ignore-unfixed --include-dev-deps --exit-code 1 /source
+
+      - name: Build image with SBOM and provenance
+        run: |
+          docker buildx create --name harborist-ci --driver docker-container \
+            --driver-opt image=moby/buildkit:buildx-stable-1@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+          docker buildx build --builder harborist-ci --tag "$HARBORIST_IMAGE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --attest 'type=sbom,generator=docker/buildkit-syft-scanner:stable-1@sha256:873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315' \
+            --provenance=mode=max \
+            --output "type=oci,dest=$RUNNER_TEMP/harborist.oci.tar" \
+            --metadata-file "$RUNNER_TEMP/harborist-build.json" .
+          python3 tests/container/verify_archive.py "$RUNNER_TEMP/harborist.oci.tar" "$GITHUB_SHA"
+          docker load --input "$RUNNER_TEMP/harborist.oci.tar"
+
+      - name: Scan runtime image
+        run: |
+          docker save --platform linux/amd64 "$HARBORIST_IMAGE" --output "$RUNNER_TEMP/harborist.docker.tar"
+          docker run --rm -v "$RUNNER_TEMP/harborist.docker.tar:/image.tar:ro" \
+            "$TRIVY_IMAGE" image --input /image.tar --scanners secret --exit-code 1
+          docker run --rm -v "$RUNNER_TEMP/harborist.docker.tar:/image.tar:ro" \
+            "$TRIVY_IMAGE" image --input /image.tar --scanners vuln \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
+      - name: Test container deployment
+        run: bash tests/container/smoke.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harborist-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/harborist.oci.tar
+            ${{ runner.temp }}/harborist-build.json
+          if-no-files-found: error

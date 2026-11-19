@@ -1,0 +1,11 @@
+services:
+  service:
+    environment:
+      HARBORIST_SANDBOX_HOST: host.docker.internal
+      HARBORIST_SANDBOX_PORT: "${HARBORIST_SANDBOX_PORT:-19454}"
+      HARBORIST_SANDBOX_TOKEN_FILE: /run/harborist/sandbox-token
+    volumes:
+      - type: bind
+        source: "${HARBORIST_DEPLOY_STATE:?Start the deployment with deploy/harborist}/token"
+        target: /run/harborist/sandbox-token
+        read_only: true

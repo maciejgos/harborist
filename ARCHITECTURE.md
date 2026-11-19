@@ -211,6 +211,18 @@ incomplete exports retain a stopped VM for explicit inspection. See the
 
 ## Cross-Cutting Concerns
 
+### Local container deployment
+
+Compose runs the worker and web adapter from one non-root image. A private
+volume shares the Unix control socket, and the worker persists data separately.
+Only the loopback web port is published. The worker uses the existing sandbox
+runtime through an authenticated host-loopback helper. The helper allowlists
+`sbx` commands and checks deployment ownership against the live sandbox UUID.
+Bundle and artifact bytes travel through guest stdio. The helper accepts no host
+paths, and the containers receive no Docker Engine socket. The host operator
+owns Docker Sandboxes authentication and policy. See the
+[deployment specification](spec/083-container-deployment/spec.md).
+
 ### Execution budget
 
 A Run has one frozen budget. `BudgetClock` uses monotonic elapsed time from

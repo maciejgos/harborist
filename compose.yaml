@@ -1,0 +1,33 @@
+services:
+  service:
+    image: "${HARBORIST_IMAGE:-harborist:local}"
+    build: .
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - state:/home/harborist/.harborist
+      - control:/home/harborist/.harborist/control
+    healthcheck:
+      test: [CMD, python, -m, harborist, service, status]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 60s
+  web:
+    image: "${HARBORIST_IMAGE:-harborist:local}"
+    command: [web, --container-listener, --port, "${HARBORIST_WEB_PORT:-8765}"]
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      service:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${HARBORIST_WEB_PORT:-8765}:${HARBORIST_WEB_PORT:-8765}"
+    volumes:
+      - control:/home/harborist/.harborist/control:ro
+
+volumes:
+  state:
+  control:

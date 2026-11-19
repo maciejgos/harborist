@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -61,6 +62,41 @@ def policy_digest(raw: bytes) -> str:
 class DockerSandboxRuntime:
     def __init__(self, *, executable: str = "sbx") -> None:
         self.executable = executable
+        self.host_helper = bool(os.environ.get("HARBORIST_SANDBOX_HOST"))
+
+    def invoke_host(
+        self,
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+        timeout: float,
+        limit: int,
+        input_bytes: bytes = b"",
+    ) -> ProcessCapture:
+        from harborist.sandbox.host_runtime import MAX_SECONDS
+        from harborist.sandbox.host_transport import Response, response_limit
+
+        result = capture_process(
+            [
+                sys.executable,
+                "-m",
+                "harborist.sandbox.host_client",
+                str(min(timeout, MAX_SECONDS)),
+                str(limit),
+                *args,
+            ],
+            cwd=cwd,
+            timeout=timeout,
+            limit=response_limit(limit),
+            input_bytes=input_bytes,
+        )
+        if result.timed_out:
+            return result
+        if result.returncode or result.stdout_truncated:
+            return ProcessCapture(
+                125, False, b"", b"Host sandbox helper unavailable", False, False
+            )
+        return Response.model_validate_json(result.stdout).capture()
 
     def agent(self, *, policy: SandboxPolicy, receipts: Path) -> NativeAgent:
         from harborist.agents.sandbox import SandboxCodexAgent
@@ -69,6 +105,15 @@ class DockerSandboxRuntime:
 
     def control(self, *args: str, timeout: float = 10) -> bytes:
         try:
+            if self.host_helper:
+                remote = self.invoke_host(
+                    args, cwd=Path.cwd(), timeout=timeout, limit=1024 * 1024
+                )
+                if remote.returncode or remote.timed_out or remote.stdout_truncated:
+                    raise ValueError(
+                        "Host sandbox helper is unavailable or rejected the operation"
+                    )
+                return remote.stdout
             result = subprocess.run(
                 [self.executable, "--no-input", *args],
                 capture_output=True,
@@ -192,14 +237,24 @@ class DockerWorkspace:
             "ANTHROPIC_API_KEY",
         ):
             environment.pop(key, None)
-        result = capture_process(
-            [self.runtime.executable, "--no-input", *args],
-            cwd=self.directory,
-            timeout=min(self.allowance(), timeout) if timeout else self.allowance(),
-            limit=limit,
-            input_bytes=input_bytes,
-            env=environment,
-        )
+        remaining = min(self.allowance(), timeout) if timeout else self.allowance()
+        if self.runtime.host_helper:
+            result = self.runtime.invoke_host(
+                args,
+                cwd=self.directory,
+                timeout=remaining,
+                limit=limit,
+                input_bytes=input_bytes,
+            )
+        else:
+            result = capture_process(
+                [self.runtime.executable, "--no-input", *args],
+                cwd=self.directory,
+                timeout=remaining,
+                limit=limit,
+                input_bytes=input_bytes,
+                env=environment,
+            )
         if result.timed_out:
             raise AgentTimeoutError("Docker Sandboxes command timed out")
         return result
@@ -259,9 +314,20 @@ class DockerWorkspace:
         )
 
     def upload(self, path: Path, destination: str) -> None:
-        self.require("cp", str(path), f"{self.name}:{destination}")
+        if self.runtime.host_helper:
+            from harborist.sandbox.host_runtime import MAX_TRANSFER
+
+            with path.open("rb") as source:
+                contents = source.read(MAX_TRANSFER + 1)
+            if len(contents) > MAX_TRANSFER:
+                raise AgentExecutionError("Sandbox input exceeded the transfer limit")
+            self.require("upload", self.name, destination, input_bytes=contents)
+        else:
+            self.require("cp", str(path), f"{self.name}:{destination}")
 
     def download(self, source: str, destination: Path, *, limit: int) -> bytes:
+        if self.runtime.host_helper:
+            return self.require("download", self.name, source, limit=limit)
         self.require("cp", f"{self.name}:{source}", str(destination))
         if (
             destination.is_symlink()

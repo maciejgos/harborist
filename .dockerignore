@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!src/
+!src/harborist/
+!src/harborist/**
+**/__pycache__/
+**/*.pyc
