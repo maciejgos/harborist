@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+export SHIPYARD_DEPLOY_STATE="${SHIPYARD_DEPLOY_STATE:-$HOME/.local/share/shipyard-deployment}"
+export SHIPYARD_SANDBOX_PORT="${SHIPYARD_SANDBOX_PORT:-19454}"
+project="${SHIPYARD_DEPLOY_PROJECT:-shipyard}"
+label="local.shipyard.sandbox.$project"
+domain="gui/$UID"
+compose=(docker compose --project-name "$project" -f "$root/compose.yaml" -f "$root/deploy/compose.sandbox.yaml")
+
+case "${1:-start}" in
+    stop|remove)
+        "${compose[@]}" down
+        if launchctl print "$domain/$label" >/dev/null 2>&1; then
+            launchctl bootout "$domain/$label"
+        fi
+        exit
+        ;;
+    exec)
+        shift
+        exec "${compose[@]}" exec -T service python -m shipyard "$@"
+        ;;
+    start) ;;
+    *) echo "Usage: deploy/shipyard [start|stop|remove|exec ARGS...]" >&2; exit 2 ;;
+esac
+
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 || "$(sysctl -n kern.hv_support)" != 1 ]]; then
+    echo "Shipyard deployment requires Apple silicon macOS with hardware virtualization." >&2
+    exit 1
+fi
+docker info >/dev/null
+docker compose version >/dev/null
+command -v uv >/dev/null || { echo "Install uv to prepare the host helper." >&2; exit 1; }
+sbx="$(command -v sbx)" || { echo "Install Docker Sandboxes 0.54.x with Homebrew." >&2; exit 1; }
+if ! "$sbx" version | grep -Eq '(^|[[:space:]])v0\.54\.[0-9]+([[:space:]]|$)'; then
+    echo "Shipyard requires Docker Sandboxes 0.54.x." >&2
+    exit 1
+fi
+if ! "$sbx" --no-input policy ls --json >/dev/null; then
+    echo "Sign in with sbx login and initialize the host sandbox network policy." >&2
+    exit 1
+fi
+
+mkdir -p "$SHIPYARD_DEPLOY_STATE"
+SHIPYARD_DEPLOY_STATE="$(cd "$SHIPYARD_DEPLOY_STATE" && pwd)"
+chmod 700 "$SHIPYARD_DEPLOY_STATE"
+export UV_PROJECT_ENVIRONMENT="$SHIPYARD_DEPLOY_STATE/venv"
+uv sync --project "$root" --locked --no-dev
+
+python="$UV_PROJECT_ENVIRONMENT/bin/python"
+"$python" - "$label" "$sbx" <<'PY'
+import os
+import plistlib
+import secrets
+import sys
+from pathlib import Path
+
+label, sbx = sys.argv[1:]
+directory = Path(os.environ["SHIPYARD_DEPLOY_STATE"])
+token = directory / "token"
+try:
+    with token.open("x") as stream:
+        stream.write(secrets.token_hex(32))
+except FileExistsError:
+    pass
+token.chmod(0o444)  # Docker bind mount crosses user IDs. The host directory is private.
+log = str(directory / "helper.log")
+(directory / "helper.plist").write_bytes(plistlib.dumps({
+    "Label": label,
+    "ProgramArguments": [
+        sys.executable, "-m", "shipyard.sandbox.host_server",
+        str(directory), os.environ["SHIPYARD_SANDBOX_PORT"], "--sbx", sbx,
+    ],
+    "KeepAlive": True,
+    "StandardOutPath": log,
+    "StandardErrorPath": log,
+}))
+PY
+
+# Keep the host principal and token stable when updating the stack.
+if launchctl print "$domain/$label" >/dev/null 2>&1; then
+    "${compose[@]}" stop
+    launchctl bootout "$domain/$label"
+fi
+# launchd can finish unloading a job after bootout returns.
+for attempt in {1..20}; do
+    if launchctl bootstrap "$domain" "$SHIPYARD_DEPLOY_STATE/helper.plist" 2>"$SHIPYARD_DEPLOY_STATE/bootstrap.log"; then
+        break
+    fi
+    if [[ "$attempt" == 20 ]]; then
+        cat "$SHIPYARD_DEPLOY_STATE/bootstrap.log" >&2
+        exit 1
+    fi
+    sleep 0.25
+done
+"${compose[@]}" up --build --wait
+if ! "${compose[@]}" exec -T service python -c \
+    'from shipyard.sandbox.docker import DockerSandboxRuntime; print(DockerSandboxRuntime().baseline_digest())' >/dev/null; then
+    echo "The deployed worker could not reach an initialized Docker Sandboxes helper." >&2
+    exit 1
+fi
+echo "Shipyard is ready at http://127.0.0.1:${SHIPYARD_WEB_PORT:-8765}."
+echo "If needed, configure Codex on the host with sbx secret set openai --oauth."

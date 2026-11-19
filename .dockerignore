@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!src/
+!src/shipyard/
+!src/shipyard/**
+**/__pycache__/
+**/*.pyc

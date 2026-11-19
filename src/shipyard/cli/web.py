@@ -13,9 +13,13 @@ def web(
     control_dir: Annotated[
         Path | None, typer.Option(help="Existing service control directory.")
     ] = None,
-    port: Annotated[
-        int, typer.Option(min=1, max=65535, help="Loopback dashboard port.")
-    ] = 8765,
+    port: Annotated[int, typer.Option(min=1, max=65535, help="Dashboard port.")] = 8765,
+    container_listener: Annotated[
+        bool,
+        typer.Option(
+            help="Listen on container interfaces for loopback port publishing."
+        ),
+    ] = False,
 ) -> None:
     """Operate Shipyard at http://127.0.0.1:8765; run service start separately.
 
@@ -23,7 +27,11 @@ def web(
     upgrading Shipyard to expose the new stage history and artifact endpoints.
     """
     try:
-        with create_server(control_dir=control_root(control_dir), port=port) as server:
+        with create_server(
+            control_dir=control_root(control_dir),
+            port=port,
+            container_listener=container_listener,
+        ) as server:
             typer.echo(f"Shipyard workspace: http://127.0.0.1:{server.server_port}")
             server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:

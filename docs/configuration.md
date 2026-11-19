@@ -70,6 +70,45 @@ unsupported versions, invalid records and unreadable assets fail with
 `SettingsError`. See [settings specification](../spec/013-execution-settings/spec.md).
 
 
+## Local container deployment
+
+On Apple silicon macOS, start Docker Desktop and install uv and standalone
+Docker Sandboxes 0.54.x. Sign in to Docker Sandboxes with `sbx login`,
+initialize its network policy, and configure Codex with
+`sbx secret set openai --oauth`. Run these as your macOS user.
+
+From the Shipyard checkout, run `./deploy/shipyard start`, then open
+`http://127.0.0.1:8765`. The installer prepares the host helper and starts
+the worker and browser UI. The worker can reach the helper via Docker
+Desktop. Only the worker receives its deployment token. Docker and Codex
+credentials stay in the host's Docker Sandboxes credential store.
+
+Keep target repositories in the worker's persistent data directory. For
+example, clone a public repository there with:
+
+```sh
+docker compose --project-name shipyard exec service git clone https://example.org/owner/project.git /home/shipyard/.shipyard/project
+```
+
+Register the container path in the Workspaces screen and select its settings
+file. Set its execution policy to Docker Sandboxes with the default pinned
+kit. Use the same paths with the CLI, for example:
+
+```sh
+./deploy/shipyard exec run file:/home/shipyard/.shipyard/project/request.md --repo /home/shipyard/.shipyard/project
+```
+
+Run `./deploy/shipyard stop` to stop the stack and host helper. After updating
+the checkout, run `./deploy/shipyard start` to rebuild and restart. The
+`./deploy/shipyard remove` command removes the running deployment and leaves
+the volumes and helper identity in place so you can reinstall without losing
+Run data. Set `SHIPYARD_WEB_PORT` to select a different loopback port. For an
+independent deployment, set a distinct `SHIPYARD_DEPLOY_PROJECT`,
+`SHIPYARD_DEPLOY_STATE`, `SHIPYARD_WEB_PORT`, and `SHIPYARD_SANDBOX_PORT` for
+its lifecycle commands.
+
+See the [deployment specification](../spec/083-container-deployment/spec.md).
+
 ## Docker Sandboxes execution
 
 In **Integrations → Docker Sandboxes**, select a Workspace, check readiness,

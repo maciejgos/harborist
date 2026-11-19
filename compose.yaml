@@ -1,0 +1,33 @@
+services:
+  service:
+    image: "${SHIPYARD_IMAGE:-shipyard:local}"
+    build: .
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - state:/home/shipyard/.shipyard
+      - control:/home/shipyard/.shipyard/control
+    healthcheck:
+      test: [CMD, python, -m, shipyard, service, status]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 60s
+  web:
+    image: "${SHIPYARD_IMAGE:-shipyard:local}"
+    command: [web, --container-listener, --port, "${SHIPYARD_WEB_PORT:-8765}"]
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      service:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SHIPYARD_WEB_PORT:-8765}:${SHIPYARD_WEB_PORT:-8765}"
+    volumes:
+      - control:/home/shipyard/.shipyard/control:ro
+
+volumes:
+  state:
+  control:

@@ -102,7 +102,9 @@ class WebApplication:
         return 404, "text/plain", b"Not found"
 
 
-def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
+def create_server(
+    *, control_dir: Path, port: int, container_listener: bool = False
+) -> ThreadingHTTPServer:
     app = WebApplication(ControlClient(control_dir))
 
     class Handler(BaseHTTPRequestHandler):
@@ -126,7 +128,7 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
             self.respond()
 
         def respond(self) -> None:
-            # Reject DNS-rebinding Host values; the adapter never binds publicly.
+            # Reject DNS-rebinding Host values even with container port publishing.
             host = self.headers.get("Host", "")
             route = urlsplit(self.path).path.removeprefix("/api")
             if host not in (
@@ -190,5 +192,6 @@ def create_server(*, control_dir: Path, port: int) -> ThreadingHTTPServer:
                 )
             return app.command(self.path, raw)
 
-    listener = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    bind_address = "0.0.0.0" if container_listener else "127.0.0.1"
+    listener = ThreadingHTTPServer((bind_address, port), Handler)
     return listener
