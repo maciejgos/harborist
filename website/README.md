@@ -20,7 +20,7 @@ Markdown guides from `docs/` and `COMMANDS.md`.
 | Root directory | Repository root |
 | Build command | `npm ci --prefix website && npm run build --prefix website` |
 | Build output directory | `website/dist` |
-| Build watch paths | `website/**`, `docs/**`, `COMMANDS.md` |
+| Build watch paths | `website/*`, `docs/*`, `COMMANDS.md` |
 | Node version | `NODE_VERSION=24` |
 | Site origin | `PAGES_ORIGIN=https://harborist.pages.dev` |
 
