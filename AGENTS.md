@@ -80,6 +80,14 @@ uv run pyright
 - Use subprocess execution for external tools and deterministic checks.
 - Keep provider-specific and CLI-specific details outside the domain model.
 
+## Documentation
+
+For every feature or user-visible behavior change, use
+[`harborist-docs`](.agents/skills/harborist-docs/SKILL.md) as part of implementation.
+Review the existing guides for affected instructions, update them alongside the
+change, and report any examples you could not validate. Use the same skill for
+standalone documentation reviews.
+
 ## Changelog
 
 Update `CHANGELOG.md` only when introducing a new package version in `pyproject.toml`. Add one entry for that version summarizing the changes since the previous version. Track phase progress and proposed versions in `ROADMAP.md`.

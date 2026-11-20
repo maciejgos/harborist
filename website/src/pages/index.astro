@@ -1,0 +1,104 @@
+---
+import './landing.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const repo = 'https://github.com/maciejgos/harborist';
+const start = base + '/docs/quickstart/';
+const workspacePreview = base + '/workspace-preview.webp';
+
+const features = [
+  ['⚙', 'Let agents do the engineering.', 'Turn a Markdown request or GitHub issue into a complete engineering workflow.'],
+  ['✓', 'Verify against explicit criteria.', 'Run repository-defined tests and an independent review against the acceptance criteria.'],
+  ['⑂', 'Every change, accounted for.', 'Pin verification to an exact Git commit with the specification, tests, review findings, and artifacts.'],
+  ['↗', 'You decide what ships.', 'Apply the verified commit locally or explicitly approve publication to GitHub.'],
+  ['▤', 'A repeatable playbook.', 'Follow a seven-stage workflow with versioned skills and frozen instructions.'],
+  ['◇', 'Isolated execution.', 'Run Harborist in local containers and isolate agent stages and mandatory checks in fresh Docker Sandboxes VMs.'],
+  ['▣', 'Everything in one workspace.', 'Monitor runs, triage your inbox, inspect evidence, and manage repositories.'],
+  ['↻', 'Built to recover.', 'Rework failed changes, recover from interruptions, and preserve the history of every Attempt.'],
+];
+
+const stages = [
+  ['▤', 'Intake', 'Capture and freeze intent'],
+  ['▤', 'Design', 'Define acceptance criteria'],
+  ['☷', 'Plan', 'Prepare implementation'],
+  ['‹/›', 'Build', 'Create a candidate commit'],
+  ['♧', 'Test', 'Run trusted checks'],
+  ['✓', 'Review', 'Verify independently'],
+  ['◇', 'Package', 'Preserve durable evidence'],
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="Open-source software engineering orchestration with independent verification and human-controlled delivery." />
+    <link rel="icon" href={base + '/harborist-mark.png'} />
+    <title>Harborist | Autonomous engineering. Verified delivery.</title>
+  </head>
+  <body>
+    <div class="hero-art" aria-hidden="true"><img src={base + '/lighthouse.webp'} alt="" /></div>
+    <header class="site-header shell">
+      <a class="brand" href={base + '/'}><img src={base + '/harborist-mark.png'} alt="" width="32" height="32" /> Harborist</a>
+      <nav aria-label="Main navigation">
+        <a href="#features">Features</a>
+        <a href="#workflow">How it works</a>
+        <a href={base + '/docs/'}>Docs</a>
+        <a href={repo}>GitHub</a>
+        <a href={repo + '/blob/main/ROADMAP.md'}>Roadmap</a>
+      </nav>
+      <a class="button primary header-cta" href={start}>Get Started <span aria-hidden="true">→</span></a>
+    </header>
+    <main>
+      <section class="hero shell" aria-labelledby="intro">
+        <div class="hero-copy">
+          <h1 id="intro">Autonomous engineering.<br />Verified delivery.</h1>
+          <p>Open-source software engineering orchestration with independent verification and human-controlled delivery.</p>
+          <div class="actions">
+            <a class="button primary" href={start}>Get Started <span aria-hidden="true">→</span></a>
+            <a class="button secondary" href={repo}>View on GitHub</a>
+          </div>
+          <ul class="traits" aria-label="Project principles">
+            <li>Local first</li><li>Evidence driven</li><li>Open source</li>
+          </ul>
+        </div>
+        <figure class="workspace">
+          <img src={workspacePreview} alt="Harborist workspace mockup with an Inbox showing a run that requires changes and a run whose mandatory tests failed." />
+        </figure>
+      </section>
+      <section id="features" class="features shell" aria-labelledby="features-title">
+        <h2 id="features-title">Give AI agents autonomy. Keep engineering accountable.</h2>
+        <p class="section-intro">A verifiable workflow from engineering intent to delivery.</p>
+        <ul class="feature-grid">
+          {features.map(([icon, title, detail], index) => (
+            <li>
+              <span class:list={['icon', { green: index === 1 }]} aria-hidden="true">{icon}</span>
+              <h3>{title}</h3><p>{detail}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section id="workflow" class="workflow shell" aria-labelledby="workflow-title">
+        <h2 id="workflow-title">From intent to verified delivery.</h2>
+        <p>Harborist runs each request through seven stages.</p>
+        <ol>
+          {stages.map(([icon, title, detail], index) => (
+            <li>
+              <span class:list={['icon', { green: index === 6 }]} aria-hidden="true">{icon}</span>
+              <h3>{title}</h3><p>{detail}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </main>
+    <footer class="closing shell">
+      <img class="closing-art" src={base + '/shoreline.webp'} alt="" loading="lazy" />
+      <h2>Your code. Your infrastructure. Your decision.</h2>
+      <p>Open source. Local first. Built for serious engineering.</p>
+      <div class="actions">
+        <a class="button secondary" href={start}>Get Started <span aria-hidden="true">→</span></a>
+        <a class="button outline" href={repo}>Explore on GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+:root {
+  --sl-font: Inter, system-ui, sans-serif;
+  --sl-content-width: 46rem;
+  --sl-color-accent-low: #242958;
+  --sl-color-accent: #aebaff;
+  --sl-color-accent-high: #dce3ff;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e9edff;
+  --sl-color-accent: #3441cf;
+  --sl-color-accent-high: #232d9f;
+  --sl-color-white: #0a1024;
+  --sl-color-bg-nav: #f8f9ff;
+  --sl-color-bg-sidebar: #f8f9ff;
+}
+
+h1 {
+  letter-spacing: -0.035em;
+}
+
+.sl-markdown-content {
+  line-height: 1.65;
+}

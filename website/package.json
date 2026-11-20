@@ -1,0 +1,14 @@
+{
+  "name": "harborist-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-docs.mjs && astro dev",
+    "build": "node scripts/prepare-docs.mjs && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.37.0",
+    "astro": "^5.16.0"
+  }
+}

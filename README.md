@@ -5,43 +5,18 @@
 **Autonomous engineering. Verified delivery.**
 
 Harborist turns engineering requests into independently verified code candidates
-with durable evidence. The local MVP accepts Markdown or GitHub issues, runs one
+with durable evidence. Harborist accepts Markdown or GitHub issues, runs one
 request at a time in the background, and lets an operator inspect each Attempt,
 recover or rework a Run, and approve publication of the exact verified commit.
 
 ## Quick start
 
-Install [uv](https://docs.astral.sh/uv/). Harborist pins Python 3.14; uv downloads it if needed. Install and authenticate Codex CLI before executing agent stages.
-GitHub issue intake and PR delivery also require an installed, authenticated `gh`.
-The target repository must have committed mandatory checks in `harborist.yaml`
-and local operator configuration in `harborist.settings.yaml`; this checkout
-includes both. See [configuration](docs/configuration.md) for another repository.
-
-From this development checkout:
-
-```bash
-uv sync
-uv run harborist service start
-uv run harborist run file:examples/intake/issue.md
-```
-
-The command captures and queues the request, then returns its Run ID. The
-service executes independently of the terminal. Run `uv run harborist web` in
-another terminal to open the [local workspace](http://127.0.0.1:8765). You can
-submit Runs, follow progress, inspect evidence, and approve GitHub publication there.
-View the result with
-`uv run harborist status <run-id> --wait`, or use `run --foreground` for
-synchronous execution and terminal result exit codes. Review the report/evidence.
-For a VERIFIED Run, apply its candidate to an existing local branch explicitly:
-
-```bash
-uv run harborist apply <run-id> --branch <existing-local-branch>
-```
-
-Application requires the branch to be eligible for advancement. See
-[applying a verified candidate](docs/usage.md#apply-a-verified-candidate).
-For GitHub delivery, approve the full verified commit SHA and destination.
-See [publishing a verified candidate](docs/usage.md#publish-a-verified-candidate-to-github).
+Follow the [Docker quickstart](docs/quickstart.md) to start the worker and
+browser workspace in containers on Apple silicon macOS. With Docker Sandboxes
+selected, Harborist runs agent stages and mandatory checks in fresh VMs on
+the host. To run against
+your own repository, [configure its mandatory checks and execution
+settings](docs/configuration.md).
 
 ## Commands
 
@@ -105,8 +80,8 @@ See [AGENTS.md](AGENTS.md) for repository working instructions.
 
 - [Documentation index](docs/README.md)
 - [Architecture](ARCHITECTURE.md)
-- [Usage](docs/usage.md)
+- [Run and deliver changes](docs/usage.md)
 - [Configuration](docs/configuration.md)
 - [Storage and recovery](docs/storage-and-recovery.md)
-- [Methodology](docs/methodology.md)
+- [Workflow and verification](docs/methodology.md)
 - [Developer reference](docs/developer-reference.md)
