@@ -12,10 +12,10 @@ recover or rework a Run, and approve publication of the exact verified commit.
 ## Quick start
 
 Follow the [Docker quickstart](docs/quickstart.md) to start the worker and
-browser workspace in containers on Apple silicon macOS. With Docker Sandboxes
-selected, Harborist runs agent stages and mandatory checks in fresh VMs on
-the host. To run against
-your own repository, [configure its mandatory checks and execution
+browser workspace in containers. Check the deployment prerequisites before
+starting. With Docker Sandboxes selected, Harborist runs agent stages and
+mandatory checks in fresh VMs on the sandbox host. To run against your own
+repository, [configure its mandatory checks and execution
 settings](docs/configuration.md).
 
 ## Commands
@@ -79,7 +79,8 @@ See [AGENTS.md](AGENTS.md) for repository working instructions.
 ## Documentation
 
 - [Documentation index](docs/README.md)
-- [Architecture](ARCHITECTURE.md)
+- [System design](docs/architecture.md)
+- [Engineering architecture](ARCHITECTURE.md)
 - [Run and deliver changes](docs/usage.md)
 - [Configuration](docs/configuration.md)
 - [Storage and recovery](docs/storage-and-recovery.md)

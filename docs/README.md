@@ -5,9 +5,10 @@ captures the request, builds a candidate commit, runs your mandatory checks, and
 reviews that exact commit against the acceptance criteria. You decide when to
 apply a verified candidate locally or publish it to GitHub.
 
-In the container deployment, the worker and browser workspace run in local
-Docker containers. With the Docker Sandboxes policy selected, the worker
-executes agent stages and mandatory checks in separate, fresh VMs on the Mac.
+Harborist is designed for Unix-based systems. Host deployment commands use
+Bash, and the worker and browser workspace run in Linux containers. With the Docker Sandboxes policy selected, the worker
+executes agent stages and mandatory checks in fresh VMs on the sandbox host.
+The current container installer targets Apple silicon macOS.
 
 ## Start here
 
@@ -21,6 +22,7 @@ select the sandbox policy, and inspect your first Run.
 | Capture a request, inspect the result, or deliver a candidate | [Run and deliver changes](usage.md) |
 | Configure a repository, Codex, or Docker Sandboxes | [Configure Harborist](configuration.md) |
 | Start, stop, or troubleshoot the local worker | [Operate the local service](background-control-plane.md) |
+| Understand how Harborist is built | [Harborist system design](architecture.md) |
 | Understand what Harborist verifies | [Workflow and verification](methodology.md) |
 | Locate evidence or recover from an interruption | [Storage and recovery](storage-and-recovery.md) |
 | Look up a command or option | [CLI reference](../COMMANDS.md) |

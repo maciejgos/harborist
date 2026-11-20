@@ -70,10 +70,9 @@ to check the connection and edit the profile.
 
 ## Local container deployment
 
-On Apple silicon macOS, start Docker Desktop and install uv and standalone
-Docker Sandboxes 0.54.x. Sign in to Docker Sandboxes with `sbx login`,
-initialize its network policy, and configure Codex with
-`sbx secret set openai --oauth`. Run these as your macOS user.
+Follow the [Docker quickstart prerequisites](quickstart.md#before-you-begin)
+for the current installer. Run Docker Sandboxes setup as the same host user
+who starts Harborist.
 
 From the Harborist checkout, run `./deploy/harborist start`, then open
 `http://127.0.0.1:8765`. The installer prepares the host helper and starts
@@ -92,43 +91,6 @@ Register the container path in the Workspaces screen and select its settings
 file. Set its execution policy to Docker Sandboxes with the default pinned
 kit before capturing a Run. Container deployment and Workspace execution policy
 are configured independently. Use the same paths with the CLI, for example:
-
-```sh
-./deploy/harborist exec run file:/home/harborist/.harborist/project/request.md --repo /home/harborist/.harborist/project
-```
-
-Run `./deploy/harborist stop` to stop the stack and host helper. After updating
-the checkout, run `./deploy/harborist start` to rebuild and restart. The
-`./deploy/harborist remove` command removes the running deployment and leaves
-the volumes and helper identity in place so you can reinstall without losing
-Run data. Set `HARBORIST_WEB_PORT` to select a different loopback port. For an
-independent deployment, set a distinct `HARBORIST_DEPLOY_PROJECT`,
-`HARBORIST_DEPLOY_STATE`, `HARBORIST_WEB_PORT`, and `HARBORIST_SANDBOX_PORT` for
-its lifecycle commands.
-
-## Local container deployment
-
-On Apple silicon macOS, start Docker Desktop and install uv and standalone
-Docker Sandboxes 0.54.x. Sign in to Docker Sandboxes with `sbx login`,
-initialize its network policy, and configure Codex with
-`sbx secret set openai --oauth`. Run these as your macOS user.
-
-From the Harborist checkout, run `./deploy/harborist start`, then open
-`http://127.0.0.1:8765`. The installer prepares the host helper and starts
-the worker and browser UI. The worker can reach the helper via Docker
-Desktop. Only the worker receives its deployment token. Docker and Codex
-credentials stay in the host's Docker Sandboxes credential store.
-
-Keep target repositories in the worker's persistent data directory. For
-example, clone a public repository there with:
-
-```sh
-docker compose --project-name harborist exec service git clone https://example.org/owner/project.git /home/harborist/.harborist/project
-```
-
-Register the container path in the Workspaces screen and select its settings
-file. Set its execution policy to Docker Sandboxes with the default pinned
-kit. Use the same paths with the CLI, for example:
 
 ```sh
 ./deploy/harborist exec run file:/home/harborist/.harborist/project/request.md --repo /home/harborist/.harborist/project

@@ -6,17 +6,18 @@ mandatory TEST run in fresh VMs on the host.
 
 ## Before you begin
 
-- Use Apple silicon macOS with hardware virtualization and Docker Desktop running.
+- Run the host commands in Bash. The current installer requires Apple silicon
+  macOS with hardware virtualization and Docker Desktop running.
 - Install Git, [uv](https://docs.astral.sh/uv/), and standalone Docker Sandboxes 0.54.x.
   Check the sandbox version with `sbx version`.
 - Sign in with `sbx login`, initialize the Docker Sandboxes network policy with
   `sbx policy init` if needed, and configure Codex authentication with
   `sbx secret set openai --oauth`. Run these
-  commands on the Mac as the same user who starts Harborist.
+  commands on the sandbox host as the same user who starts Harborist.
 
 ## 1. Start Harborist
 
-From a Harborist checkout on the Mac, run:
+From a Harborist checkout on the deployment host, run:
 
 ```bash
 ./deploy/harborist start

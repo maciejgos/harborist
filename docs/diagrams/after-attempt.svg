@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 240" role="img" aria-labelledby="title">
+  <title id="title">Operator decisions after an Attempt</title>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#53737e"/></marker></defs>
+  <rect width="660" height="240" rx="16" fill="#f1f6f7"/>
+  <g fill="none" stroke="#53737e" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M120 86V138"/>
+    <path d="M330 86V138"/>
+    <path d="M540 86V138"/>
+  </g>
+  <g font-family="system-ui, sans-serif" text-anchor="middle" fill="#153542">
+    <rect x="25" y="24" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="120" y="52" font-size="17" font-weight="650">Failed TEST / REVIEW</text>
+    <text x="120" y="72" font-size="13">Candidate needs changes</text>
+    <rect x="235" y="24" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="330" y="52" font-size="17" font-weight="650">Execution failure</text>
+    <text x="330" y="72" font-size="13">Check recovery eligibility</text>
+    <rect x="445" y="24" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="540" y="52" font-size="17" font-weight="650">Verified candidate</text>
+    <text x="540" y="72" font-size="13">Read the report and SHA</text>
+    <rect x="25" y="138" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="120" y="166" font-size="17" font-weight="650">Rework</text>
+    <text x="120" y="186" font-size="13">New Attempt starts at PLAN</text>
+    <rect x="235" y="138" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="330" y="166" font-size="17" font-weight="650">Recover</text>
+    <text x="330" y="186" font-size="13">Restart at DESIGN or PLAN</text>
+    <rect x="445" y="138" width="190" height="62" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="540" y="166" font-size="17" font-weight="650">Apply or publish</text>
+    <text x="540" y="186" font-size="13">Deliver the verified commit</text>
+  </g>
+</svg>

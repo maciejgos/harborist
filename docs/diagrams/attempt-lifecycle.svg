@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 402" role="img" aria-labelledby="title">
+  <title id="title">Attempt stages and verification gate</title>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#53737e"/></marker></defs>
+  <rect width="660" height="402" rx="16" fill="#f1f6f7"/>
+  <g fill="none" stroke="#53737e" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M330 78V103"/>
+    <path d="M330 161V186"/>
+    <path d="M250 244V256H155V270"/>
+    <path d="M410 244V256H500V270"/>
+    <path d="M155 328V362H500V328"/>
+  </g>
+  <g font-family="system-ui, sans-serif" text-anchor="middle" fill="#153542">
+    <rect x="180" y="20" width="300" height="58" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="330" y="46" font-size="17" font-weight="650">INTAKE</text>
+    <text x="330" y="66" font-size="13">Freeze the Run contract</text>
+    <rect x="180" y="103" width="300" height="58" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="330" y="129" font-size="17" font-weight="650">DESIGN → PLAN → BUILD</text>
+    <text x="330" y="149" font-size="13">Produce the candidate commit</text>
+    <rect x="180" y="186" width="300" height="58" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="330" y="212" font-size="17" font-weight="650">TEST</text>
+    <text x="330" y="232" font-size="13">Run frozen mandatory checks</text>
+    <rect x="25" y="270" width="260" height="58" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="155" y="296" font-size="17" font-weight="650">REVIEW</text>
+    <text x="155" y="316" font-size="13">Assess the same SHA against spec.md</text>
+    <rect x="365" y="270" width="270" height="58" rx="10" fill="#fff" stroke="#7c9aa4"/>
+    <text x="500" y="296" font-size="17" font-weight="650">PACKAGE</text>
+    <text x="500" y="316" font-size="13">Report outcome and index evidence</text>
+    <text x="117" y="254" font-size="13">Pass</text>
+    <text x="526" y="253" font-size="13">Mandatory failure</text>
+    <text x="330" y="382" font-size="13">VERIFIED when every required criterion passes</text>
+  </g>
+</svg>

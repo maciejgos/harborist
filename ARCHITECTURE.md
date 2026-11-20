@@ -1,6 +1,8 @@
 # Harborist Architecture
 
-This document describes the **Harborist execution core** and the completed Phase 11 local rework/recovery workflow. Broader Product infrastructure remains out of scope.
+This document records the engineering design of the local Harborist system,
+including execution, the browser workspace, GitHub delivery, and container
+deployment. See the [system design guide](docs/architecture.md) for an overview.
 
 Phases 2–8 are complete: frozen intake, methodology/routing, independent
 native-agent execution, Git candidates, trusted TEST, revision-bound REVIEW/VERIFIED,
@@ -220,7 +222,8 @@ runtime through an authenticated host-loopback helper. The helper allowlists
 `sbx` commands and checks deployment ownership against the live sandbox UUID.
 Bundle and artifact bytes travel through guest stdio. The helper accepts no host
 paths, and the containers receive no Docker Engine socket. The host operator
-owns Docker Sandboxes authentication and policy. See the
+owns Docker Sandboxes authentication and policy. The current deployment script requires
+Apple silicon macOS with hardware virtualization. See the
 [deployment specification](spec/083-container-deployment/spec.md).
 
 ### Execution budget

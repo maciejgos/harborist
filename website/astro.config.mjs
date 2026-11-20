@@ -22,7 +22,7 @@ export default defineConfig({
         },
         {
           label: 'Reference',
-          items: ['docs/methodology', 'docs/storage-and-recovery', 'docs/cli'],
+          items: ['docs/architecture', 'docs/methodology', 'docs/storage-and-recovery', 'docs/cli'],
         },
       ],
     }),
