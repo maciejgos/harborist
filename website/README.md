@@ -16,7 +16,7 @@ Markdown guides from `docs/` and `COMMANDS.md`.
 | Setting | Value |
 | --- | --- |
 | Git repository | `maciejgos/harborist` |
-| Production branch | `codex/website-and-docs` until the website is merged into `main` |
+| Production branch | `main` |
 | Root directory | Repository root |
 | Build command | `npm ci --prefix website && npm run build --prefix website` |
 | Build output directory | `website/dist` |
@@ -32,8 +32,8 @@ After connecting a custom domain in the Pages dashboard, update
 `PAGES_ORIGIN` to its HTTPS origin and redeploy. Leave `PAGES_BASE` unset
 to serve the site at the root URL.
 
-## GitHub Pages
+## Website build checks
 
-For GitHub Pages hosting, set the repository's Pages source to **GitHub
-Actions**. Pull requests build the site for review. Relevant pushes to
-`main` rebuild and deploy it.
+GitHub Actions checks that the site builds on matching pull requests, matching
+pushes to `main`, and manual runs. Cloudflare Pages handles deployment from
+the Git repository.
