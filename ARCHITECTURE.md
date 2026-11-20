@@ -376,10 +376,11 @@ requests through ControlClient to the local service. The critical execution
 path remains synchronous and the service continues to process one Run at a
 time. The filesystem remains the source of durable state.
 
-Use [Linear](https://linear.app/) as the reference for navigation, compact
-information hierarchy, and keyboard interaction. Shared layout, design tokens,
-and component conventions cover every screen and its alternate states.
-See the [workspace spec](spec/072-web-workspace/spec.md).
+The light workspace shell starts at Overview and shares navigation, design
+tokens, and component conventions across screens. Overview reads the existing
+Run, Workspace, and service health endpoints. The packaged brand mark comes
+from the landing page. See the [workspace spec](spec/072-web-workspace/spec.md)
+for the browser workspace contract.
 
 Run and Attempt detail use canonical read models for live and historical data.
 Delivery status, observed stage progress, validated outcome, and verification

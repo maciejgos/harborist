@@ -158,7 +158,14 @@ def test_workspace_deep_link_serves_packaged_react_assets(
     from harborist.control.client import ControlClient
 
     app = WebApplication(ControlClient(tmp_path))
-    for route in (f"/runs/{frozen_contract.run_id}", "/tickets"):
+    for route in (
+        "/",
+        "/runs",
+        f"/runs/{frozen_contract.run_id}",
+        "/tickets",
+        "/evidence",
+        "/settings",
+    ):
         status, _, html = app.respond("GET", route)
         assert status == 200
         assert b'id="root"' in html
@@ -166,6 +173,9 @@ def test_workspace_deep_link_serves_packaged_react_assets(
     for route in ("/app.js", "/style.css"):
         status, _, content = app.respond("GET", route)
         assert status == 200 and content
+    status, mime, content = app.respond("GET", "/harborist-mark.png")
+    assert (status, mime) == (200, "image/png")
+    assert content.startswith(b"\x89PNG\r\n\x1a\n")
     assert app.respond("GET", "/runs/invalid")[0] == 404
 
 

@@ -42,9 +42,16 @@ With the service running, open the workspace in a separate terminal:
 harborist web
 ```
 
-Visit [http://127.0.0.1:8765](http://127.0.0.1:8765). Use **New Run** to submit a
-request, or open a Run to inspect its timeline, evidence, and earlier Attempts.
-Close the browser or stop the web command when you are done viewing.
+Visit [http://127.0.0.1:8765](http://127.0.0.1:8765) to open **Overview**. It shows
+active execution, Runs that need attention, recent verification, and the local
+service status. The seven-day count uses the latest update time available in Run
+history. Open **Integrations** to check Codex and GitHub CLI access.
+
+Use **New Run** to submit a request. Select **Runs** for full history or
+**Evidence** for Runs with packaged reports and evidence. Open a Run to inspect
+its timeline, evidence, and earlier Attempts. Use the search button or press
+**Command+K** or **Ctrl+K** to find a page or Run. Close the browser or stop the
+web command when you are done viewing.
 
 Use `harborist web --port 8766` if the default port is occupied. To choose a
 different service, use the same `--control-dir PATH` for the service and its

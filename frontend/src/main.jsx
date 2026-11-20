@@ -1,32 +1,21 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Anchor, ChevronRight, Circle, FileText, FolderGit2, GitBranch, Inbox, Play, Plug, RefreshCw, Search, X } from "lucide-react";
+import { ChevronRight, Circle, FileText, Folder, GitBranch, Inbox, Plug, RefreshCw, Search, X } from "lucide-react";
 import { useResource } from "./api";
 import { GitHubDelivery } from "./github-delivery";
 import { Integrations } from "./integrations";
+import { Evidence, Overview } from "./overview";
+import { group, label, lastStage, matchesRun, repo, runId, stages, status } from "./run-view";
+import { pageName, Shell } from "./shell";
 import { TicketInbox } from "./tickets";
 import { Workspaces } from "./workspaces";
 import { NewRun, RunActions } from "./run-actions";
 import { Badge, Button, Dialog, Input } from "./ui";
 import "./style.css";
+import "./dashboard.css";
 
-const stages = ["intake", "design", "plan", "build", "test", "review", "package"];
 const filters = ["All", "Active", "Queued", "Needs attention"];
 const groups = [...filters.slice(1), "History"];
-const label = value => value?.toLowerCase().replaceAll("_", " ") || "Unavailable";
-const runId = record => record.submission.run_id;
-const repo = record => (record.repository || record.submission.repository)?.split("/").filter(Boolean).at(-1) || "Unavailable";
-const lastStage = record => record.progress?.stage || stages.findLast(stage => record.stages?.[stage]);
-const status = record => record.retirement ? (record.retirement.replacement ? "SUPERSEDED" : "CANCELLED") : record.run?.outcome || record.run?.failure_reason || record.state || record.run?.lifecycle;
-
-function group(record) {
-  if (record.retirement) return "History";
-  if (record.state === "RUNNING") return "Active";
-  if (record.state === "QUEUED") return "Queued";
-  return ["FAILED", "INTERRUPTED"].includes(record.state) ||
-    record.run?.failure_reason || (record.run?.outcome && record.run.outcome !== "VERIFIED")
-    ? "Needs attention" : "History";
-}
 
 function selection() {
   return location.pathname.match(/^\/runs\/([^/]+)$/)?.[1] || location.hash.slice(1);
@@ -53,7 +42,7 @@ function RunDetail({ record: latest, id, close, onDone, onError, disabled, desti
   return <aside className="detail" aria-label="Run detail">
     <header className="detail-header">
       <span className="muted">Run detail</span>
-      <Button aria-label="Close Run detail" variant="ghost" asChild><a href="/" onClick={close}><X size={17} /></a></Button>
+      <Button aria-label="Close Run detail" variant="ghost" asChild><a href="/runs" onClick={close}><X size={17} /></a></Button>
     </header>
     {latest && <label className="attempt-picker">Attempt
       <select className="input" value={attempt ?? ""} onChange={event => setAttempt(event.target.value === "" ? null : Number(event.target.value))}>
@@ -130,43 +119,43 @@ function Status({ record }) {
   </Badge>;
 }
 
+function Settings() {
+  return <main>
+    <div className="page-heading"><h1>Settings</h1></div>
+    <div className="settings-list">
+      <a className="settings-row" href="/workspaces"><Folder size={18} /><div><h2>Workspace defaults</h2><p className="muted">Manage local repositories and defaults for new Runs.</p></div><ChevronRight size={16} /></a>
+      <a className="settings-row" href="/integrations"><Plug size={18} /><div><h2>Integrations</h2><p className="muted">Manage agent and execution settings.</p></div><ChevronRight size={16} /></a>
+    </div>
+  </main>;
+}
+
 function Workspace() {
-  const ticketPage = location.pathname === "/tickets";
-  const integrationsPage = location.pathname === "/integrations";
-  const workspacePage = location.pathname === "/workspaces";
-  const page = ticketPage ? "Inbox" : integrationsPage ? "Integrations" : workspacePage ? "Workspaces" : "Runs";
+  const [selected, setSelected] = useState(selection);
+  const page = pageName(location.pathname, selected);
   const runsPage = page === "Runs";
-  useEffect(() => {
-    document.title = `Harborist · ${page}`;
-  }, [page]);
+  useEffect(() => { document.title = `Harborist · ${page}`; }, [page]);
   const workspaces = useResource("/workspaces");
   const history = useResource("/runs", true);
-  const [selected, setSelected] = useState(selection);
+  const health = useResource("/health", true);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("All");
-  const search = useRef(null);
+  const [filter, setFilter] = useState(() => {
+    const fromUrl = new URLSearchParams(location.search).get("filter");
+    return filters.includes(fromUrl) ? fromUrl : "All";
+  });
   useEffect(() => {
-    function onKey(event) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !document.querySelector('[role="dialog"]')) {
-        event.preventDefault();
-        search.current?.focus();
-      }
-    }
     const onRoute = () => setSelected(selection());
     window.addEventListener("popstate", onRoute);
     window.addEventListener("hashchange", onRoute);
-    window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("popstate", onRoute);
       window.removeEventListener("hashchange", onRoute);
-      window.removeEventListener("keydown", onKey);
     };
   }, []);
 
   function navigate(event, id) {
     if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     event.preventDefault();
-    if (id !== selected) window.history.pushState(null, "", id ? `/runs/${id}` : "/");
+    if (id !== selected) window.history.pushState(null, "", id ? `/runs/${id}` : "/runs");
     setSelected(id);
   }
 
@@ -181,8 +170,7 @@ function Workspace() {
   }
 
   const records = history.data?.runs.toReversed() || [];
-  const matched = records.filter(record => [record.title, runId(record), repo(record), status(record), record.state, lastStage(record), record.candidate_sha]
-    .join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const matched = runsPage ? records.filter(record => matchesRun(record, query)) : [];
   const visible = filter === "All" ? matched : matched.filter(record => group(record) === filter);
   const details = selected && records.find(record => runId(record) === selected);
 
@@ -192,17 +180,21 @@ function Workspace() {
     .map(item => item.github_repository))];
   const destination = destinations.length === 1 ? destinations[0] : undefined;
 
-  return <div className="workspace" data-detail={runsPage && Boolean(selected)}>
-    <aside className="sidebar" aria-label="Workspace">
-      <a className="brand" href="/"><span><Anchor size={16} /></span>Harborist</a>
-      <nav><a className="nav-link" href="/tickets" aria-current={ticketPage ? "page" : undefined}><Inbox size={16} /> Inbox</a><a className="nav-link" href="/" aria-current={runsPage ? "page" : undefined}><Play size={16} /> Runs</a><a className="nav-link" href="/workspaces" aria-current={workspacePage ? "page" : undefined}><FolderGit2 size={16} /> Workspaces</a><a className="nav-link" href="/integrations" aria-current={integrationsPage ? "page" : undefined}><Plug size={16} /> Integrations</a></nav>
-      <div className="service-status" role="status"><span className={cnService(history)} /><span>{history.error ? "Disconnected" : history.data ? "Local service" : "Connecting…"}</span></div>
-    </aside>
-    {ticketPage ? <TicketInbox resource={workspaces} /> : integrationsPage ? <Integrations resource={workspaces} /> : workspacePage ? <Workspaces resource={workspaces} /> : <main>
-      <header className="topbar"><Activity size={15} /><span>Runs</span><Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button></header>
+  const detail = runsPage && selected ? <RunDetail destination={destination} key={selected} id={selected}
+    record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} /> : null;
+
+  return <Shell page={page} health={health} workspaces={workspaces.data?.workspaces || []} records={records} detail={detail}>
+    {page === "Overview" && <Overview history={history} health={health} workspaces={workspaces} records={records} onDone={onDone} />}
+    {page === "Inbox" && <TicketInbox resource={workspaces} />}
+    {page === "Integrations" && <Integrations resource={workspaces} />}
+    {page === "Workspaces" && <Workspaces resource={workspaces} />}
+    {page === "Evidence" && <Evidence history={history} records={records} />}
+    {page === "Settings" && <Settings />}
+    {runsPage && <main>
       <div className="page-heading"><h1>Runs</h1><span className="muted">{records.length} total</span><NewRun workspaces={workspaces.data?.workspaces || []} onDone={onDone} disabled={!history.data || Boolean(history.error)} /></div>
       <div className="toolbar">
-        <div className="search"><Search size={15} /><Input type="search" ref={search} aria-label="Search Runs" placeholder="Search runs…" value={query} onChange={event => setQuery(event.target.value)} /><kbd>⌘ K</kbd></div>
+        <div className="search"><Search size={15} /><Input type="search" aria-label="Search Runs" placeholder="Search runs…" value={query} onChange={event => setQuery(event.target.value)} /></div>
+        <Button variant="ghost" aria-label="Refresh Runs" onClick={history.refresh}><RefreshCw size={15} /></Button>
         <div className="filters" aria-label="Filter Runs">{filters.map(value =>
           <Button key={value} variant={filter === value ? "outline" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value}</Button>)}</div>
       </div>
@@ -224,12 +216,7 @@ function Workspace() {
         })}
       </div>
     </main>}
-    {runsPage && selected && <RunDetail destination={destination} key={selected} id={selected} record={details} close={event => navigate(event, "")} onDone={onDone} onError={history.refresh} disabled={Boolean(history.error)} />}
-  </div>;
-}
-
-function cnService(resource) {
-  return resource.error ? "dot disconnected" : resource.data ? "dot connected" : "dot";
+  </Shell>;
 }
 
 createRoot(document.getElementById("root")).render(<Workspace />);

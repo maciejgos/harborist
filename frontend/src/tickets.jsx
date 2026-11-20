@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Inbox } from "lucide-react";
 import { ApiResponseError } from "./api";
 import { Field, write } from "./run-actions";
 import { Badge, Button } from "./ui";
@@ -126,7 +125,6 @@ export function TicketInbox({ resource }) {
   }
 
   return <main>
-    <header className="topbar"><Inbox size={15} /><span>Inbox</span></header>
     <div className="page-heading"><h1>Inbox</h1></div>
     <div className="ticket-inbox">
       <form className="ticket-source" onSubmit={load}>
