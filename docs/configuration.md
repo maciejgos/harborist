@@ -1,74 +1,110 @@
-# Configuration
+# Configure Harborist
 
-[Documentation index](README.md) · [Architecture](../ARCHITECTURE.md)
+Configure the checks Harborist must run for a candidate, then select the agent
+profile and execution policy for your checkout.
 
-## Frozen verification configuration
+| File | Purpose |
+| --- | --- |
+| `harborist.yaml` | Repository-owned mandatory checks, committed at the target Git revision. |
+| `harborist.settings.yaml` | Operator-selected playbook, skills, agent profile, and sandbox policy. |
 
-Target repositories commit a narrow `harborist.yaml`:
+## Mandatory checks
+
+Create `harborist.yaml` at the target repository root. For example, a Python
+project managed with uv can require its test suite:
 
 ```yaml
 version: 1
 checks:
   - id: tests
-    command: pytest
+    command: uv run pytest
 ```
 
-Every listed check is mandatory. At least one check is required; IDs must be
-unique and commands nonblank. Unknown fields, unsupported versions, duplicate YAML
-keys, and unsafe object tags are rejected. Command strings retain their exact text.
-
-```python
-from harborist.verification import load_verification_config
-
-base_sha = repository.resolve_base()
-verification = load_verification_config(repository=repository, base_sha=base_sha)
-```
-
-The loader reads the root `harborist.yaml` from that exact commit, ignoring index
-and working-tree edits. Its immutable snapshot retains validated settings, base
-SHA, and a SHA-256 of the original file bytes. Git replacement refs cannot substitute
-other content for committed-file reads. YAML source text is not retained.
-
-`VerificationConfigError` reports read/parsing/validation failures with causes.
-This loader does not execute checks or change Run outcomes. `execute_test` performs trusted TEST. See the [verification configuration specification](../spec/010-verification-config/spec.md).
+Use check commands that are available in your chosen execution environment.
+Each check requires a unique ID and a nonblank command. Configure at least one
+check. Commit the file before intake. Harborist reads it from the exact base
+commit selected by `--ref`, which defaults to `HEAD`. Uncommitted edits take
+effect after you commit them and capture against that revision.
 
 ## Operator execution settings
 
-The CLI selects exactly `<resolved-target-checkout-root>/harborist.settings.yaml`
-when `--settings` is omitted. `--repo` selects the target (default: `.`); Git
-resolves its root even from a subdirectory. Caller configuration cannot override
-another target repository. Explicit `--settings PATH` takes precedence, supports
-files outside the target, and resolves relative paths from the invocation
-directory. Playbook and skill paths resolve beside the selected settings file.
-There is no recursive search, global/home fallback, merging, or file creation.
+Create `harborist.settings.yaml` at the checkout root or pass an explicit
+`--settings PATH` when you capture. This example assumes you have copied the
+[example playbook and skill](https://github.com/maciejgos/harborist/tree/main/examples/intake) beside your settings file
+and have access to the selected Codex model.
 
-Missing, unreadable, or invalid selected settings fail before Run creation; the
-diagnostic names the path and instructs you to supply `--settings PATH`. An invalid
-explicit override never falls back. Existing Runs use their frozen settings and
-methodology and never reload or rediscover these files. Execution settings are
-local intake inputs independent of `--ref`; mandatory checks remain in
-`harborist.yaml` at the frozen base SHA and cannot be overridden by settings.
-GitHub examples require an installed, authenticated `gh` with issue access.
+```yaml
+version: 1
+playbook:
+  name: bounded-repository-change
+  version: '1'
+  path: playbook.md
+skills:
+  - name: engineering
+    version: '2'
+    path: engineering.md
+agent_profile:
+  name: local-codex
+  version: '1'
+  provider: codex
+  model: gpt-6.1-sol
+  arguments: []
+sandbox_policy: trusted-local
+```
 
-`load_execution_settings(path=Path("operator.yaml"))` captures a version 1 YAML
-file with `playbook` and `skills` source records (`name`, `version`, `path`), a
-complete `agent_profile` (`name`, `version`, `provider`, `model`, `arguments`) and
-`sandbox_policy: trusted-local` or the Docker policy mapping below. Asset paths resolve beside the settings file.
-Actual UTF-8 content and SHA-256 digests are frozen, so future file edits have no
-live link to a snapshot. The agent model is an explicit operator choice.
+The `trusted-local` policy runs agents and commands with your local account's
+permissions. Use it for repositories and requests you trust. For VM isolation,
+configure [Docker Sandboxes](#docker-sandboxes-execution).
 
-The local adapter accepts `provider: codex` and a model identifier. Use
-`arguments: []` for the Codex default reasoning effort, or use the pair
-`['-c', 'model_reasoning_effort="high"']`. Supported effort values are
-`minimal`, `low`, `medium`, `high`, and `xhigh`. See
-[local Codex setup](usage.md#set-up-local-codex) for diagnostics and editing.
+| Setting | How it resolves |
+| --- | --- |
+| `--repo PATH` | Selects the Git checkout. The default is the current directory. Harborist finds the checkout root from a subdirectory. |
+| `--settings PATH` | Selects an explicit settings file relative to the current directory or by absolute path. Without this option, Harborist looks at the target checkout root. |
+| Playbook and skill paths | Resolve relative to the selected settings file. Their contents and digests become part of the saved Run. |
+| `agent_profile.arguments` | Use `[]` for Codex's default reasoning effort or `['-c', 'model_reasoning_effort="high"']` to choose an effort. Supported values are `minimal`, `low`, `medium`, `high`, and `xhigh`. |
 
-Budget is excluded from YAML. Harborist defaults to 1800 total seconds with 300
-reserved for verification; callers may pass an explicit `ExecutionBudget` to the
-loader. The target repository cannot set it. Unknown fields, duplicate YAML keys,
-unsupported versions, invalid records and unreadable assets fail with
-`SettingsError`. See [settings specification](../spec/013-execution-settings/spec.md).
+Harborist reports missing or invalid settings before creating the Run. Correct
+the selected file or pass a valid `--settings PATH`. To use updated settings
+or a different model, capture a new Run. See [Set up local Codex](usage.md#set-up-local-codex)
+to check the connection and edit the profile.
 
+## Local container deployment
+
+On Apple silicon macOS, start Docker Desktop and install uv and standalone
+Docker Sandboxes 0.54.x. Sign in to Docker Sandboxes with `sbx login`,
+initialize its network policy, and configure Codex with
+`sbx secret set openai --oauth`. Run these as your macOS user.
+
+From the Harborist checkout, run `./deploy/harborist start`, then open
+`http://127.0.0.1:8765`. The installer prepares the host helper and starts
+the worker and browser UI. The worker can reach the helper via Docker
+Desktop. Only the worker receives its deployment token. Docker and Codex
+credentials stay in the host's Docker Sandboxes credential store.
+
+Keep target repositories in the worker's persistent data directory. For
+example, clone a public repository there with:
+
+```sh
+docker compose --project-name harborist exec service git clone https://example.org/owner/project.git /home/harborist/.harborist/project
+```
+
+Register the container path in the Workspaces screen and select its settings
+file. Set its execution policy to Docker Sandboxes with the default pinned
+kit before capturing a Run. Container deployment and Workspace execution policy
+are configured independently. Use the same paths with the CLI, for example:
+
+```sh
+./deploy/harborist exec run file:/home/harborist/.harborist/project/request.md --repo /home/harborist/.harborist/project
+```
+
+Run `./deploy/harborist stop` to stop the stack and host helper. After updating
+the checkout, run `./deploy/harborist start` to rebuild and restart. The
+`./deploy/harborist remove` command removes the running deployment and leaves
+the volumes and helper identity in place so you can reinstall without losing
+Run data. Set `HARBORIST_WEB_PORT` to select a different loopback port. For an
+independent deployment, set a distinct `HARBORIST_DEPLOY_PROJECT`,
+`HARBORIST_DEPLOY_STATE`, `HARBORIST_WEB_PORT`, and `HARBORIST_SANDBOX_PORT` for
+its lifecycle commands.
 
 ## Local container deployment
 
@@ -145,8 +181,8 @@ Workspace rules supplement Docker's existing global and kit policy. Deny rules
 take precedence; an additional allow cannot override an existing deny. The app
 never edits Docker's global rules. If those rules change after intake, capture
 a new Run; queued Runs and continuations cannot silently acquire new authority.
-This local increment supports hostnames with optional wildcard subdomain
-prefixes and ports, not URLs, CIDRs, HTTP-path rules, or global allow-all rules.
+Use hostnames with optional wildcard subdomain prefixes and ports. URLs, CIDRs,
+HTTP-path rules, and global allow-all rules are rejected.
 
 Every agent stage, TEST, and REVIEW receives a fresh mountless VM. Only committed
 repository state, explicit inputs, and bounded outputs cross the boundary.
@@ -160,16 +196,19 @@ Cancellation and deadlines stop the guest as well as the host client. A VM whose
 outputs could not be exported is retained stopped for explicit inspection; its
 receipt names it. Recover into a new Attempt rather than reusing that VM. When
 finished inspecting retained data, remove only that named VM with `sbx rm --force
-<name>`. Cleanup failures are explicit execution failures. Remote workers,
-leases, team credential separation, and Product retention remain future work.
-
-See the [local integration contract](../spec/082-local-docker-sandboxes/spec.md).
+<name>`. Cleanup failures are explicit execution failures.
 
 ## Budget accounting
 
-A Run has one frozen budget. `BudgetClock` uses monotonic elapsed time from
-execution admission; DESIGN/PLAN/BUILD cannot consume the verification reserve.
-TEST/REVIEW share the remaining total. Stage timing survives ordinary failures;
-PACKAGE records its timing separately and does not consume execution allowance.
-Remaining subsecond allowance cannot admit a native-agent call. UTC wall-clock
-timestamps describe events; elapsed monotonic time controls deadlines.
+A Run's default execution budget is 1,800 seconds, including 300 seconds
+reserved for verification. Set different values when capturing a request:
+
+```bash
+harborist intake file:./request.md --timeout 2400 --verification-reserve 600
+```
+
+The total must exceed the reserve. Queue time is outside the budget. DESIGN,
+PLAN, and BUILD can use the time before the reserve. TEST and REVIEW share
+the remaining time, including any unused allowance from earlier stages.
+PACKAGE records its time separately. See [Rework and recovery](usage.md#rework-and-recovery)
+for cumulative spending and time grants.

@@ -1,60 +1,55 @@
-# Methodology
+# Workflow and verification
 
-[Documentation index](README.md) · [Architecture](../ARCHITECTURE.md)
+A **Run** captures one request and its execution inputs. An **Attempt** is one
+execution of that Run. Rework and recovery create new Attempts and keep
+earlier evidence available. A **candidate** is a Git commit produced by BUILD.
 
-## Canonical playbook definition
+## The seven stages
 
-`harborist.domain.playbook.canonical_playbook(version="1")` returns an immutable
-seven-stage definition with fixed dependencies and executor authority. TEST is
-trusted Harborist execution; agent stages require fresh invocations; REVIEW is
-read-only and PACKAGE is outside budget. Modified/omitted stages or weakened
-metadata are rejected. This defines topology without executing it. See
-[canonical playbook specification](../spec/019-canonical-playbook/spec.md).
+| Stage | What happens |
+| --- | --- |
+| INTAKE | Capture the request, Git base revision, mandatory checks, execution budget, and agent guidance. |
+| DESIGN | Define the acceptance criteria in `spec.md`. |
+| PLAN | Turn the acceptance criteria into an implementation plan. |
+| BUILD | Implement the change and produce a candidate commit. BUILD may update the plan and must preserve the acceptance contract. |
+| TEST | Run every mandatory check from the frozen repository configuration against the candidate. A failed check blocks REVIEW. |
+| REVIEW | Independently evaluate the exact candidate commit against the acceptance criteria and verification evidence. |
+| PACKAGE | Preserve the outcome, artifacts, and evidence index, including available evidence when execution ends early and packaging can run. |
 
-## Frozen methodology documents
+DESIGN, PLAN, BUILD, and REVIEW each start a fresh native-agent invocation.
+Harborist runs TEST and PACKAGE itself. A stage advances through validated
+structured results. Agent commentary is diagnostic context.
 
-`harborist.playbooks.parse_playbook` and `parse_skill` compile captured assets with
-leading YAML front matter. Playbooks declare `id`, `version` and canonical `stages`;
-skills declare `id`, `version`, `description` and their agent `stages`. Front-matter
-identity must match the frozen asset. Skill metadata cannot declare dependencies,
-executors or hooks. Bodies remain exact opaque guidance; no file or tool is read.
+## What VERIFIED means
 
-Document identities include kind, name, version and exact source SHA-256. Changed
-bytes remain distinguishable even when a version label is reused. Legacy plain
-Markdown captures can still be inspected, but compilation requires explicit front
-matter. See [methodology document specification](../spec/020-methodology-documents/spec.md).
+`VERIFIED` ties the recorded acceptance review and mandatory checks to a
+single candidate SHA. If the code changes, the new commit needs its own
+verification. A later Attempt runs fresh checks and review even when it
+inherits the frozen specification.
 
-## Stage guidance composition
+Read the [Run evidence](usage.md#inspect-results-and-evidence) before choosing
+whether to [apply the candidate](usage.md#apply-a-verified-candidate) or [publish
+it to GitHub](usage.md#publish-a-verified-candidate-to-github).
 
-`harborist.skills.compile_methodology(execution)` parses all frozen methodology
-inputs. `compose_guidance(compiled, stage=ArtifactStage.BUILD)` selects skills for
-the requested agent stage in configured order. It returns immutable sections with
-exact bodies, descriptions and content-bound identities. A stage may have no
-matching skills. INTAKE/TEST/PACKAGE cannot receive agent skill composition.
+If BUILD reports its development checks, Harborist saves them as
+`build/build-process.json` for REVIEW. These are agent-reported observations.
+The trusted mandatory check results are in the TEST artifacts.
 
-Guidance is kept separate from the playbook's control metadata. Prose never
-changes dependencies or executor authority. Phase 4 implements provider prompt
-formatting and invocation. See [stage guidance specification](../spec/021-stage-guidance/spec.md).
+## Playbooks and skills
 
-## Playbook routing
+The playbook defines stage order and executor responsibilities. Skills provide
+guidance to selected agent stages in configuration order. The bundled
+engineering skill applies to DESIGN, PLAN, BUILD, and REVIEW.
 
-`PlaybookExecution(playbook=definition, attempt=attempt)` starts with INTAKE as its
-next stage. `accept(StageReceipt(...))` returns a new immutable execution only when
-the receipt matches the required stage and Candidate/Attempt identity. Successful
-routing cannot skip TEST; a failed TEST routes to PACKAGE and blocks REVIEW.
-Failures, cancellation and early exits also retain PACKAGE outside budget. PACKAGE
-ends routing even if packaging fails. Validated JSON reloads enforce the same rules.
+Intake captures the exact bytes of each methodology document with its identity
+and SHA-256 digest. A file edit affects future Runs. Use the saved capture to
+inspect the instructions a particular stage received:
 
-Receipts must come from trusted orchestration after actual executor validation.
-They are declarations, not proof that checks ran or review passed; this engine
-performs no I/O and does not grant VERIFIED. See the
-[routing specification](../spec/022-playbook-routing/spec.md).
+```bash
+harborist methodology RUN_ID --stage build
+```
 
-## Bundled methodology
-
-Harborist includes canonical playbook v1 and engineering skill v2, scoped to all
-four agent stages. The standalone files under `examples/intake`
-match the package resources. `harborist.skills.defaults.load_default_methodology()`
-returns frozen assets independently of the caller's working directory; an explicit
-agent profile is still required when adopting them into an execution snapshot.
-No existing Run is migrated. See [bundled methodology specification](../spec/023-bundled-methodology/spec.md).
+The supported stage selectors are `design`, `plan`, `build`, and `review`.
+See [execution settings](configuration.md#operator-execution-settings) to select
+playbook and skill files, or the [developer reference](developer-reference.md)
+for the parsing and execution interfaces.

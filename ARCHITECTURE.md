@@ -282,7 +282,7 @@ See [application usage](docs/usage.md#apply-a-verified-candidate) and
 The owner authorized background execution on 2026-10-31. A filesystem queue
 and one local service wrap the synchronous executor without changing verification
 invariants. Interrupted claims are never retried. See the
-[service contract](docs/background-control-plane.md) and specifications 050–057.
+[service operation guide](docs/background-control-plane.md) and specifications 050–057.
 Phase 9 is complete by owner decision on 2026-11-04, accepting the retained
 PoC evidence and waiving the planned matched direct-Codex comparison as an exit
 requirement. See the Phase 9 status in the PRD.
@@ -337,7 +337,7 @@ The queue retains earlier delivery snapshots under `deliveries/<run>/` and uses 
 continuation request UUID plus expected predecessor for idempotency. It rechecks
 admission at execution, never resumes interrupted claims and still runs one Run
 at a time. The Phase 11 monitor attributes observations to the current Attempt. See [continuation usage](docs/usage.md#rework-and-recovery),
-[storage rules](docs/storage-and-recovery.md#phase-11-attempt-persistence) and the
+[storage rules](docs/storage-and-recovery.md#attempt-history) and the
 [acceptance audit](spec/065-phase11-acceptance/report.md).
 
 

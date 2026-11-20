@@ -1,222 +1,97 @@
-# Phase 10 background control plane
+# Operate the local service
 
-## Decision and scope
+The local service queues Runs and executes one Run at a time. It runs under
+your OS account and stays active when you close the submitting terminal or
+browser workspace.
 
-**Phase 10 status: Completed — 2026-11-04.** See the
-[acceptance and closure record](../spec/057-phase10-acceptance/report.md).
+The examples use an installed `harborist` command. From a development checkout,
+prefix it with `uv run`. For the container deployment, manage the stack with
+`./deploy/harborist start` and `./deploy/harborist stop`. Run commands such as
+`./deploy/harborist exec service status` inside the worker via the deployment
+script. See [Run Harborist with Docker](quickstart.md).
 
-Phase 10 is authorized by the owner on 2026-10-31. This authorizes a local
-background service, queue, CLI client and web read model. On 2026-11-04, the
-owner marked Phase 9 complete, accepting the retained PoC evidence and approving
-the transition to MVP. The planned matched direct-Codex comparison was waived
-as an exit requirement; it was not performed. The 2026-10-30 validation audit
-remains the historical evidence record.
-
-The execution core remains synchronous. One service executes one Run at a time
-through execute_run, with the existing NativeAgent, Git, TEST and RunStore
-boundaries. No database, distributed worker, automatic rework or publication is
-introduced. The explicit foreground mode remains available for compatibility.
-
-## Contract
-
-A control directory owns an advisory process lock, an owner-only Unix HTTP
-socket, an atomic filesystem queue and a stop signal in service memory. The
-socket is local-only. A separate browser adapter serves the workspace on
-127.0.0.1. Remote authentication and
-team access remain outside this slice.
-
-POST /runs accepts versioned execution locators for an already captured Run.
-Intake freezes inputs before submission. Run UUID is
-the initial-submission idempotency key within this control directory. Repeating an identical
-submission returns the existing record; conflicting locators fail. Requests
-must name resolved absolute paths. Initial submissions require CREATED Runs. Phase 11 submissions can carry an
-explicit continuation request UUID and expected predecessor identity; admission
-is validated before queueing and checked again by the serial worker. Earlier
-deliveries are archived separately; replay never creates another Attempt.
-Queue order is submission time then UUID. Queue wait does not consume the frozen
-execution budget. Work is claimed durably before executor admission.
-
-Submission states are QUEUED, RUNNING, FINISHED, FAILED and INTERRUPTED. These
-are service delivery states, not replacements for RunLifecycle or RunOutcome.
-FINISHED means the executor returned packaged evidence, not VERIFIED. FAILED
-means the executor raised; retained Run records remain authoritative.
-INTERRUPTED means service ownership was lost after claim. Restart never retries
-or resumes it, even if the Run still appears CREATED or terminal. Operators
-inspect retained records and explicitly use `harborist recover` where eligible
-(with an additional-time grant after worker loss), or use fresh intake. See
-[rework and recovery](usage.md#rework-and-recovery). A crash after PACKAGE but before queue completion may
-therefore show INTERRUPTED beside a valid terminal Run.
-
-GET /health, GET /runs and GET /runs/{uuid} read persisted records. Run history
-combines UUID captures under ~/.harborist/runs with service submissions. Progress is
-observational and may lag; validated lifecycle and immutable terminal evidence
-are authoritative. Concurrent lifecycle writes may temporarily yield an explicit
-unavailable status rather than fabricated state. Artifact references identify packaged files. An allowlisted GET endpoint serves
-only report.md and evidence.json as bounded plain text for the browser adapter.
-
-POST /stop stops new submissions and claims, drains the current execution and
-leaves queued work intact. A forced kill may leave subprocesses alive; restart
-classifies claims as interrupted and never launches replacements. Advisory locks
-prevent duplicate service owners; FileRunStore admission still prevents duplicate
-Run execution across foreground and service paths. Independent control
-directories are not a distributed scheduling system.
-
-The HTTP protocol is version 1, bounded JSON requests with explicit validation
-errors and no cross-origin permission headers. The Unix socket inherits a private
-control directory and mode 0600. Local filesystem owner is the trust boundary.
-
-## Operation
+## Start and stop the service
 
 ```bash
-uv run harborist service start
-uv run harborist run file:examples/intake/issue.md
-uv run harborist runs
-uv run harborist status <run-id> --wait
-uv run harborist service status
-uv run harborist service stop
+harborist service start
+harborist service status
+harborist service stop
 ```
 
-`start` detaches a new process and waits for readiness. Repeating it while the
-service is healthy is harmless. `serve` runs in the foreground for a supervisor.
-The service inherits the launching user's environment and agent credentials;
-restart after changing credentials or environment. `stop` requests a drain and
-returns immediately; health reports `stopping` until the active Run finishes.
-The socket disappears after shutdown. SIGTERM/SIGINT also request a drain.
-A supervisor should allow the full frozen Run budget plus packaging time.
+| Command | Behavior |
+| --- | --- |
+| `service start` | Starts a detached process and waits for readiness. Repeating it for a healthy service is safe. |
+| `service serve` | Runs the service in the current process for a terminal or process supervisor. |
+| `service status` | Reports the service's health, including whether it is stopping. |
+| `service stop` | Requests a graceful shutdown. The service stops accepting and claiming work, lets the active Run finish, and preserves queued work. |
 
-Use `--control-dir PATH` consistently for service, run, runs and status commands
-to select another service. Unix socket paths have OS length limits; choose a
-short local path if startup reports a path-length error. Runs directories remain
-selected by `--runs-dir`; submissions store absolute execution locators.
+`stop` returns after requesting the drain. Wait until the service has stopped
+before starting it again. SIGINT and SIGTERM also request a drain. Give a
+supervised process time to finish the Run's execution budget and package its
+evidence.
 
-Background `run --json` returns a delivery record. Its zero exit code means
-accepted, not VERIFIED. `status --json` adds validated Run state, Attempt ID,
-observational progress and package file availability. `status --wait` polls and
-returns the terminal delivery record; it also exits zero for a successful read,
-regardless of software outcome. Inspect `run.outcome` and `run.failure_reason`.
-Interrupting the viewer leaves the service running. Listings include saved Runs
-under ~/.harborist/runs and submissions in the selected service.
+The service inherits the environment of the launching process. After installing
+agent tools or changing credentials or environment variables, let active work
+finish and restart the service from the updated environment.
 
-`run --foreground` retains the former synchronous output and terminal exit codes
-(0 VERIFIED, 2 other software outcomes, 1 execution failure, 130 cancellation).
-Scripts relying on synchronous behavior must add `--foreground`. Source intake
-and saved UUID execution options remain available. `inspect`, `methodology` and
-`apply` remain explicit CLI operations.
+## Open the browser workspace
 
-A missing service produces a start command and retains the capture. Submit its
-UUID after starting the service rather than recapturing the request. Delivery
-FAILED or INTERRUPTED records are never requeued by repeating the submission;
-inspect retained records, then use a fresh intake if execution is needed again.
-No previous candidate's verification transfers to that new Run.
-
-## Storage and HTTP
-
-Default control storage is `~/.harborist/control`:
-
-```text
-control/
-  service.lock       # OS advisory ownership, not a PID file
-  service.sock       # HTTP over a mode-0600 Unix socket
-  service.log        # detached process diagnostics
-  queue.lock         # serializes snapshot readers and writers
-  queue/<uuid>.json  # durable delivery status and progress
-```
-
-Snapshots publish by temporary-file replacement, with file and directory fsync.
-This is local filesystem durability, not a transaction with Git, Run journals or
-PACKAGE. A crash can leave an interrupted delivery alongside complete evidence;
-inspect the Run independently. Temporary snapshots left before replacement are
-ignored. Corrupt published queue records fail closed and require inspection.
-
-For direct API access (for example a local web adapter):
+With the service running, open the workspace in a separate terminal:
 
 ```bash
-curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/health
-curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/runs
-curl --unix-socket "$HOME/.harborist/control/service.sock" http://localhost/runs/<run-id>
+harborist web
 ```
 
-Submission JSON has `version: 1`, `run_id`, `repository`, `runs_root` and optional
-`workspace`, with absolute resolved paths. POST `/runs` returns its durable queue
-record. POST `/stop` returns `{"stopping": true}`. Unsupported routes, malformed
-bodies and invalid records return explicit JSON errors. Request bodies are
-limited to 64 KiB. No arbitrary artifact downloads are exposed. The execution service stays on
-its Unix socket, and the browser adapter is loopback-only.
-`package_available` means both terminal files are present; it does not rehash
-artifacts or grant verification. Explicit apply continues to validate evidence.
+Visit [http://127.0.0.1:8765](http://127.0.0.1:8765). Use **New Run** to submit a
+request, or open a Run to inspect its timeline, evidence, and earlier Attempts.
+Close the browser or stop the web command when you are done viewing.
 
-## Phase 10 acceptance
+Use `harborist web --port 8766` if the default port is occupied. To choose a
+different service, use the same `--control-dir PATH` for the service and its
+clients. The browser adapter listens on loopback, and service clients use a
+Unix socket accessible to the local account.
 
-Specifications 050–057 cover the complete slice sequence. Integration tests use
-real processes, Unix sockets, filesystem storage, Git and deterministic checks;
-only native-agent responses are replaced. They verify client exit, VERIFIED
-packaging, duplicates, graceful drain, owner exclusivity and forced-kill restart.
-They do not exercise live paid agent calls, OS boot/login supervision or power
-loss. The service is supported on local Unix systems with flock and Unix sockets.
-
-
-## Browser workspace
-
-Start (or upgrade and restart) the service, then launch the workspace in another
-terminal:
+## Interpret delivery state
 
 ```bash
-uv run harborist service start
-uv run harborist web
+harborist runs
+harborist status RUN_ID --wait
 ```
 
-Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Use **New Run**
-to submit a Markdown file or GitHub issue. The inbox shows delivery state
-and the validated Run outcome. Open a Run to inspect its stage timeline,
-earlier Attempts, check output, and the exact verified commit. The workspace
-updates every two seconds. Closing it leaves the local service running.
+Replace `RUN_ID` with the UUID returned when you submitted the request. The
+delivery state tracks the queue. The Run outcome describes the software and
+verification result.
 
-The Run page offers explicit cancellation, replacement, rework, recovery,
-and GitHub publication when applicable. Browser writes require the local
-origin and pass through the same application rules as the CLI. The installed
-package includes the React assets. Frontend development uses `npm ci` and
-`npm run build` from `frontend/`.
+| Delivery state | Meaning |
+| --- | --- |
+| `QUEUED` | The service accepted the request and has yet to claim it. Queue time does not count against the Run's execution budget. |
+| `RUNNING` | The service claimed the request. Stage progress can lag behind execution. |
+| `FINISHED` | The executor finished and returned packaged evidence. Check the Run outcome to learn whether the candidate was verified. |
+| `FAILED` | The executor raised an error. Inspect the retained Run records for the failure reason. |
+| `INTERRUPTED` | Service ownership was lost after the request was claimed. A Run can still have complete evidence if the service stopped after packaging. |
 
-Use `harborist web --control-dir PATH --port 8766` to select another service or
-port. The control directory must match `service start` and `run`. An unavailable
-service has an explicit retry state; failed refreshes retain prior data with a
-stale-data warning. Selection and search survive polling and reconnects. Reports
-are shown as plain text in a keyboard-accessible dialog, never interpreted as
-HTML. Artifact viewing is limited to 2 MiB per file and rejects symlinks.
+For scripts, `harborist run SOURCE --json` returns a delivery record in
+background mode. Use `harborist status RUN_ID --wait --json` and inspect
+`run.outcome` and `run.failure_reason` after delivery ends. Saved foreground
+Runs can appear in history without a service delivery state.
 
-Existing queue snapshots remain compatible. Historical stage progress is recovered
-from attributed native-stage manifests, trusted TEST captures and PACKAGE
-evidence. Missing or invalid captures remain unknown, with explicit diagnostics
-for invalid history; they never appear successful from the Run outcome alone.
-INTAKE completion reflects a validated frozen capture. Timeline observations
-remain separate from authoritative lifecycle and verification. Restart
-an older running service after upgrading to enable stage history and artifact
-endpoints; let active work finish before a normal upgrade/restart.
+## Troubleshoot startup and execution
 
-The dashboard and `harborist runs` discover all saved Run directories under
-`~/.harborist/runs`, including earlier foreground executions and CREATED captures,
-then merge service submissions without duplicates. No import, queue insertion,
-source checkout or execution-context locator is required. Individual details and
-the report/evidence viewers work for historical Runs too.
+| Symptom | What to do |
+| --- | --- |
+| Submission reports that the service is unavailable | Start the service and submit the printed Run UUID if capture already succeeded. |
+| Service startup reports a Unix socket path error | Choose a shorter local `--control-dir` and use it consistently across the service, CLI, and browser. |
+| The service cannot locate Codex or use its credentials | Check the provider in **Integrations → Codex**. Restart the service from the environment with the expected CLI and credentials. |
+| A Run was interrupted | Check its saved outcome and evidence. The service preserves the claim on restart. If recovery is appropriate, follow [Rework and recovery](usage.md#rework-and-recovery). |
 
-Read responses identify `source: "saved"` or `source: "service"`. A saved Run has
-`state: null` and `submitted_at: null`, because it has no service-delivery record.
-Its lifecycle/outcome still comes from validated FileRunStore records. Recorded
-and updated times use contract/run file modification timestamps for legacy
-captures; these timestamps order the view and never confer execution authority.
-Queue submission/update times remain authoritative for service delivery.
-Historical stage progress uses saved structured evidence when queue observations
-are absent. Failed checks and rejected reviews appear failed; recorded
-clarification/rescoping, cancellation and downstream skips remain distinct.
-Missing captures still show Not recorded. This projection neither reruns checks
-nor grants or modifies VERIFIED. `status --wait` returns immediately for a
-terminal historical Run.
+The default service log is `~/.harborist/control/service.log`. See [Storage
+and recovery](storage-and-recovery.md) for the queue, logs, and Run data paths.
 
-Discovery never executes, repairs or changes a Run. Missing roots are empty;
-unrelated files and symlink directories are ignored. Partial/corrupt UUID
-captures appear unavailable without hiding valid history. An identical Run in
-the queue and saved root appears once, using actual delivery metadata. Conflicting
-UUIDs in different roots fail explicitly rather than mixing candidate evidence.
-Arbitrary custom Runs roots are not globally scanned; service submissions retain
-access to their explicitly recorded roots. Restart an older running service after
-active work finishes to enable expanded history discovery.
+## Upgrade an existing installation
+
+After updating Harborist, restart the service after it drains active work. New
+configuration uses `harborist.yaml` and `harborist.settings.yaml`. Harborist
+still reads the previous filenames when the corresponding current file is
+absent. It continues using an existing `~/.shipyard` data directory if
+`~/.harborist` has yet to be created. Existing candidate refs retain their
+original namespace.
