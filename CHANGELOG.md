@@ -1,6 +1,20 @@
 # Changelog
 
-For work in progress and planned milestones, see the [Shipyard roadmap](ROADMAP.md).
+For work in progress and planned milestones, see the [Harborist roadmap](ROADMAP.md).
+
+## 0.2.0 (Local MVP)
+
+- Queue Runs in a local background service and use the CLI or browser workspace
+  to submit requests, follow progress, and inspect saved Attempts and evidence.
+- Cancel or supersede Runs and explicitly start rework or recovery Attempts.
+- Approve the exact verified commit for GitHub publication and inspect the
+  resulting pull request, checks, and review feedback.
+- Save repository defaults in local Workspaces and diagnose GitHub and Codex
+  readiness before submitting a Run.
+- Use Docker Compose to start the service and browser workspace. With Docker
+  Sandboxes selected, run agent stages and mandatory checks in fresh VMs.
+  The current installer requires Apple silicon macOS and Docker Sandboxes
+  0.54.x. See the [Docker quickstart](docs/quickstart.md).
 
 ## 0.1.0 (Proof of concept)
 

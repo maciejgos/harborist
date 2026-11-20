@@ -10,9 +10,9 @@ Product Milestone 1 is the next development focus. Its goal is reliable, repeat
 use by an engineering team across several repositories. Phase 13 starts with
 team identity, project access, and authorized GitHub App commands.
 
-The package version is still `0.1.0`. The `0.2.0` MVP and `1.0.0` Product
-versions are release targets. See the milestone definitions in sections 89
-through 92 and the implementation sequence in section 97.
+The local MVP release is `0.2.0`. Product Milestone 1 targets `1.0.0`. See the
+milestone definitions in sections 89 through 92 and the implementation sequence
+in section 97.
 [Package metadata](pyproject.toml) ·
 [Product Requirements Document v1.0](docs/Product%20Requirements%20Document%20v1.0.md)
 
@@ -30,7 +30,7 @@ through 92 and the implementation sequence in section 97.
 | Phase 8 · Execution budget and evidence | Run the workflow synchronously and persist terminal reports, indexed evidence, bounded logs, timing, and provider usage when available. PACKAGE runs outside the execution budget. | Done | [Packaging acceptance spec](spec/045-phase8-acceptance-audit/spec.md) |
 | Phase 9 · PoC validation | The owner accepted retained Run evidence on 2026-11-04 and waived the matched direct-Codex comparison. | Done | [PoC validation spec](spec/047-poc-validation/spec.md) |
 
-## Local MVP (accepted, target 0.2.0)
+## Local MVP (0.2.0)
 
 | Feature | Description | Status | Details |
 | --- | --- | --- | --- |
