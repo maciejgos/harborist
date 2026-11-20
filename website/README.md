@@ -25,6 +25,9 @@ Markdown guides from `docs/` and `COMMANDS.md`.
 | Site origin | `PAGES_ORIGIN=https://harborist.pages.dev` |
 
 Cloudflare automatically builds matching pushes to the production branch.
+If pushes stop triggering builds, open the Pages project's **Settings → Build**
+and check the Cloudflare GitHub app's repository access under **Git repository → Manage**.
+The selected repositories must include `maciejgos/harborist`.
 After connecting a custom domain in the Pages dashboard, update
 `PAGES_ORIGIN` to its HTTPS origin and redeploy. Leave `PAGES_BASE` unset
 to serve the site at the root URL.
