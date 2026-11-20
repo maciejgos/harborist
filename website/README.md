@@ -7,26 +7,27 @@ in `COMMANDS.md`. The build prepares the pages listed in
 `scripts/prepare-docs.mjs`, including the overview from `docs/README.md`.
 Restart the dev server after editing Markdown so it picks up the changes.
 
-## Cloudflare Workers hosting
+## Cloudflare Pages hosting
 
-The Worker serves the static output using `website/wrangler.jsonc`. In
-Cloudflare Workers Builds, connect `maciejgos/harborist` and use the website
-branch (`codex/website-and-docs`) while the site lives there. Select `main`
-after the website is merged.
-
-Use the repository root as the build directory so Astro can read
-`docs/` and `COMMANDS.md`. Configure these settings:
+The [Harborist Pages project](https://harborist.pages.dev/) builds the static
+site from GitHub. It reads the landing page from `website/` and renders the
+Markdown guides from `docs/` and `COMMANDS.md`.
 
 | Setting | Value |
 | --- | --- |
-| Worker name | `harborist` |
+| Git repository | `maciejgos/harborist` |
+| Production branch | `codex/website-and-docs` until the website is merged into `main` |
+| Root directory | Repository root |
 | Build command | `npm ci --prefix website && npm run build --prefix website` |
-| Deploy command | `npx --yes wrangler@4.165.0 deploy --config website/wrangler.jsonc` |
+| Build output directory | `website/dist` |
 | Build watch paths | `website/**`, `docs/**`, `COMMANDS.md` |
 | Node version | `NODE_VERSION=24` |
-| Site origin | `PAGES_ORIGIN` set to the Worker URL, then updated to the custom origin after it is connected |
+| Site origin | `PAGES_ORIGIN=https://harborist.pages.dev` |
 
-The site is served at the root URL. Leave `PAGES_BASE` unset for Cloudflare.
+Cloudflare automatically builds matching pushes to the production branch.
+After connecting a custom domain in the Pages dashboard, update
+`PAGES_ORIGIN` to its HTTPS origin and redeploy. Leave `PAGES_BASE` unset
+to serve the site at the root URL.
 
 ## GitHub Pages
 
