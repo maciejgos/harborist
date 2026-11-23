@@ -29,12 +29,12 @@ export function Badge({ className, ...props }) {
   return <span className={cn("badge", className)} {...props} />;
 }
 
-export function Dialog({ trigger, title, description, children, open, onOpenChange }) {
+export function Dialog({ trigger, title, description, children, open, onOpenChange, onOpenAutoFocus }) {
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
     <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="dialog-overlay" />
-      <DialogPrimitive.Content className="dialog" {...(!description && { "aria-describedby": undefined })}>
+      <DialogPrimitive.Content className="dialog" onOpenAutoFocus={onOpenAutoFocus} {...(!description && { "aria-describedby": undefined })}>
         <header><DialogPrimitive.Title>{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close asChild><Button variant="ghost" aria-label="Close"><X size={16} /></Button></DialogPrimitive.Close>
         </header>

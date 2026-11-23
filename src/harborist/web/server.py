@@ -44,8 +44,16 @@ class WebApplication:
             "/": ("index.html", "text/html"),
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
+            "/harborist-mark.png": ("harborist-mark.png", "image/png"),
         }
-        if route in ("/workspaces", "/integrations", "/tickets"):
+        if route in (
+            "/runs",
+            "/workspaces",
+            "/integrations",
+            "/tickets",
+            "/evidence",
+            "/settings",
+        ):
             route = "/"
         if route.startswith("/runs/"):
             run_id = route.removeprefix("/runs/")
@@ -149,7 +157,10 @@ def create_server(
             else:
                 status, mime, body = app.respond(self.command, self.path)
             self.send_response(status)
-            self.send_header("Content-Type", mime + "; charset=utf-8")
+            self.send_header(
+                "Content-Type",
+                mime if mime == "image/png" else mime + "; charset=utf-8",
+            )
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")

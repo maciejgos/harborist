@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Plug } from "lucide-react";
 import { useResource } from "./api";
 import { Field, write } from "./run-actions";
 import { Button } from "./ui";
@@ -115,7 +114,6 @@ export function Integrations({ resource }) {
   }
 
   return <main>
-    <header className="topbar"><Plug size={15} /> Integrations</header>
     <div className="page-heading"><h1>Integrations</h1></div>
     <div className="settings-list">
       <section className="integration-panel">

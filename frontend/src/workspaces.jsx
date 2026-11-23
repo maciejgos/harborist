@@ -31,7 +31,6 @@ function WorkspaceEditor({ workspace, onDone }) {
 export function Workspaces({ resource }) {
   const workspaces = resource.data?.workspaces || [];
   return <main>
-    <header className="topbar"><FolderGit2 size={15} /> Workspaces</header>
     <div className="page-heading"><h1>Workspaces</h1>{resource.data && <WorkspaceEditor onDone={resource.refresh} />}</div>
     {resource.error && <p className="notice settings-notice" role="alert">{resource.error}</p>}
     {!resource.data && !resource.error && <p className="empty" role="status">Loading Workspaces…</p>}

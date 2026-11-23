@@ -15,7 +15,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: "app.js",
-        assetFileNames: "style[extname]",
+        assetFileNames: ({ names }) => names.includes("harborist-mark.png")
+          ? "harborist-mark.png" : "style[extname]",
       },
     },
   },
