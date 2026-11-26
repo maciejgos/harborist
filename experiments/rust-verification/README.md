@@ -116,6 +116,20 @@ terminal evidence stays intact and a separate receipt records the application.
 Older Rust evidence without verification digests requires a fresh Run before
 application.
 
+## Publish a verified candidate to GitHub
+
+```sh
+harborist-verify publish RUN_DIR APPROVED_SHA OWNER/REPO BASE_BRANCH
+```
+
+Use the full candidate SHA from packaged verification and an existing GitHub
+base branch. The command uses authenticated Git and `gh` in the container. It
+pushes the approved commit to a dedicated Run branch and prints the pull
+request URL. Retrying the same publication checks the prepared record and
+remote head before reusing the existing pull request. This command currently
+supports the initial publication and its retries. The Docker test uses a
+local Git remote and an offline `gh` fixture.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -153,7 +167,7 @@ Run verification or application authority.
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
 Existing Python Run formats, rework and recovery, cancellation and
-supersession, GitHub publication and collaboration, integration management,
+supersession, subsequent GitHub publications and collaboration, integration management,
 legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
 outside the Rust foreground implementation.
 

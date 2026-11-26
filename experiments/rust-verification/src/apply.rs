@@ -48,7 +48,7 @@ fn exact_commit(repo: &Path, sha: &Sha) -> Result<()> {
     Ok(())
 }
 
-fn verified(run: &Captured) -> Result<Sha> {
+pub fn verified(run: &Captured) -> Result<Sha> {
     let contract = &run.contract;
     let terminal = Terminal::load(&run.directory, contract.run_id)?;
     if terminal.outcome != "VERIFIED" || terminal.base_sha != contract.base_sha {

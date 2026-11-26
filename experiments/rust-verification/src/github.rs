@@ -56,7 +56,7 @@ pub fn selector(source: &str) -> Result<String> {
     }
 }
 
-fn run(cwd: &Path, allowance: u64, args: &[&str]) -> Result<process::Capture> {
+pub fn run(cwd: &Path, allowance: u64, args: &[&str]) -> Result<process::Capture> {
     let capture = process::capture_command(
         Command::new("gh")
             .args(args)

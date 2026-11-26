@@ -4,6 +4,7 @@ mod foreground;
 mod github;
 mod native;
 mod process;
+mod publication;
 mod queue;
 mod record;
 mod settings;
@@ -234,6 +235,7 @@ fn execute() -> Result<()> {
                 return run_foreground(store::load(Path::new(directory))?);
             }
             Some("apply") => return apply::execute(args),
+            Some("publish") => return publication::execute(args),
             Some("submit") => return queue::submit(args),
             Some("delivery") => return queue::delivery(args),
             Some("worker") => return queue::worker(args),
