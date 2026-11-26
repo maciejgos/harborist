@@ -1,55 +1,32 @@
 use crate::{
-    Config, Evidence, Result, commit, git,
+    Config, Evidence, Result, git, git_text,
     native::{Codex, NativeAgent, Output, Request},
     run_checks_with_budget,
+    store::{self, Captured, TOTAL_SECONDS, VERIFICATION_RESERVE_SECONDS},
 };
 use harborist_verify::{
     review::{Review, Specification},
     workflow::{Attempt, Outcome, Receipt, Sha, Stage, Workflow},
 };
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::{
-    ffi::{OsStr, OsString},
-    fs,
+    fs::{self, File},
     path::Path,
     time::{Duration, Instant},
 };
-use uuid::Uuid;
 
-pub fn execute(args: &[OsString]) -> Result<()> {
-    let [repo, base, intent, directory] = args else {
-        return Err("usage: harborist-verify run REPO BASE_SHA INTENT_FILE NEW_RUN_DIR".into());
-    };
-    let repo = Path::new(repo).canonicalize()?;
-    let root = git_text(&repo, &["rev-parse", "--show-toplevel"])?;
-    let directory = Path::new(directory);
-    let directory = directory
-        .parent()
-        .ok_or("run directory has no parent")?
-        .canonicalize()?
-        .join(directory.file_name().ok_or("missing run directory name")?);
-    if directory.starts_with(&root) {
-        return Err("run directory must be outside the source checkout".into());
-    }
-    let base = commit(base)?;
-    let resolved = git_text(&repo, &["rev-parse", &format!("{base}^{{commit}}")])?;
-    if resolved != base.as_str() {
-        return Err("base must identify the exact commit".into());
-    }
-    let frozen = git(
-        &repo,
-        &["show".as_ref(), format!("{base}:harborist.yaml").as_ref()],
-    )?;
-    let config = Config::parse(&frozen)?;
-    let intent = fs::read_to_string(intent)?;
-    if intent.trim().is_empty() {
-        return Err("intent must contain text".into());
-    }
-    let id = Uuid::new_v4();
-    let attempt = Attempt::new(id, base.clone());
-    let source_sha256 = format!("{:x}", Sha256::digest(&frozen));
-    fs::create_dir(&directory)?;
+pub fn execute(capture: Captured) -> Result<serde_json::Value> {
+    let attempt = store::admit(&capture)?;
+    let Captured {
+        directory,
+        contract,
+        config,
+        intent,
+    } = capture;
+    let repo = contract.repository;
+    let base = contract.base_sha;
+    let id = contract.run_id;
+    let source_sha256 = contract.source_sha256;
     let candidate_ref = format!("refs/harborist/rust-runs/{id}/candidate");
     let mut run = Run {
         repo: &repo,
@@ -64,22 +41,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         agent: &Codex,
     };
 
-    let result = (|| {
-        fs::write(directory.join("intent.md"), &intent)?;
-        fs::write(directory.join("harborist.yaml"), frozen)?;
-        fs::write(
-            directory.join("contract.json"),
-            serde_json::to_vec_pretty(&json!({
-                "run_id": id,
-                "attempt": attempt,
-                "base_sha": base,
-                "source_sha256": source_sha256,
-                "total_seconds": 1800,
-                "verification_reserve_seconds": 300,
-            }))?,
-        )?;
-        run.run(&intent, config)
-    })();
+    let result = run.run(&intent, config);
     // External errors still produce terminal artifacts, with no successful software outcome.
     let (outcome, error) = match result {
         Ok(outcome) => (outcome, None),
@@ -114,22 +76,24 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         "source_sha256": source_sha256,
         "receipts": run.workflow.receipts(),
     });
-    fs::write(
-        directory.join("report.md"),
+    store::write_new(
+        &directory.join("report.md"),
         format!(
             "# Harborist Run {id}\n\nOutcome **{outcome}**\n\n{}\n",
             error.as_deref().unwrap_or("")
-        ),
+        )
+        .as_bytes(),
     )?;
-    fs::write(
+    store::write_new(
+        &directory.join(".evidence.pending"),
+        &serde_json::to_vec_pretty(&evidence)?,
+    )?;
+    fs::rename(
+        directory.join(".evidence.pending"),
         directory.join("evidence.json"),
-        serde_json::to_vec_pretty(&evidence)?,
     )?;
-    println!("{}", serde_json::to_string(&evidence)?);
-    if outcome != "VERIFIED" {
-        return Err(error.unwrap_or_else(|| outcome.to_owned()).into());
-    }
-    Ok(())
+    File::open(&directory)?.sync_all()?;
+    Ok(evidence)
 }
 
 struct Run<'a> {
@@ -185,9 +149,9 @@ impl Run<'_> {
 
     fn allowance(&self, stage: Stage) -> Result<Duration> {
         let seconds = if matches!(stage, Stage::Test | Stage::Review) {
-            1800
+            TOTAL_SECONDS
         } else {
-            1500
+            TOTAL_SECONDS - VERIFICATION_RESERVE_SECONDS
         };
         let left = Duration::from_secs(seconds).saturating_sub(self.started.elapsed());
         if left.as_secs() == 0 {
@@ -363,11 +327,6 @@ impl Run<'_> {
 enum BuildDecision {
     Stopped(&'static str),
     Candidate { spec: String, sha: Sha },
-}
-
-fn git_text(repo: &Path, args: &[&str]) -> Result<String> {
-    let args: Vec<_> = args.iter().map(OsStr::new).collect();
-    Ok(String::from_utf8(git(repo, &args)?)?.trim_end().to_owned())
 }
 
 fn require_clean(workspace: &Path, expected: &str) -> Result<()> {

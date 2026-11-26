@@ -1,6 +1,8 @@
 mod foreground;
 mod native;
 mod process;
+mod queue;
+mod store;
 
 use harborist_verify::workflow::Sha;
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -157,15 +159,48 @@ fn git(repo: &Path, args: &[&OsStr]) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
+fn git_text(repo: &Path, args: &[&str]) -> Result<String> {
+    let args: Vec<_> = args.iter().map(OsStr::new).collect();
+    Ok(String::from_utf8(git(repo, &args)?)?.trim_end().to_owned())
+}
+
 fn commit(value: &OsStr) -> Result<Sha> {
     Ok(value.to_str().ok_or("expected a Git SHA")?.parse()?)
+}
+
+fn run_foreground(capture: store::Captured) -> Result<()> {
+    let evidence = foreground::execute(capture)?;
+    println!("{}", serde_json::to_string(&evidence)?);
+    if evidence["outcome"] != "VERIFIED" {
+        let detail = evidence["error"]
+            .as_str()
+            .or_else(|| evidence["outcome"].as_str())
+            .unwrap_or("Run failed");
+        return Err(detail.to_owned().into());
+    }
+    Ok(())
 }
 
 fn execute() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if let [command, args @ ..] = args.as_slice() {
-        if command == "run" {
-            return foreground::execute(args);
+        match command.to_str() {
+            Some("run") => return run_foreground(store::capture(args)?),
+            Some("intake") => {
+                let capture = store::capture(args)?;
+                println!("{}", serde_json::to_string(&capture.contract)?);
+                return Ok(());
+            }
+            Some("execute") => {
+                let [directory] = args else {
+                    return Err("expected execute RUN_DIR".into());
+                };
+                return run_foreground(store::load(Path::new(directory))?);
+            }
+            Some("submit") => return queue::submit(args),
+            Some("delivery") => return queue::delivery(args),
+            Some("worker") => return queue::worker(args),
+            _ => {}
         }
     }
     let [repo, base, candidate, workspace, logs] = args.as_slice() else {
