@@ -1,4 +1,5 @@
 """Read an unmodified Python Run through the Rust control service."""
+import hashlib
 import json
 import os
 import subprocess
@@ -80,6 +81,20 @@ def exercise(root: Path) -> None:
     assert refused.returncode != 0 and "digest" in refused.stderr
     assert git(repo, "rev-parse", "legacy-delivery") == base
     log.write_bytes(frozen_log)
+    package_path = directory / "evidence.json"
+    package_bytes = package_path.read_bytes()
+    spec_path = directory / "design/spec.md"
+    original_spec = spec_path.read_bytes()
+    changed_spec = original_spec + b"\nChanged after DESIGN.\n"
+    spec_path.write_bytes(changed_spec)
+    spec_entry = next(entry for entry in evidence["files"] if entry["path"] == "design/spec.md")
+    spec_entry.update(size_bytes=len(changed_spec), sha256=hashlib.sha256(changed_spec).hexdigest())
+    package_path.write_text(json.dumps(evidence))
+    refused = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
+    assert refused.returncode != 0 and "does not match DESIGN" in refused.stderr, refused.stderr
+    assert git(repo, "rev-parse", "legacy-delivery") == base
+    spec_path.write_bytes(original_spec)
+    package_path.write_bytes(package_bytes)
     receipt = json.loads(subprocess.check_output(command, env=env))
     assert receipt["resulting_sha"] == evidence["candidate"]["candidate_sha"]
     assert git(repo, "rev-parse", "legacy-delivery") == receipt["resulting_sha"]

@@ -631,6 +631,42 @@ impl<'a> HistoricalPackage<'a> {
         })
     }
 
+    fn specification(&self) -> Result<Option<(String, bool)>> {
+        let stages = self.package["stages"]
+            .as_array()
+            .ok_or("missing historical native stage captures")?;
+        let mut designs = stages.iter().filter(|stage| {
+            stage["stage"] == "design" && stage["output"]["result"]["status"] == "ready"
+        });
+        if let Some(design) = designs.next() {
+            let spec = self.get("design/spec.md")?;
+            let manifest: Value = serde_json::from_str(&self.get("design/manifest.json")?)?;
+            if designs.next().is_some()
+                || !self.package["reused_spec_sha256"].is_null()
+                || design["run_id"] != json!(self.attempt.run_id())
+                || design["attempt_id"] != json!(self.attempt.id())
+                || design["output"]["result"]["stage"] != "design"
+                || design["output"]["artifact"].as_str() != Some(spec.as_str())
+                || manifest != *design
+            {
+                return Err("historical specification does not match DESIGN".into());
+            }
+            return Ok(Some((spec, false)));
+        }
+        if let Some(expected) = self.package["reused_spec_sha256"].as_str() {
+            let record: Value = serde_json::from_str(&self.get("continuation.json")?)?;
+            let spec = self.get("frozen-spec.md")?;
+            if record["attempt"] != json!(self.attempt)
+                || record["spec_digest"] != expected
+                || digest(spec.as_bytes()) != expected
+            {
+                return Err("historical specification lineage does not match".into());
+            }
+            return Ok(Some((spec, true)));
+        }
+        Ok(None)
+    }
+
     fn get(&self, name: &str) -> Result<String> {
         if !self.index.contains(name) {
             return Err(format!("historical evidence index lacks {name}").into());
@@ -714,18 +750,9 @@ pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> 
             }
         }
     }
-    let specification_name = if package["reused_spec_sha256"].is_string() {
-        let record: Value = serde_json::from_str(&get("continuation.json")?)?;
-        if record["attempt"] != json!(attempt)
-            || record["spec_digest"] != package["reused_spec_sha256"]
-        {
-            return Err("historical specification lineage does not match".into());
-        }
-        "frozen-spec.md"
-    } else {
-        "design/spec.md"
-    };
-    let spec = get(specification_name)?;
+    let (spec, reused_spec) = historical
+        .specification()?
+        .ok_or("historical verified Run has no frozen specification")?;
     let parsed = harborist_verify::review::Specification::parse(&spec)?;
     if verification["specification"]["sha256"] != parsed.sha256()
         || verification["specification"]["criterion_ids"] != json!(parsed.criterion_ids())
@@ -735,7 +762,7 @@ pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> 
     let stages = package["stages"]
         .as_array()
         .ok_or("missing historical native stage captures")?;
-    let expected_stages: &[&str] = if specification_name == "frozen-spec.md" {
+    let expected_stages: &[&str] = if reused_spec {
         &["plan", "build", "review"]
     } else {
         &["design", "plan", "build", "review"]
