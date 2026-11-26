@@ -166,6 +166,7 @@ else:
     )
     original = next(path for path in runs.iterdir() if path != directory and (path / "contract.json").is_file())
     contract_bytes = (original / "contract.json").read_bytes()
+    settings_bytes = settings.read_bytes()
     settings.unlink()
     intent.unlink()
     exported = root / "imported"
@@ -176,6 +177,61 @@ else:
     assert outcome["base_sha"] == expected["base_sha"]
     assert (original / "contract.json").read_bytes() == contract_bytes
     assert json.loads((original / "run.json").read_text())["lifecycle"] == "CREATED"
+
+    (repo / "harborist.yaml").write_text(
+        '{"version":1,"checks":[{"id":"fix","command":"test -f fixed"}]}'
+    )
+    git(repo, "add", "harborist.yaml")
+    git(repo, "commit", "-qm", "Require the rework fix")
+    intent.write_text("# Rework historical Run\n")
+    settings.write_bytes(settings_bytes)
+    failure_runs = root / "failures"
+    result = subprocess.run([
+        sys.executable, "-m", "harborist", "run", f"file:{intent}", "--foreground",
+        "--json", "--repo", str(repo), "--ref", git(repo, "rev-parse", "HEAD"),
+        "--settings", str(settings), "--runs-dir", str(failure_runs),
+        "--workspace", str(root / "failure-workspace"),
+    ], env=env, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    historical = next(path for path in failure_runs.iterdir() if (path / "evidence.json").is_file())
+    evidence_path = historical / "evidence.json"
+    original_evidence = evidence_path.read_bytes()
+    failed = json.loads(original_evidence)
+    assert failed["run"]["outcome"] == "TEST_FAILED", result.stderr
+    (root / "codex").write_text(FAKE_CODEX.replace(
+        'if stage == "build":', 'if stage == "build":\n    Path("fixed").touch()',
+    ))
+    destination = root / "continued"
+    command = [binary, "continue-python", "rework", historical, destination,
+               failed["attempt"]["attempt_id"], "Address the failed check"]
+    outcome = json.loads(subprocess.check_output(command, env=env))
+    assert outcome["outcome"] == "VERIFIED"
+    assert outcome["run_id"] == failed["run"]["run_id"]
+    new_attempt = destination / "attempts/000001"
+    assert (new_attempt / "design/spec.md").read_bytes() == (historical / "design/spec.md").read_bytes()
+    assert outcome["attempt"]["start_sha"] == failed["candidate"]["candidate_sha"]
+    assert evidence_path.read_bytes() == original_evidence
+
+    recovery_runs = root / "recovery-runs"
+    fixed_codex = (root / "codex").read_text()
+    (root / "codex").write_text("#!/bin/sh\nexit 1\n")
+    failed_execution = subprocess.run([
+        sys.executable, "-m", "harborist", "run", f"file:{intent}", "--foreground",
+        "--json", "--repo", str(repo), "--ref", git(repo, "rev-parse", "HEAD"),
+        "--settings", str(settings), "--runs-dir", str(recovery_runs),
+        "--workspace", str(root / "recovery-workspace"),
+    ], env=env, capture_output=True, text=True, check=False)
+    assert failed_execution.returncode != 0
+    interrupted = next(path for path in recovery_runs.iterdir() if (path / "evidence.json").is_file())
+    failure = json.loads((interrupted / "evidence.json").read_bytes())
+    assert failure["run"]["failure_reason"] == "EXECUTION_FAILED", failed_execution.stderr
+    (root / "codex").write_text(fixed_codex)
+    recovered = json.loads(subprocess.check_output([
+        binary, "continue-python", "recover", interrupted, root / "recovered",
+        failure["attempt"]["attempt_id"], "Retry execution", "60",
+    ], env=env))
+    assert recovered["outcome"] == "VERIFIED"
+    assert recovered["attempt"]["start_sha"] == failure["attempt"]["start_sha"]
 
 
 if __name__ == "__main__":

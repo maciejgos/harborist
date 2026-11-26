@@ -675,6 +675,188 @@ impl<'a> HistoricalPackage<'a> {
     }
 }
 
+pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
+    use std::os::fd::AsRawFd;
+    let (action, original, destination, expected, feedback, extra) = match args {
+        [action, original, destination, expected, feedback, extra @ ..] if extra.len() <= 1 =>
+            (action, original, destination, expected, feedback, extra),
+        _ => return Err("expected continue-python rework|recover PYTHON_RUN_DIR NEW_RUST_RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]".into()),
+    };
+    let action = action.to_str().ok_or("invalid continuation action")?;
+    let mut parsed = vec![original.clone(), expected.clone(), feedback.clone()];
+    parsed.extend_from_slice(extra);
+    let (original, request) = continuation::parse(action, &parsed)?;
+    let original = original.canonicalize()?;
+    let parent = original.parent().ok_or("historical Run has no root")?;
+    let id = Uuid::parse_str(
+        original
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("missing historical Run ID")?,
+    )?;
+    locate(parent, id)?;
+    let lock = fs::File::open(&original)?;
+    // Python uses the Run directory itself as the execution lock.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if parent
+        .join("retirements")
+        .join(format!("{id}.json"))
+        .try_exists()?
+    {
+        return Err("historical Run is retired".into());
+    }
+    let (number, directory) = select(&original, None)?;
+    let previous = HistoricalPackage::load(&directory, id)?;
+    if previous.attempt.id() != request.expected_attempt_id
+        || serde_json::from_str::<Value>(&read_artifact(&original, "contract.json")?)?
+            != previous.package["contract"]
+    {
+        return Err("historical continuation predecessor or frozen contract changed".into());
+    }
+    let (mut capture, frozen) = execution_capture(&original, id)?;
+    let spec = previous.specification()?.map(|(text, _)| text);
+    let candidate = if previous.package["candidate"].is_null() {
+        None
+    } else {
+        let sha: Sha =
+            serde_json::from_value(previous.package["candidate"]["candidate_sha"].clone())?;
+        if previous.package["candidate"] != json!(previous.attempt.candidate(sha.clone())) {
+            return Err("historical candidate belongs to another Attempt".into());
+        }
+        let reference = if number == 0 {
+            format!("refs/shipyard/runs/{id}/candidate")
+        } else {
+            format!(
+                "refs/shipyard/runs/{id}/attempts/{}/candidate",
+                previous.attempt.id()
+            )
+        };
+        let repo = &capture.contract.repository;
+        if crate::git_text(repo, &["rev-parse", "--verify", &reference])? != sha.as_str() {
+            return Err("historical candidate ref changed".into());
+        }
+        crate::apply::exact_commit(repo, &sha)?;
+        crate::git_text(
+            repo,
+            &[
+                "merge-base",
+                "--is-ancestor",
+                capture.contract.base_sha.as_str(),
+                sha.as_str(),
+            ],
+        )?;
+        Some(sha)
+    };
+    match action {
+        "rework"
+            if previous.saved.lifecycle == Lifecycle::Completed
+                && matches!(
+                    previous.saved.outcome.as_deref(),
+                    Some("TEST_FAILED" | "CHANGES_REQUIRED")
+                )
+                && candidate.is_some()
+                && spec.is_some() =>
+        {
+            ()
+        }
+        "recover"
+            if previous.saved.lifecycle == Lifecycle::Failed
+                && matches!(
+                    previous.saved.failure_reason.as_deref(),
+                    Some(
+                        "EXECUTION_FAILED"
+                            | "INVALID_STAGE_OUTPUT"
+                            | "CREDENTIAL_UNAVAILABLE"
+                            | "CREDENTIAL_REJECTED"
+                    )
+                ) =>
+        {
+            ()
+        }
+        _ => {
+            return Err("historical Attempt is not eligible for the requested continuation".into());
+        }
+    }
+    let prior_grants = if number == 0 {
+        0
+    } else {
+        let record: Value = serde_json::from_str(&previous.get("continuation.json")?)?;
+        if record["attempt"] != json!(previous.attempt) || record["previous_number"] != number - 1 {
+            return Err("historical time grant belongs to another Attempt".into());
+        }
+        record["granted_seconds"]
+            .as_u64()
+            .ok_or("invalid historical time grant")?
+    };
+    let original_allowance = capture
+        .contract
+        .total_seconds
+        .checked_add(prior_grants)
+        .ok_or("historical time budget overflow")?;
+    let timing = &previous.package["timing"];
+    let remaining = timing["remaining_seconds"]
+        .as_f64()
+        .ok_or("missing historical time accounting")?;
+    if timing["original_seconds"] != original_allowance
+        || !(0.0..=original_allowance as f64).contains(&remaining)
+    {
+        return Err("historical Package has inconsistent time accounting".into());
+    }
+    // The Rust executor budgets whole seconds. Round spending up to preserve the cap.
+    let spent_seconds = original_allowance - remaining.floor() as u64;
+    let granted_seconds = prior_grants
+        .checked_add(request.additional_seconds)
+        .ok_or("historical time grant overflow")?;
+    let total = capture
+        .contract
+        .total_seconds
+        .checked_add(granted_seconds)
+        .ok_or("historical time budget overflow")?;
+    if total > u32::MAX as u64
+        || total.saturating_sub(spent_seconds) <= capture.contract.verification_reserve_seconds
+    {
+        return Err("insufficient historical continuation budget; grant additional seconds".into());
+    }
+    let context = serde_json::to_string_pretty(&json!({
+        "previous_attempt": previous.attempt.id(),
+        "previous_candidate": candidate,
+        "previous_outcome": previous.saved.outcome,
+        "previous_evidence": directory.join("evidence.json"),
+        "feedback": request.feedback,
+    }))?;
+    let start = candidate.unwrap_or_else(|| previous.attempt.start_sha().clone());
+    crate::apply::exact_commit(&capture.contract.repository, &start)?;
+    let destination =
+        crate::store::new_directory(Path::new(destination), &capture.contract.repository)?;
+    if destination.starts_with(&original) {
+        return Err("continuation destination must be outside the original Run".into());
+    }
+    crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
+    capture.directory = destination;
+    let _destination_lock = continuation::lock(&capture.directory)?;
+    let attempt_directory = continuation::attempt_path(
+        &capture.directory,
+        number
+            .checked_add(1)
+            .ok_or("historical Attempt number overflow")?,
+    );
+    let result = continuation::execute_prepared(
+        capture,
+        attempt_directory,
+        start,
+        crate::foreground::Rework {
+            context,
+            specification: spec,
+            spent_seconds,
+            granted_seconds,
+        },
+        &request,
+    )?;
+    continuation::print_result(result)
+}
+
 pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> {
     let parent = root.parent().ok_or("historical Run has no root")?;
     let id = Uuid::parse_str(

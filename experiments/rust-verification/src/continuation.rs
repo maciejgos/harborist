@@ -83,12 +83,12 @@ pub fn lock(root: &Path) -> Result<File> {
 #[serde(deny_unknown_fields)]
 pub struct Request {
     pub request_id: Uuid,
-    action: String,
-    expected_attempt_id: Uuid,
+    pub(crate) action: String,
+    pub(crate) expected_attempt_id: Uuid,
     #[serde(default)]
-    feedback: String,
+    pub(crate) feedback: String,
     #[serde(default)]
-    additional_seconds: u64,
+    pub(crate) additional_seconds: u64,
     github_feedback: Option<GitHubFeedback>,
 }
 
@@ -372,6 +372,16 @@ pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Va
         candidate,
         rework,
     } = prepare(&capture, request)?;
+    execute_prepared(capture, directory, candidate, rework, request)
+}
+
+pub(crate) fn execute_prepared(
+    capture: store::Captured,
+    directory: PathBuf,
+    candidate: Sha,
+    rework: Rework,
+    request: &Request,
+) -> Result<serde_json::Value> {
     fs::create_dir_all(
         directory
             .parent()
@@ -402,6 +412,11 @@ pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Va
 }
 
 pub fn execute(action: &str, args: &[OsString]) -> Result<()> {
+    let (directory, request) = parse(action, args)?;
+    print_result(run(store::load(directory)?, &request)?)
+}
+
+pub(crate) fn parse<'a>(action: &str, args: &'a [OsString]) -> Result<(&'a Path, Request)> {
     let (directory, expected, feedback, extra) = match args {
         [directory, expected, feedback] => (directory, expected, feedback, 0),
         [directory, expected, feedback, extra] => (
@@ -428,7 +443,13 @@ pub fn execute(action: &str, args: &[OsString]) -> Result<()> {
         additional_seconds: extra,
         github_feedback: None,
     };
-    let result = run(store::load(Path::new(directory))?, &request)?;
+    if request.feedback.chars().count() > 32768 || request.additional_seconds > u32::MAX as u64 {
+        return Err("feedback or additional time exceeds the supported limit".into());
+    }
+    Ok((Path::new(directory), request))
+}
+
+pub(crate) fn print_result(result: serde_json::Value) -> Result<()> {
     println!("{result}");
     if result["outcome"] != "VERIFIED" {
         return Err(result["error"]

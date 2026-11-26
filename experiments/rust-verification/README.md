@@ -262,6 +262,21 @@ new publication records beside the Python Runs directory. A retry of a
 completed Python publication checks the recorded branch and pull request
 and preserves the original receipt.
 
+To continue a packaged Python Attempt using the Rust foreground executor:
+
+```sh
+harborist-verify continue-python rework PYTHON_RUN_DIR NEW_RUST_RUN_DIR EXPECTED_ATTEMPT "Address the failing check"
+harborist-verify continue-python recover PYTHON_RUN_DIR NEW_RUST_RUN_DIR EXPECTED_ATTEMPT "Retry execution" ADDITIONAL_SECONDS
+```
+
+Choose a new directory outside the source checkout and the Python Run. The
+new Attempt retains the Run ID and starts at the prior candidate when one
+exists. Rust validates the previous PACKAGE, carries forward its time
+accounting, and reuses the validated specification. It stores the new
+Attempt under its next sequence number in the destination. The Python Run
+remains the source for earlier evidence. This command supports packaged
+failures and rework after failed checks or requested changes.
+
 ## Run the comparison
 
 From the repository root with Docker running:

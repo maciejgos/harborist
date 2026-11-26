@@ -252,6 +252,7 @@ fn execute() -> Result<()> {
     if let [command, args @ ..] = args.as_slice() {
         match command.to_str() {
             Some("run") => return run_foreground(store::capture(args)?),
+            Some("continue-python") => return legacy::continue_run(args),
             Some("import-python") => return legacy::import(args),
             Some("intake") => {
                 let capture = store::capture(args)?;
