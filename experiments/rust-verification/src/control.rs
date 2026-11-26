@@ -283,28 +283,31 @@ fn request_body(request: &mut Request) -> Result<Vec<u8>> {
     Ok(body)
 }
 
-fn publish_route(route: &str) -> Option<Uuid> {
-    Uuid::parse_str(
-        route
-            .strip_prefix("/workspace/runs/")?
-            .strip_suffix("/publish")?,
-    )
-    .ok()
+fn github_route(route: &str) -> Option<(Uuid, &str)> {
+    let (id, action) = route.strip_prefix("/workspace/runs/")?.split_once('/')?;
+    matches!(action, "publish" | "observe").then_some((Uuid::parse_str(id).ok()?, action))
 }
 
 fn is_write(route: &str) -> bool {
     matches!(
         route,
         "/workspaces" | "/workspace/runs" | "/tickets/list" | "/tickets/queue"
-    ) || publish_route(route).is_some()
+    ) || github_route(route).is_some()
 }
 
 fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
     let body = request_body(request)?;
-    if let Some(id) = publish_route(route) {
+    if let Some((id, action)) = github_route(route) {
         let delivery = queue::read(&control.join("queue").join(format!("{id}.json")))?;
         if matches!(delivery.state, State::Queued | State::Running) {
             return Err("publication requires a terminal Run".into());
+        }
+        if action == "observe" {
+            let payload: Value = serde_json::from_slice(&body)?;
+            if !payload.as_object().is_some_and(serde_json::Map::is_empty) {
+                return Err("GitHub observation expects an empty request".into());
+            }
+            return crate::publication::observe(&delivery.directory, id);
         }
         return crate::publication::browser(&delivery.directory, id, &body);
     }

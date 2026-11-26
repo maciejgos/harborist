@@ -36,6 +36,19 @@ assert args[:3] == ["api", "--hostname", "github.com"]
 state = Path(os.environ["PR_STATE"])
 if args[3].startswith("repos/example/project/pulls?"):
     print("[" + state.read_text() + "]" if state.exists() else "[]")
+elif args[3] == "repos/example/project/pulls/7":
+    pull = json.loads(state.read_text())
+    pull.update(merged=False, merged_at=None, merge_commit_sha=None)
+    print(json.dumps(pull))
+elif "/check-runs?" in args[3]:
+    print(json.dumps({"total_count": 1, "check_runs": [
+        {"name": "ci", "status": "completed", "conclusion": "success", "details_url": None}
+    ]}))
+elif "/status?" in args[3]:
+    print(json.dumps({"state": "success", "total_count": 0, "statuses": []}))
+elif args[3].endswith("?per_page=50"):
+    feedback = [{"id": 9, "user": {"login": "reviewer"}, "body": "Please add a test."}]
+    print(json.dumps(feedback if "/reviews?" in args[3] else []))
 else:
     assert args[3] == "repos/example/project/pulls" and "--method" in args
     fields = dict(value.split("=", 1) for value in args[4:] if "=" in value)
@@ -109,6 +122,23 @@ else:
             else:
                 raise AssertionError("approval for another Attempt accepted")
             assert client.request("POST", route, payload)["pull"]["number"] == 7
+            observed = client.request("POST", f"/workspace/runs/{run_id}/observe", {})
+            snapshot = observed["observation"]
+            assert snapshot["head"] == approval and snapshot["head_verified"]
+            assert snapshot["checks"]["check_runs"][0]["name"] == "ci"
+            assert snapshot["feedback"] == [
+                {"key": "review:9", "author": "reviewer", "body": "Please add a test."}
+            ]
+            assert client.request("GET", f"/runs/{run_id}/github")["observation"] == snapshot
+            pull_path = root / "pull.json"
+            changed = json.loads(pull_path.read_text())
+            changed["head"]["sha"] = unrelated
+            pull_path.write_text(json.dumps(changed))
+            latest = client.request("POST", f"/workspace/runs/{run_id}/observe", {})
+            assert latest["observation"]["head"] == unrelated
+            assert not latest["observation"]["head_verified"]
+            assert latest["observation"]["verified_candidate"] == approval
+            assert observed["observation_path"] != latest["observation_path"]
         finally:
             service.terminate()
 

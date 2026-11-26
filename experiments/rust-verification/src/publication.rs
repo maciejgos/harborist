@@ -25,7 +25,7 @@ struct Approval {
     attempt: Uuid,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Eq, PartialEq)]
 struct Branch {
     #[serde(rename = "ref")]
     name: String,
@@ -127,15 +127,19 @@ pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Va
     Ok(serde_json::json!({"run_id": id, "pull": publish(run, request)?}))
 }
 
-pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
+fn published(directory: &Path, id: Uuid) -> Result<Option<Receipt>> {
     let terminal = match Terminal::load(directory, id) {
         Ok(terminal) => terminal,
-        Err(_) => return Ok(serde_json::json!({"publication": null})),
+        Err(_) => return Ok(None),
     };
     let path = directory
         .join("publication")
         .join(format!("published-{}.json", terminal.attempt.id()));
-    let receipt: Option<Receipt> = read_optional(&path)?;
+    read_optional(&path)
+}
+
+pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
+    let receipt = published(directory, id)?;
     let publication = receipt.map(|receipt| {
         serde_json::json!({
             "repository": receipt.approval.destination, "base": receipt.approval.base,
@@ -143,7 +147,16 @@ pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
             "previous": null, "timestamp": receipt.timestamp, "pull": receipt.pull,
         })
     });
-    Ok(serde_json::json!({"publication": publication}))
+    let mut result = serde_json::json!({"publication": publication});
+    if let Some(path) = latest_observation(directory)? {
+        let observation: Observation = serde_json::from_slice(&fs::read(&path)?)?;
+        if observation.run_id != id {
+            return Err("observation does not belong to this Run".into());
+        }
+        result["observation"] = serde_json::to_value(observation)?;
+        result["observation_path"] = serde_json::to_value(path)?;
+    }
+    Ok(result)
 }
 
 pub fn execute(args: &[OsString]) -> Result<()> {
@@ -326,4 +339,220 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
         },
     )?;
     Ok(pull)
+}
+
+#[derive(Deserialize)]
+struct PullState {
+    #[serde(flatten)]
+    pull: Pull,
+    merged: bool,
+    merged_at: Option<String>,
+    merge_commit_sha: Option<Sha>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Observation {
+    run_id: Uuid,
+    repository: String,
+    observed_at: u64,
+    pull: u64,
+    url: String,
+    state: String,
+    head: Sha,
+    verified_candidate: Sha,
+    head_verified: bool,
+    merged_at: Option<String>,
+    merge_commit_sha: Option<Sha>,
+    checks: CheckPage,
+    statuses: StatusPage,
+    feedback: Vec<Feedback>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct CheckPage {
+    total_count: u64,
+    check_runs: Vec<Check>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Check {
+    name: String,
+    status: String,
+    conclusion: Option<String>,
+    details_url: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct StatusPage {
+    state: String,
+    total_count: u64,
+    statuses: Vec<Status>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Status {
+    state: String,
+    context: String,
+    target_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RemoteFeedback {
+    id: u64,
+    user: Option<User>,
+    body: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct User {
+    login: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Feedback {
+    key: String,
+    author: String,
+    body: String,
+}
+
+fn latest_observation(directory: &Path) -> Result<Option<std::path::PathBuf>> {
+    let dir = directory.join("publication/observations");
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let mut latest = None;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_file()
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            && latest.as_ref().is_none_or(|previous| &path > previous)
+        {
+            latest = Some(path);
+        }
+    }
+    Ok(latest)
+}
+
+pub fn observe(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
+    let run = store::load(directory)?;
+    if run.contract.run_id != id {
+        return Err("observation must match the requested Run".into());
+    }
+    let receipt = published(directory, id)?.ok_or("Run has no completed GitHub publication")?;
+    let destination = receipt.approval.destination;
+    if !github::valid_repository(&destination) || receipt.pull == 0 {
+        return Err("invalid saved publication destination".into());
+    }
+    let repo = &run.contract.repository;
+    let endpoint = format!("repos/{destination}/pulls/{}", receipt.pull);
+    let state: PullState = api(repo, &endpoint, &[])?;
+    let pull = &state.pull;
+    if pull.number != receipt.pull
+        || pull.head.name != format!("harborist/{id}")
+        || pull.base.name != receipt.approval.base
+        || !pull.html_url.eq_ignore_ascii_case(&format!(
+            "https://github.com/{destination}/pull/{}",
+            pull.number
+        ))
+    {
+        return Err("GitHub response does not match the published PR".into());
+    }
+    let commit = format!("repos/{destination}/commits/{}", pull.head.sha);
+    let checks: CheckPage = api(repo, &format!("{commit}/check-runs?per_page=50"), &[])?;
+    let statuses: StatusPage = api(repo, &format!("{commit}/status?per_page=50"), &[])?;
+    if checks.check_runs.len() > 50
+        || statuses.statuses.len() > 50
+        || checks
+            .check_runs
+            .iter()
+            .any(|check| check.name.chars().count() > 1024)
+        || statuses
+            .statuses
+            .iter()
+            .any(|status| status.context.chars().count() > 1024)
+    {
+        return Err("GitHub returned an invalid check or status page".into());
+    }
+    let mut feedback = Vec::new();
+    for (kind, route) in [
+        ("review", format!("pulls/{}/reviews", pull.number)),
+        ("inline", format!("pulls/{}/comments", pull.number)),
+        ("comment", format!("issues/{}/comments", pull.number)),
+    ] {
+        let records: Vec<RemoteFeedback> = api(
+            repo,
+            &format!("repos/{destination}/{route}?per_page=50"),
+            &[],
+        )?;
+        for item in records.into_iter().take(50) {
+            if let Some(body) = item.body.filter(|body| {
+                !body.trim().is_empty() && !body.starts_with("<!-- harborist-publication:")
+            }) {
+                feedback.push(Feedback {
+                    key: format!("{kind}:{}", item.id),
+                    author: item
+                        .user
+                        .map(|user| user.login)
+                        .unwrap_or_else(|| "unknown".to_owned()),
+                    body: body.chars().take(4000).collect(),
+                });
+            }
+        }
+    }
+    let current: PullState = api(repo, &endpoint, &[])?;
+    if current.pull.number != pull.number
+        || current.pull.head != pull.head
+        || current.pull.base != pull.base
+        || current.pull.state != pull.state
+        || current.merged != state.merged
+        || current.merged_at != state.merged_at
+        || current.merge_commit_sha != state.merge_commit_sha
+    {
+        return Err("GitHub PR changed during capture; retry".into());
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+    let observed_at = now.as_millis().try_into()?;
+    let observation = Observation {
+        run_id: id,
+        repository: destination,
+        observed_at,
+        pull: pull.number,
+        url: pull.html_url.clone(),
+        state: if state.merged {
+            "merged".to_owned()
+        } else {
+            pull.state.clone()
+        },
+        head: pull.head.sha.clone(),
+        head_verified: pull.head.sha == receipt.approval.candidate,
+        verified_candidate: receipt.approval.candidate,
+        merged_at: state.merged_at,
+        merge_commit_sha: if state.merged {
+            state.merge_commit_sha
+        } else {
+            None
+        },
+        checks,
+        statuses,
+        feedback,
+    };
+    let observations = directory.join("publication/observations");
+    fs::create_dir_all(&observations)?;
+    let path = observations.join(format!("{:020}-{}.json", now.as_micros(), Uuid::new_v4()));
+    record(&path, &observation)?;
+    Ok(serde_json::json!({"run_id": id, "observation": observation, "observation_path": path}))
+}
+
+pub fn status(args: &[OsString]) -> Result<()> {
+    let [directory] = args else {
+        return Err("expected github-status RUN_DIR".into());
+    };
+    let run = store::load(Path::new(directory))?;
+    println!("{}", observe(&run.directory, run.contract.run_id)?);
+    Ok(())
 }

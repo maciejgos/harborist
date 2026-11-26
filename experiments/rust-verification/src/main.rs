@@ -236,6 +236,7 @@ fn execute() -> Result<()> {
             }
             Some("apply") => return apply::execute(args),
             Some("publish") => return publication::execute(args),
+            Some("github-status") => return publication::status(args),
             Some("submit") => return queue::submit(args),
             Some("delivery") => return queue::delivery(args),
             Some("worker") => return queue::worker(args),

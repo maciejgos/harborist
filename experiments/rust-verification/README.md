@@ -132,6 +132,20 @@ from GitHub delivery in the browser for a queued Run that finished verification.
 The browser displays the published commit and pull request from the local receipt. The Docker test uses a
 local Git remote and an offline `gh` fixture.
 
+## Refresh GitHub PR evidence
+
+Use **Refresh PR evidence** in the workspace or run:
+
+```sh
+harborist-verify github-status RUN_DIR
+```
+
+An observation records the PR head, merge status, checks, commit statuses,
+and review feedback for the published Run. Harborist checks the PR again
+before saving the observation and rejects it if the PR changed during
+capture. The browser shows the latest saved observation. Selecting feedback
+for a rework Attempt remains part of the continuation migration.
+
 ## Run the comparison
 
 From the repository root with Docker running:
