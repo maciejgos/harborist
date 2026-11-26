@@ -1,3 +1,4 @@
+mod control;
 mod foreground;
 mod native;
 mod process;
@@ -200,6 +201,8 @@ fn execute() -> Result<()> {
             Some("submit") => return queue::submit(args),
             Some("delivery") => return queue::delivery(args),
             Some("worker") => return queue::worker(args),
+            Some("service") => return control::service(args),
+            Some("web") => return control::web(args),
             _ => {}
         }
     }

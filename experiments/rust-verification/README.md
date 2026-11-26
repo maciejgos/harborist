@@ -69,6 +69,29 @@ records available. Use `worker CONTROL_DIR --once` to process at most one
 queued delivery and exit. The `finished` delivery state means PACKAGE wrote
 terminal evidence. Read `evidence.json` for the Run outcome.
 
+## Read Runs from the control socket and browser
+
+Run these commands alongside the worker in a container that shares the
+control directory and the same Run paths:
+
+```sh
+harborist-verify service CONTROL_DIR
+harborist-verify web CONTROL_DIR 8765
+```
+
+The control service serves health, queued Run summaries, and named terminal
+artifacts over `CONTROL_DIR/service.sock`. Its GET responses are accessible
+through Harborist's existing Unix-socket client. The loopback browser serves
+the existing workspace assets and forwards allowlisted GETs through that
+socket. The monitor supports the Run list, Run detail, and named report, specification, test log, and
+evidence reads for the initial Attempt. Workspace and integration commands still require the Python service.
+
+Use the Docker checks when validating the port without performance timing:
+
+```sh
+./experiments/rust-verification/docker-check.sh
+```
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -106,7 +129,7 @@ Run verification or application authority.
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
 Python settings and methodology capture, existing Python Run formats,
-rework and recovery, Unix-socket control API, browser adapter, candidate
+rework and recovery, write endpoints and workspace features, candidate
 application, GitHub integrations,
 legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
 outside the Rust foreground implementation.

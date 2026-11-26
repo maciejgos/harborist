@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum State {
+pub enum State {
     Queued,
     Running,
     Finished,
@@ -28,15 +28,15 @@ enum State {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Delivery {
-    run_id: Uuid,
-    directory: PathBuf,
+pub struct Delivery {
+    pub run_id: Uuid,
+    pub directory: PathBuf,
     submitted_ns: u128,
-    state: State,
-    error: Option<String>,
+    pub state: State,
+    pub error: Option<String>,
 }
 
-fn queue_directory(root: &Path) -> Result<PathBuf> {
+pub fn queue_directory(root: &Path) -> Result<PathBuf> {
     DirBuilder::new().recursive(true).mode(0o700).create(root)?;
     let directory = root.canonicalize()?.join("queue");
     DirBuilder::new()
@@ -46,7 +46,7 @@ fn queue_directory(root: &Path) -> Result<PathBuf> {
     Ok(directory)
 }
 
-fn read(path: &Path) -> Result<Delivery> {
+pub fn read(path: &Path) -> Result<Delivery> {
     let record: Delivery = serde_json::from_slice(&fs::read(path)?)?;
     let name = format!("{}.json", record.run_id);
     if path.file_name() != Some(OsStr::new(&name)) {
@@ -115,7 +115,7 @@ pub fn delivery(args: &[OsString]) -> Result<()> {
     Ok(())
 }
 
-fn records(queue: &Path) -> Result<Vec<Delivery>> {
+pub fn records(queue: &Path) -> Result<Vec<Delivery>> {
     let mut records = Vec::new();
     for entry in fs::read_dir(queue)? {
         let path = entry?.path();

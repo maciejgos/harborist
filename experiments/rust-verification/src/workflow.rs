@@ -61,6 +61,18 @@ impl Attempt {
         }
     }
 
+    pub fn id(&self) -> Uuid {
+        self.attempt_id
+    }
+
+    pub fn run_id(&self) -> Uuid {
+        self.run_id
+    }
+
+    pub fn start_sha(&self) -> &Sha {
+        &self.start_sha
+    }
+
     pub fn candidate(&self, candidate_sha: Sha) -> Candidate {
         Candidate {
             attempt_id: self.attempt_id,
