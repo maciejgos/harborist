@@ -1,6 +1,6 @@
 //! Filesystem capture and exclusive admission for a fresh Rust Run.
 
-use crate::{Config, Result, commit, git, git_text, settings::Execution};
+use crate::{Config, Result, commit, git_text, settings::Execution};
 use harborist_verify::workflow::{Attempt, Sha};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -129,13 +129,7 @@ pub fn capture_to(request: Capture<'_>) -> Result<Captured> {
         return Err("Run directory must be outside the source checkout".into());
     }
     validate_base(&repo, &base_sha)?;
-    let frozen = git(
-        &repo,
-        &[
-            "show".as_ref(),
-            format!("{base_sha}:harborist.yaml").as_ref(),
-        ],
-    )?;
+    let frozen = crate::verification_source(&repo, &base_sha)?;
     let config = Config::parse(&frozen)?;
     let (intent, source_ref, source_url) = match source.to_str() {
         Some(text) if text.starts_with("github:") || text.starts_with("https://") => {

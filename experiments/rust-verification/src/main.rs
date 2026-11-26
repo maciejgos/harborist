@@ -195,6 +195,26 @@ fn git(repo: &Path, args: &[&OsStr]) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
+fn verification_source(repo: &Path, base: &Sha) -> Result<Vec<u8>> {
+    if git_text(repo, &["cat-file", "-t", base.as_str()])? != "commit" {
+        return Err("verification configuration requires an exact base commit".into());
+    }
+    let entry = git_text(repo, &["ls-tree", base.as_str(), "--", "harborist.yaml"])?;
+    let name = if entry.is_empty() {
+        "shipyard.yaml"
+    } else {
+        "harborist.yaml"
+    };
+    git(
+        repo,
+        &[
+            "cat-file".as_ref(),
+            "blob".as_ref(),
+            format!("{base}:{name}").as_ref(),
+        ],
+    )
+}
+
 fn hidden_index_flags(repo: &Path) -> Result<bool> {
     Ok(
         git(repo, &["ls-files".as_ref(), "-v".as_ref(), "-z".as_ref()])?
@@ -284,10 +304,7 @@ fn execute() -> Result<()> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => (),
         Err(error) => return Err(error.into()),
     }
-    let source = git(
-        repo,
-        &["show".as_ref(), format!("{base}:harborist.yaml").as_ref()],
-    )?;
+    let source = verification_source(repo, &base)?;
     let config = Config::parse(&source)?;
     git(
         repo,

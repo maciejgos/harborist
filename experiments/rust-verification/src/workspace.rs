@@ -1,6 +1,6 @@
 //! Saved defaults and idempotent browser capture for the local control plane.
 
-use crate::{Config, Result, git, git_text, queue, settings::Execution, store};
+use crate::{Config, Result, git_text, queue, settings::Execution, store};
 use harborist_verify::workflow::Sha;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -118,10 +118,7 @@ pub fn save(control: &Path, body: &[u8]) -> Result<Value> {
     store::validate_budget(workspace.timeout, workspace.verification_reserve)?;
     workspace.repository = store::repository(&normalize(&workspace.repository)?)?;
     let sha = base(&workspace.repository, &workspace.reference)?;
-    let yaml = git(
-        &workspace.repository,
-        &["show".as_ref(), format!("{sha}:harborist.yaml").as_ref()],
-    )?;
+    let yaml = crate::verification_source(&workspace.repository, &sha)?;
     Config::parse(&yaml)?;
     workspace.settings = workspace.settings.as_deref().map(normalize).transpose()?;
     Execution::load(&workspace.repository, workspace.settings.as_deref())?;

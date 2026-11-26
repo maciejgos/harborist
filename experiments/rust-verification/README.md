@@ -215,6 +215,13 @@ Attempt. A completed DESIGN checkpoint lets recovery keep the specification.
 The interrupted Attempt stays available and its partial checkout is never
 used as the starting revision.
 
+## Use legacy verification configuration
+
+For a repository that still commits `shipyard.yaml`, Rust intake reads
+those checks at the selected base commit when `harborist.yaml` is absent.
+A present primary configuration must be readable and valid.
+The frozen copy in the Run directory is always named `harborist.yaml`.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -251,8 +258,8 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Existing Python Run formats, integration management, legacy YAML
-compatibility, and Docker Sandboxes remain outside the Rust implementation.
+Existing Python Run formats, integration management, and Docker Sandboxes
+remain outside the Rust implementation.
 
 ## Rust workflow contracts
 
