@@ -452,13 +452,28 @@ pub fn import(args: &[std::ffi::OsString]) -> Result<()> {
     if view["run"]["lifecycle"] != "CREATED" {
         return Err(format!("historical capture is invalid: {}", view["run_error"]).into());
     }
-    let raw = read_artifact(&source, "contract.json")?;
+    let (capture, frozen) = execution_capture(&source, id)?;
+    let directory =
+        crate::store::new_directory(Path::new(destination), &capture.contract.repository)?;
+    if directory.starts_with(&source) {
+        return Err("import destination must be outside the original Run".into());
+    }
+    crate::store::save(&directory, &capture.contract, &capture.intent, &frozen)?;
+    println!("{}", serde_json::to_string(&capture.contract)?);
+    Ok(())
+}
+
+/// Reconstruct frozen execution inputs independently of the Run lifecycle.
+/// Callers separately validate whether the requested lifecycle action is allowed.
+fn execution_capture(source: &Path, id: Uuid) -> Result<(crate::store::Captured, Vec<u8>)> {
+    let root = source.parent().ok_or("historical Run has no root")?;
+    let raw = read_artifact(source, "contract.json")?;
     let contract: Contract = serde_json::from_str(&raw)?;
     let execution: crate::settings::LegacyExecution =
         serde_json::from_value(serde_json::from_str::<Value>(&raw)?["execution"].clone())?;
     let (execution, total_seconds, verification_reserve_seconds) = execution.trusted_local()?;
     let context: SavedContext =
-        serde_json::from_str(&read_artifact(&source, "execution-context.json")?)?;
+        serde_json::from_str(&read_artifact(source, "execution-context.json")?)?;
     if context.version != 1
         || context.run_id != id
         || context.runs_root != root
@@ -469,17 +484,14 @@ pub fn import(args: &[std::ffi::OsString]) -> Result<()> {
     }
     let frozen = crate::verification_source(&context.repository, &contract.base_sha)?;
     let source_sha256 = digest(&frozen);
+    let config = crate::Config::parse(&frozen)?;
     if contract.verification["source_sha256"] != source_sha256
-        || contract.verification["config"] != serde_json::to_value(crate::Config::parse(&frozen)?)?
+        || contract.verification["config"] != serde_json::to_value(&config)?
     {
         return Err("historical verification differs from the saved base commit".into());
     }
-    if contract.intent.markdown.trim().is_empty() {
-        return Err("imported intent must contain text".into());
-    }
-    let directory = crate::store::new_directory(Path::new(destination), &context.repository)?;
-    if directory.starts_with(&source) {
-        return Err("import destination must be outside the original Run".into());
+    if contract.run_id != id || contract.intent.markdown.trim().is_empty() {
+        return Err("historical contract must match the Run and contain intent text".into());
     }
     let converted = crate::store::Contract {
         version: crate::store::VERSION,
@@ -494,9 +506,15 @@ pub fn import(args: &[std::ffi::OsString]) -> Result<()> {
         verification_reserve_seconds,
         execution: Some(execution),
     };
-    crate::store::save(&directory, &converted, &contract.intent.markdown, &frozen)?;
-    println!("{}", serde_json::to_string(&converted)?);
-    Ok(())
+    Ok((
+        crate::store::Captured {
+            directory: source.to_owned(),
+            contract: converted,
+            config,
+            intent: contract.intent.markdown,
+        },
+        frozen,
+    ))
 }
 
 #[derive(Deserialize)]
