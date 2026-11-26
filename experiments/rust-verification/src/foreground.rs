@@ -376,13 +376,14 @@ impl Run<'_> {
             )?;
             require_clean(workspace, self.base.as_str())?;
             let spec = output.artifact.ok_or("missing specification artifact")?;
-            fs::write(self.dir.join("design/spec.md"), &spec)?;
+            store::write_new(&self.dir.join("design/spec.md"), spec.as_bytes())?;
             if let Some(stopped) = self.stop_if_requested(Stage::Design, &output.result)? {
                 return Ok(stopped);
             }
             spec
         };
         let specification = Specification::parse(&spec)?;
+        crate::continuation::checkpoint_design(self.dir, self.attempt, specification.sha256())?;
         self.spec_sha256 = Some(specification.sha256().to_owned());
         self.accept(Stage::Design, Outcome::Succeeded, None)?;
 

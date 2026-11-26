@@ -108,6 +108,15 @@ fn project(delivery: Delivery, number: u32) -> Value {
             }
         }
     }
+    if let Ok(Some(lost)) = crate::continuation::interruption(&attempt) {
+        if lost.attempt.run_id() == delivery.run_id {
+            view["attempt_id"] = json!(lost.attempt.id());
+            view["run"] = json!({
+                "run_id": delivery.run_id, "lifecycle": "FAILED", "outcome": null,
+                "failure_reason": "EXECUTION_FAILED",
+            });
+        }
+    }
     if attempt.join("evidence.json").is_file() || (number == 0 && delivery.state == State::Finished)
     {
         match Terminal::load(&attempt, delivery.run_id) {

@@ -203,8 +203,12 @@ harborist-verify recover RUN_DIR EXPECTED_ATTEMPT "Retry the failed stage"
 Recovery creates a new Attempt and preserves the failure evidence. If the
 previous Attempt recorded a valid specification, recovery checks its digest
 and starts at PLAN. Otherwise it starts with a fresh DESIGN invocation.
-An optional final argument grants additional seconds. Abrupt worker-loss
-recovery is still being migrated.
+An optional final argument grants additional seconds. After an abrupt worker
+stop, restart the worker to record the interruption. Explicit recovery then
+requires a grant large enough to cover the verification reserve and the new
+Attempt. A completed DESIGN checkpoint lets recovery keep the specification.
+The interrupted Attempt stays available and its partial checkout is never
+used as the starting revision.
 
 ## Run the comparison
 

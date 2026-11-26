@@ -238,6 +238,13 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             } else {
                 State::Interrupted
             };
+            if record.state == State::Interrupted {
+                continuation::record_worker_loss(
+                    &record.directory,
+                    record.run_id,
+                    record.continuation.as_ref(),
+                )?;
+            }
             record.error = Some("Previous worker stopped during delivery".into());
             persist(&queue, &record, true)?;
         }

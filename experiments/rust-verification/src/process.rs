@@ -102,6 +102,22 @@ pub fn capture_cancellable(
         crate::retirement::cancelled(marker)?;
     }
     let deadline = Instant::now() + allowance;
+    #[cfg(target_os = "linux")]
+    {
+        let parent = std::process::id() as libc::pid_t;
+        // Only async-signal-safe calls run between fork and exec.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                if libc::getppid() != parent {
+                    return Err(io::Error::from_raw_os_error(libc::ECHILD));
+                }
+                Ok(())
+            });
+        }
+    }
     let mut group = ProcessGroup(
         command
             .process_group(0)

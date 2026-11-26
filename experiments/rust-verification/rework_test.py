@@ -154,9 +154,58 @@ def recover(root: Path) -> None:
     assert (root / "invocations").read_text().splitlines() == ["design", "plan", "build", "review"]
 
 
+def recover_worker(root: Path) -> None:
+    repo, base, _ = fixture(root, ["test -f message.txt"])
+    intent = root / "issue.md"
+    intent.write_text("Recover an interrupted execution.")
+    codex = root / "codex"
+    codex.write_text(FAKE_CODEX.replace(
+        'if stage == "build":',
+        'if stage == "plan" and not os.environ.get("RECOVER"):\n'
+        '    import time\n'
+        '    Path(os.environ["STARTED"]).write_text(str(os.getpid()))\n'
+        '    time.sleep(30)\n'
+        'if stage == "build":',
+    ))
+    codex.chmod(0o755)
+    started = root / "started"
+    env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+           "INVOCATIONS": str(root / "invocations"), "STARTED": str(started)}
+    binary = ROOT / "target/release/harborist-verify"
+    directory, control = root / "run", root / "control"
+    captured = json.loads(subprocess.check_output([binary, "intake", repo, base, intent, directory], env=env))
+    subprocess.check_call([binary, "submit", control, directory], env=env)
+    with subprocess.Popen([binary, "worker", control, "--once"], env=env) as worker:
+        deadline = time.monotonic() + 8
+        while not started.exists():
+            assert worker.poll() is None and time.monotonic() < deadline
+            time.sleep(0.02)
+        worker.kill()
+        worker.wait(timeout=5)
+    subprocess.check_call([binary, "worker", control, "--once"], env=env)
+    delivery = json.loads(subprocess.check_output(
+        [binary, "delivery", control, captured["run_id"]], env=env,
+    ))
+    assert delivery["state"] == "interrupted"
+    attempt = json.loads((directory / "attempt.json").read_text())
+    command = [binary, "recover", directory, attempt["attempt_id"], "Resume after worker loss"]
+    denied = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
+    assert denied.returncode != 0 and "additional" in denied.stderr
+    result = subprocess.run(
+        [*command, "360"], env={**env, "RECOVER": "1"},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["outcome"] == "VERIFIED"
+    assert not (directory / "evidence.json").exists()
+    assert (root / "invocations").read_text().splitlines() == ["design", "plan", "build", "review"]
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory))
     with tempfile.TemporaryDirectory() as directory:
         recover(Path(directory))
+    with tempfile.TemporaryDirectory() as directory:
+        recover_worker(Path(directory))
     print("Rust rework and recovery checks passed.")

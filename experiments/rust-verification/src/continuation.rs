@@ -97,6 +97,130 @@ struct Prepared {
     rework: Rework,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct Interruption {
+    pub attempt: Attempt,
+    granted_seconds: u64,
+}
+
+#[derive(Deserialize)]
+struct Admission {
+    request_id: Uuid,
+    attempt: Attempt,
+    granted_seconds: u64,
+}
+
+pub fn interruption(directory: &Path) -> Result<Option<Interruption>> {
+    match fs::read(directory.join("interruption.json")) {
+        Ok(raw) => Ok(Some(serde_json::from_slice(&raw)?)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub fn record_worker_loss(root: &Path, run_id: Uuid, request: Option<&Request>) -> Result<()> {
+    let number = latest(root)?;
+    let directory = attempt_path(root, number);
+    if directory.join("evidence.json").try_exists()? {
+        return Ok(());
+    }
+    let attempt: Attempt = match fs::read(directory.join("attempt.json")) {
+        Ok(raw) => serde_json::from_slice(&raw)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if attempt.run_id() != run_id {
+        return Err("interrupted Attempt belongs to another Run".into());
+    }
+    let grants = match (number, request) {
+        (0, None) => 0,
+        (0, Some(_)) | (_, None) => return Ok(()),
+        (_, Some(request)) => {
+            let admission: Admission =
+                serde_json::from_str(&read_artifact(&directory, "continuation.json")?)?;
+            if admission.request_id != request.request_id || admission.attempt != attempt {
+                return Ok(());
+            }
+            admission.granted_seconds
+        }
+    };
+    let record = Interruption {
+        attempt,
+        granted_seconds: grants,
+    };
+    match store::write_new(
+        &directory.join("interruption.json"),
+        &serde_json::to_vec(&record)?,
+    ) {
+        Ok(()) => File::open(&directory)?.sync_all()?,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => (),
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+#[derive(Deserialize, Serialize)]
+struct DesignCheckpoint {
+    attempt: Attempt,
+    sha256: String,
+}
+
+pub fn checkpoint_design(directory: &Path, attempt: &Attempt, sha256: &str) -> Result<()> {
+    let record = DesignCheckpoint {
+        attempt: attempt.clone(),
+        sha256: sha256.to_owned(),
+    };
+    store::write_new(
+        &directory.join("design-checkpoint.json"),
+        &serde_json::to_vec(&record)?,
+    )?;
+    File::open(directory)?.sync_all()?;
+    Ok(())
+}
+
+fn worker_loss(
+    capture: &store::Captured,
+    directory: &Path,
+    lost: Interruption,
+    extra: u64,
+) -> Result<Terminal> {
+    if extra == 0 {
+        return Err("interrupted execution requires an explicit additional time grant".into());
+    }
+    let spec_sha256 = match fs::read(directory.join("design-checkpoint.json")) {
+        Ok(raw) => {
+            let saved: DesignCheckpoint = serde_json::from_slice(&raw)?;
+            if saved.attempt != lost.attempt {
+                return Err("DESIGN checkpoint belongs to another Attempt".into());
+            }
+            Some(saved.sha256)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let spent = capture
+        .contract
+        .total_seconds
+        .checked_add(lost.granted_seconds)
+        .ok_or("time budget overflow")?;
+    Ok(Terminal {
+        run_id: lost.attempt.run_id(),
+        base_sha: capture.contract.base_sha.clone(),
+        start_sha: Some(lost.attempt.start_sha().clone()),
+        attempt: lost.attempt,
+        spec_sha256,
+        spent_seconds: Some(spent),
+        granted_seconds: lost.granted_seconds,
+        candidate_ref: None,
+        candidate: None,
+        outcome: "FAILED".to_owned(),
+        error: None,
+        failure_reason: Some("EXECUTION_FAILED".to_owned()),
+        receipts: Vec::new(),
+        verification_inputs: None,
+    })
+}
+
 pub fn validate(capture: &store::Captured, request: &Request) -> Result<()> {
     prepare(capture, request).map(|_| ())
 }
@@ -115,8 +239,17 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
     crate::retirement::cancelled(&crate::retirement::path(root))?;
     let number = latest(root)?;
     let previous = attempt_path(root, number);
-    let terminal = Terminal::load(&previous, capture.contract.run_id)?;
-    if terminal.attempt.id() != expected || terminal.base_sha != capture.contract.base_sha {
+    let terminal = if !previous.join("evidence.json").try_exists()? && request.action == "recover" {
+        let lost = interruption(&previous)?
+            .ok_or("no terminal evidence or recorded worker interruption")?;
+        worker_loss(capture, &previous, lost, extra)?
+    } else {
+        Terminal::load(&previous, capture.contract.run_id)?
+    };
+    if terminal.run_id != capture.contract.run_id
+        || terminal.attempt.id() != expected
+        || terminal.base_sha != capture.contract.base_sha
+    {
         return Err("continuation predecessor does not match the latest Attempt".into());
     }
     if request.action == "rework" {
