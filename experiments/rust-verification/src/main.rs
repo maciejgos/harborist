@@ -3,6 +3,7 @@ mod continuation;
 mod control;
 mod foreground;
 mod github;
+mod legacy;
 mod native;
 mod process;
 mod publication;

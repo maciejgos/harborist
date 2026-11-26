@@ -256,16 +256,49 @@ impl Route {
     }
 }
 
-fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
+fn serve_route(queue_root: &Path, legacy_root: Option<&Path>, route: Route) -> Result<Value> {
+    if let Some(root) = legacy_root {
+        let id = match &route {
+            Route::Run(id)
+            | Route::Attempts(id)
+            | Route::Attempt(id, _)
+            | Route::Artifact(id, _, _) => Some(*id),
+            _ => None,
+        };
+        if let Some(id) = id {
+            if !queue_root.join(format!("{id}.json")).try_exists()? {
+                return serve_history(root, id, route);
+            }
+        }
+    }
     let get = |id: Uuid| queue::read(&queue_root.join(format!("{id}.json")));
     match route {
         Route::Health => Ok(json!({"version": 1, "stopping": false})),
         Route::Workspaces => {
             workspace::list(queue_root.parent().ok_or("missing control directory")?)
         }
-        Route::Runs => Ok(
-            json!({"runs": queue::records(queue_root)?.into_iter().map(project_latest).collect::<Result<Vec<_>>>()?}),
-        ),
+        Route::Runs => {
+            let deliveries = queue::records(queue_root)?;
+            let mut views = Vec::new();
+            if let Some(root) = legacy_root {
+                for id in crate::legacy::ids(root)? {
+                    if !deliveries.iter().any(|delivery| delivery.run_id == id) {
+                        views.push(crate::legacy::view(
+                            &crate::legacy::locate(root, id)?,
+                            id,
+                            None,
+                        )?);
+                    }
+                }
+            }
+            views.extend(
+                deliveries
+                    .into_iter()
+                    .map(project_latest)
+                    .collect::<Result<Vec<_>>>()?,
+            );
+            Ok(json!({"runs": views}))
+        }
         Route::Run(id) => project_latest(get(id)?),
         Route::GitHub(id) => crate::publication::delivery(&get(id)?.directory, id),
         Route::Attempts(id) => {
@@ -285,6 +318,27 @@ fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
             let terminal = Terminal::load(&directory, delivery.run_id)?;
             name.read(&directory, &terminal)
         }
+    }
+}
+
+fn serve_history(root: &Path, id: Uuid, route: Route) -> Result<Value> {
+    let directory = crate::legacy::locate(root, id)?;
+    match route {
+        Route::Run(_) => crate::legacy::view(&directory, id, None),
+        Route::Attempts(_) => Ok(json!({"attempts": crate::legacy::numbers(&directory)?})),
+        Route::Attempt(_, number) => crate::legacy::view(&directory, id, Some(number)),
+        Route::Artifact(_, number, name) => {
+            let name = match name {
+                ArtifactName::Report => "report.md",
+                ArtifactName::Evidence => "evidence.json",
+                ArtifactName::Specification => "spec.md",
+                ArtifactName::TestLog { .. } => {
+                    return Err("unsupported historical test log".into());
+                }
+            };
+            crate::legacy::artifact(&directory, id, number, name)
+        }
+        _ => Err("historical Run route is unavailable".into()),
     }
 }
 
@@ -403,9 +457,20 @@ fn socket_path(control: &Path) -> PathBuf {
 }
 
 pub fn service(args: &[OsString]) -> Result<()> {
-    let [control] = args else {
-        return Err("expected service CONTROL_DIR".into());
+    let (control, legacy_root) = match args {
+        [control] => (control, crate::legacy::default_root()),
+        [control, option, root] if option == "--runs-dir" => (control, Some(PathBuf::from(root))),
+        _ => return Err("expected service CONTROL_DIR [--runs-dir DIRECTORY]".into()),
     };
+    let legacy_root = legacy_root
+        .map(|path| -> Result<PathBuf> {
+            if path.try_exists()? {
+                Ok(path.canonicalize()?)
+            } else {
+                Ok(path)
+            }
+        })
+        .transpose()?;
     let control = Path::new(control);
     let queue_root = queue::queue_directory(control)?;
     let guard = File::options()
@@ -444,10 +509,12 @@ pub fn service(args: &[OsString]) -> Result<()> {
         }
         let route = Route::parse(request.url());
         match (request.method(), route) {
-            (&Method::Get, Some(route)) => match serve_route(&queue_root, route) {
-                Ok(value) => respond_json(request, 200, value),
-                Err(error) => error_response(request, 404, error),
-            },
+            (&Method::Get, Some(route)) => {
+                match serve_route(&queue_root, legacy_root.as_deref(), route) {
+                    Ok(value) => respond_json(request, 200, value),
+                    Err(error) => error_response(request, 404, error),
+                }
+            }
             (&Method::Get, None) => error_response(request, 404, "Unknown control route"),
             _ => error_response(request, 405, "Read-only control service"),
         }

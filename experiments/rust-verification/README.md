@@ -222,6 +222,21 @@ those checks at the selected base commit when `harborist.yaml` is absent.
 A present primary configuration must be readable and valid.
 The frozen copy in the Run directory is always named `harborist.yaml`.
 
+## Inspect Runs saved by Python Harborist
+
+Start the Rust control service with the existing Runs directory visible inside
+the container:
+
+```sh
+harborist-verify service CONTROL_DIR --runs-dir EXISTING_RUNS_DIR
+```
+
+The service includes saved Python Runs in browser history and reads their
+Attempt summaries, reports, specifications, and packaged evidence in place.
+It checks the lifecycle journal and verifies attribution before displaying a
+verified commit. It leaves the saved files untouched. Execution and delivery
+from a Python Run record still require the Python runtime.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -258,8 +273,8 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Existing Python Run formats, integration management, and Docker Sandboxes
-remain outside the Rust implementation.
+Executing and delivering existing Python Runs, integration management, and
+Docker Sandboxes remain outside the Rust implementation.
 
 ## Rust workflow contracts
 
