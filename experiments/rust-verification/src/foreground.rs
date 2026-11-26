@@ -12,30 +12,61 @@ use harborist_verify::{
 use serde_json::json;
 use std::{
     fs::{self, File},
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 pub fn execute(capture: Captured) -> Result<serde_json::Value> {
-    let cancellation = crate::retirement::path(&capture.directory);
     let attempt = store::admit(&capture)?;
+    let directory = capture.directory.clone();
+    execute_attempt(capture, directory, attempt, None)
+}
+
+pub struct Rework {
+    pub context: String,
+    pub specification: String,
+    pub spent_seconds: u64,
+    pub granted_seconds: u64,
+}
+
+pub fn execute_attempt(
+    capture: Captured,
+    directory: PathBuf,
+    attempt: Attempt,
+    rework: Option<Rework>,
+) -> Result<serde_json::Value> {
+    let cancellation = crate::retirement::path(&capture.directory);
+    let spent = rework.as_ref().map_or(0, |data| data.spent_seconds);
+    let granted = rework.as_ref().map_or(0, |data| data.granted_seconds);
+    let total = capture
+        .contract
+        .total_seconds
+        .checked_add(granted)
+        .ok_or("execution budget overflow")?
+        .saturating_sub(spent);
+    let candidate_ref = if rework.is_some() {
+        store::attempt_candidate_ref(capture.contract.run_id, attempt.id())
+    } else {
+        store::candidate_ref(capture.contract.run_id)
+    };
     let Captured {
-        directory,
         contract,
         config,
         intent,
+        ..
     } = capture;
     let repo = contract.repository;
     let base = contract.base_sha;
     let id = contract.run_id;
     let source_sha256 = contract.source_sha256;
-    let candidate_ref = store::candidate_ref(id);
     let agent = Codex(contract.execution.as_ref());
     let mut run = Run {
         repo: &repo,
         dir: &directory,
         cancellation: &cancellation,
-        base: &base,
+        base: attempt.start_sha(),
+        rework: rework.as_ref(),
+        spec_sha256: None,
         attempt: &attempt,
         workflow: Workflow::new(attempt.clone()),
         candidate: None,
@@ -43,7 +74,7 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
         candidate_ref: &candidate_ref,
         source_sha256: &source_sha256,
         started: Instant::now(),
-        total_seconds: contract.total_seconds,
+        total_seconds: total,
         verification_reserve_seconds: contract.verification_reserve_seconds,
         agent: &agent,
     };
@@ -88,6 +119,10 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
     let evidence = json!({
         "run_id": id,
         "base_sha": base,
+        "start_sha": attempt.start_sha(),
+        "spec_sha256": run.spec_sha256,
+        "spent_seconds": spent.saturating_add(run.started.elapsed().as_secs_f64().ceil() as u64),
+        "granted_seconds": granted,
         "attempt": attempt,
         "outcome": outcome,
         "error": error,
@@ -122,6 +157,8 @@ struct Run<'a> {
     dir: &'a Path,
     cancellation: &'a Path,
     base: &'a Sha,
+    rework: Option<&'a Rework>,
+    spec_sha256: Option<String>,
     attempt: &'a Attempt,
     workflow: Workflow,
     candidate: Option<Sha>,
@@ -178,7 +215,8 @@ impl Run<'_> {
         let seconds = if matches!(stage, Stage::Test | Stage::Review) {
             self.total_seconds
         } else {
-            self.total_seconds - self.verification_reserve_seconds
+            self.total_seconds
+                .saturating_sub(self.verification_reserve_seconds)
         };
         let left = Duration::from_secs(seconds).saturating_sub(self.started.elapsed());
         if left.as_secs() == 0 {
@@ -297,23 +335,37 @@ impl Run<'_> {
     }
 
     fn design_plan_build(&mut self, workspace: &Path, intent: &str) -> Result<BuildDecision> {
-        let output = self.invoke(
-            Stage::Design,
-            "design",
-            workspace,
-            &[("intent.md", intent)],
-            None,
-        )?;
-        require_clean(workspace, self.base.as_str())?;
-        let spec = output.artifact.ok_or("missing specification artifact")?;
-        fs::write(self.dir.join("design/spec.md"), &spec)?;
-        if let Some(stopped) = self.stop_if_requested(Stage::Design, &output.result)? {
-            return Ok(stopped);
-        }
-        Specification::parse(&spec)?;
+        let spec = if let Some(rework) = self.rework {
+            fs::create_dir(self.dir.join("design"))?;
+            store::write_new(
+                &self.dir.join("design/spec.md"),
+                rework.specification.as_bytes(),
+            )?;
+            rework.specification.clone()
+        } else {
+            let output = self.invoke(
+                Stage::Design,
+                "design",
+                workspace,
+                &[("intent.md", intent)],
+                None,
+            )?;
+            require_clean(workspace, self.base.as_str())?;
+            let spec = output.artifact.ok_or("missing specification artifact")?;
+            fs::write(self.dir.join("design/spec.md"), &spec)?;
+            if let Some(stopped) = self.stop_if_requested(Stage::Design, &output.result)? {
+                return Ok(stopped);
+            }
+            spec
+        };
+        let specification = Specification::parse(&spec)?;
+        self.spec_sha256 = Some(specification.sha256().to_owned());
         self.accept(Stage::Design, Outcome::Succeeded, None)?;
 
-        let upstream = [("intent.md", intent), ("spec.md", spec.as_str())];
+        let mut upstream = vec![("intent.md", intent), ("spec.md", spec.as_str())];
+        if let Some(rework) = self.rework {
+            upstream.push(("continuation-context.json", rework.context.as_str()));
+        }
         let output = self.invoke(Stage::Plan, "plan", workspace, &upstream, None)?;
         require_clean(workspace, self.base.as_str())?;
         let plan = output.artifact.ok_or("missing plan artifact")?;

@@ -169,6 +169,25 @@ the original Run. The original keeps its evidence and links to the replacement
 in its retirement record. A retry with the same request inputs reuses the
 replacement Run and its queue delivery.
 
+## Rework a failed candidate
+
+For a Run with `TEST_FAILED` or `CHANGES_REQUIRED`, use the Attempt UUID
+shown in its evidence:
+
+```sh
+harborist-verify rework RUN_DIR EXPECTED_ATTEMPT "Address the failing check"
+```
+
+Rework starts a new Attempt from the previous candidate and uses the
+recorded specification without repeating DESIGN. It sends prior PLAN,
+TEST, and REVIEW evidence plus the operator's feedback to PLAN. The
+candidate gets fresh TEST and REVIEW results. The earlier Attempt's
+artifacts and Git ref are preserved. Supply an optional final argument
+in seconds to increase the remaining budget.
+
+This entry point runs in the foreground. The queued and browser
+continuation paths and latest-Attempt delivery are still being migrated.
+
 ## Run the comparison
 
 From the repository root with Docker running:

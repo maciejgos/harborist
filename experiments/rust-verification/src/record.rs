@@ -20,6 +20,12 @@ pub struct VerificationInputs {
 pub struct Terminal {
     pub run_id: Uuid,
     pub base_sha: Sha,
+    pub start_sha: Option<Sha>,
+    pub spec_sha256: Option<String>,
+    pub spent_seconds: Option<u64>,
+    #[serde(default)]
+    pub granted_seconds: u64,
+    pub candidate_ref: Option<String>,
     pub attempt: Attempt,
     pub candidate: Option<Sha>,
     pub outcome: String,
@@ -34,7 +40,8 @@ impl Terminal {
         let terminal: Self = serde_json::from_str(&evidence)?;
         if terminal.run_id != run_id
             || terminal.attempt.run_id() != run_id
-            || terminal.attempt.start_sha() != &terminal.base_sha
+            || terminal.attempt.start_sha()
+                != terminal.start_sha.as_ref().unwrap_or(&terminal.base_sha)
         {
             return Err("terminal evidence identity mismatch".into());
         }

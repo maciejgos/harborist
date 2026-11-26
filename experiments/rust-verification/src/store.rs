@@ -39,6 +39,10 @@ pub struct Captured {
     pub intent: String,
 }
 
+pub fn attempt_candidate_ref(run_id: Uuid, attempt_id: Uuid) -> String {
+    format!("refs/harborist/rust-runs/{run_id}/attempts/{attempt_id}/candidate")
+}
+
 pub fn candidate_ref(run_id: Uuid) -> String {
     format!("refs/harborist/rust-runs/{run_id}/candidate")
 }
