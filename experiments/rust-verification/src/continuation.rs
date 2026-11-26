@@ -26,13 +26,13 @@ pub fn attempt_path(root: &Path, number: u32) -> PathBuf {
     }
 }
 
-pub fn latest(root: &Path) -> Result<u32> {
+pub fn numbers(root: &Path) -> Result<Vec<u32>> {
     let entries = match fs::read_dir(root.join("attempts")) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(vec![0]),
         Err(error) => return Err(error.into()),
     };
-    let mut number = 0;
+    let mut numbers = vec![0];
     for entry in entries {
         let entry = entry?;
         let name = entry.file_name();
@@ -41,12 +41,41 @@ pub fn latest(root: &Path) -> Result<u32> {
             .filter(|name| name.len() == 6)
             .and_then(|name| name.parse::<u32>().ok())
         {
-            if entry.file_type()?.is_dir() && entry.path().join("continuation.json").is_file() {
-                number = number.max(index);
+            if index > 0
+                && entry.file_type()?.is_dir()
+                && entry.path().join("continuation.json").is_file()
+            {
+                numbers.push(index);
             }
         }
     }
-    Ok(number)
+    numbers.sort_unstable();
+    Ok(numbers)
+}
+
+pub fn latest(root: &Path) -> Result<u32> {
+    Ok(numbers(root)?.last().copied().unwrap_or(0))
+}
+
+pub fn selected_ref(run_id: Uuid, attempt_id: Uuid, number: u32) -> String {
+    if number == 0 {
+        store::candidate_ref(run_id)
+    } else {
+        store::attempt_candidate_ref(run_id, attempt_id)
+    }
+}
+
+pub fn lock(root: &Path) -> Result<File> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(root.join("continuation.lock"))?;
+    // Keep the lock until the caller finishes selecting or executing an Attempt.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    Ok(file)
 }
 
 pub fn execute(args: &[OsString]) -> Result<()> {
@@ -71,15 +100,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
     }
     let capture = store::load(Path::new(directory))?;
     let root = &capture.directory;
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(root.join("continuation.lock"))?;
-    // This descriptor serializes successor admission and execution for the Run.
-    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(io::Error::last_os_error().into());
-    }
+    let _lock = lock(root)?;
     crate::retirement::cancelled(&crate::retirement::path(root))?;
     let number = latest(root)?;
     let previous = attempt_path(root, number);
@@ -96,11 +117,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
     let candidate = terminal
         .candidate
         .ok_or("rework requires a previous candidate")?;
-    let reference = if number == 0 {
-        store::candidate_ref(capture.contract.run_id)
-    } else {
-        store::attempt_candidate_ref(capture.contract.run_id, expected)
-    };
+    let reference = selected_ref(capture.contract.run_id, expected, number);
     if terminal.candidate_ref.as_deref() != Some(reference.as_str())
         || git_text(
             &capture.contract.repository,

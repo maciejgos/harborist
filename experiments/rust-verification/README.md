@@ -90,7 +90,7 @@ artifacts over `CONTROL_DIR/service.sock`. Its GET responses are accessible
 through Harborist's existing Unix-socket client. The loopback browser serves
 the existing workspace assets and forwards allowlisted GETs through that
 socket. The monitor supports the Run list, Run detail, and named report, specification, test log, and
-evidence reads for the initial Attempt. The Workspaces page saves checkout defaults. New Run accepts Markdown and
+evidence reads for the selected Attempt. The Workspaces page saves checkout defaults. New Run accepts Markdown and
 GitHub Issue sources. Tickets lists open issues and queues a selected issue to
 a saved Workspace. Start the worker to execute queued Runs. GitHub transport
 is tested using an offline `gh` fixture.
@@ -185,8 +185,10 @@ candidate gets fresh TEST and REVIEW results. The earlier Attempt's
 artifacts and Git ref are preserved. Supply an optional final argument
 in seconds to increase the remaining budget.
 
-This entry point runs in the foreground. The queued and browser
-continuation paths and latest-Attempt delivery are still being migrated.
+This entry point runs in the foreground. The Run summary defaults to the
+latest Attempt, and the browser's Attempt selector opens historical evidence.
+Candidate application uses verification and the Git ref from the latest
+Attempt. Queued and browser continuation are still being migrated.
 
 ## Run the comparison
 

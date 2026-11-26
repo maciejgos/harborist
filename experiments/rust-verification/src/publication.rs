@@ -128,7 +128,9 @@ pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Va
 }
 
 fn published(directory: &Path, id: Uuid) -> Result<Option<Receipt>> {
-    let terminal = match Terminal::load(directory, id) {
+    let number = crate::continuation::latest(directory)?;
+    let attempt_directory = crate::continuation::attempt_path(directory, number);
+    let terminal = match Terminal::load(&attempt_directory, id) {
         Ok(terminal) => terminal,
         Err(_) => return Ok(None),
     };
@@ -208,14 +210,15 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
-    let candidate = apply::verified(&run)?;
+    let _continuation = crate::continuation::lock(&run.directory)?;
+    let verified = apply::verified(&run)?;
+    let candidate = verified.candidate;
     if request.approve != candidate {
         return Err("approval must match the full VERIFIED candidate SHA".into());
     }
-    let terminal = Terminal::load(&run.directory, id)?;
     if request
         .expected_attempt
-        .is_some_and(|id| id != terminal.attempt.id())
+        .is_some_and(|id| id != verified.attempt)
     {
         return Err("approval belongs to a different Attempt".into());
     }
@@ -223,7 +226,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
         destination: destination.to_owned(),
         base: base.to_owned(),
         candidate,
-        attempt: terminal.attempt.id(),
+        attempt: verified.attempt,
     };
     let pending_path = directory.join("prepared.json");
     let receipt_path = directory.join(format!("published-{}.json", approval.attempt));
@@ -298,7 +301,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     let pull = match pull {
         Some(pull) => pull,
         None => {
-            let review = read_artifact(&run.directory, "review/review.md")?;
+            let review = read_artifact(&verified.directory, "review/review.md")?;
             let body = format!(
                 "body=<!-- harborist-publication:{} -->\n\n## Request\n\n{}\n\nBase: `{}`\n\nCandidate: `{}`\n\n## REVIEW\n\n{}",
                 approval.attempt,

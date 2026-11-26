@@ -51,7 +51,13 @@ const ASSETS: [(&str, &str, &[u8]); 4] = [
     ),
 ];
 
-fn project(delivery: Delivery) -> Value {
+fn project_latest(delivery: Delivery) -> Result<Value> {
+    let number = crate::continuation::latest(&delivery.directory)?;
+    Ok(project(delivery, number))
+}
+
+fn project(delivery: Delivery, number: u32) -> Value {
+    let attempt = crate::continuation::attempt_path(&delivery.directory, number);
     let state = match delivery.state {
         State::Queued => "QUEUED",
         State::Running => "RUNNING",
@@ -63,7 +69,7 @@ fn project(delivery: Delivery) -> Value {
     let mut view = json!({
         "version": 1, "source": "service", "state": state,
         "submission": {"run_id": delivery.run_id, "runs_root": delivery.directory.parent()},
-        "stages": {}, "stage_errors": {}, "attempt_number": 0, "package_available": false,
+        "stages": {}, "stage_errors": {}, "attempt_number": number, "package_available": false,
         "artifacts": {}, "run": null, "error": delivery.error,
     });
     if let Ok(raw) = read_artifact(&delivery.directory, "contract.json") {
@@ -102,8 +108,9 @@ fn project(delivery: Delivery) -> Value {
             }
         }
     }
-    if delivery.state == State::Finished || delivery.directory.join("evidence.json").is_file() {
-        match Terminal::load(&delivery.directory, delivery.run_id) {
+    if attempt.join("evidence.json").is_file() || (number == 0 && delivery.state == State::Finished)
+    {
+        match Terminal::load(&attempt, delivery.run_id) {
             Ok(terminal) => {
                 let lifecycle = match terminal.outcome.as_str() {
                     "FAILED" => "FAILED",
@@ -135,8 +142,8 @@ fn project(delivery: Delivery) -> Value {
                 view["attempt_id"] = json!(terminal.attempt.id());
                 view["package_available"] = json!(true);
                 view["artifacts"] = json!({
-                    "report.md": delivery.directory.join("report.md"),
-                    "evidence.json": delivery.directory.join("evidence.json"),
+                    "report.md": attempt.join("report.md"),
+                    "evidence.json": attempt.join("evidence.json"),
                 });
             }
             Err(error) => view["run_error"] = json!(error.to_string()),
@@ -152,8 +159,8 @@ enum Route {
     Run(Uuid),
     GitHub(Uuid),
     Attempts(Uuid),
-    Attempt(Uuid),
-    Artifact(Uuid, ArtifactName),
+    Attempt(Uuid, u32),
+    Artifact(Uuid, Option<u32>, ArtifactName),
 }
 
 enum ArtifactName {
@@ -188,7 +195,7 @@ impl ArtifactName {
         }
     }
 
-    fn read(self, delivery: &Delivery, terminal: &Terminal) -> Result<Value> {
+    fn read(self, directory: &Path, terminal: &Terminal) -> Result<Value> {
         let (name, path) = match self {
             Self::Report => ("report.md".into(), "report.md".into()),
             Self::Evidence => ("evidence.json".into(), "evidence.json".into()),
@@ -207,7 +214,7 @@ impl ArtifactName {
                 )
             }
         };
-        Ok(json!({"name": name, "content": read_artifact(&delivery.directory, &path)?}))
+        Ok(json!({"name": name, "content": read_artifact(directory, &path)?}))
     }
 }
 
@@ -221,13 +228,18 @@ impl Route {
             ["", "runs", id] => Some(Self::Run(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "github"] => Some(Self::GitHub(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "attempts"] => Some(Self::Attempts(Uuid::parse_str(id).ok()?)),
-            ["", "runs", id, "attempts", "0"] => Some(Self::Attempt(Uuid::parse_str(id).ok()?)),
+            ["", "runs", id, "attempts", number] => Some(Self::Attempt(
+                Uuid::parse_str(id).ok()?,
+                number.parse().ok()?,
+            )),
             ["", "runs", id, "artifacts", name] => Some(Self::Artifact(
                 Uuid::parse_str(id).ok()?,
+                None,
                 ArtifactName::parse(name, false)?,
             )),
-            ["", "runs", id, "attempts", "0", "artifacts", name] => Some(Self::Artifact(
+            ["", "runs", id, "attempts", number, "artifacts", name] => Some(Self::Artifact(
                 Uuid::parse_str(id).ok()?,
+                Some(number.parse().ok()?),
                 ArtifactName::parse(name, true)?,
             )),
             _ => None,
@@ -243,27 +255,37 @@ fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
             workspace::list(queue_root.parent().ok_or("missing control directory")?)
         }
         Route::Runs => Ok(
-            json!({"runs": queue::records(queue_root)?.into_iter().map(project).collect::<Vec<_>>()}),
+            json!({"runs": queue::records(queue_root)?.into_iter().map(project_latest).collect::<Result<Vec<_>>>()?}),
         ),
-        Route::Run(id) => Ok(project(get(id)?)),
+        Route::Run(id) => project_latest(get(id)?),
         Route::GitHub(id) => crate::publication::delivery(&get(id)?.directory, id),
         Route::Attempts(id) => {
-            get(id)?;
-            Ok(json!({"attempts": [0]}))
+            Ok(json!({"attempts": crate::continuation::numbers(&get(id)?.directory)?}))
         }
-        Route::Attempt(id) => {
+        Route::Attempt(id, number) => {
             let delivery = get(id)?;
-            let specification = read_artifact(&delivery.directory, "design/spec.md").is_ok();
-            let mut view = project(delivery);
+            let directory = select_attempt(&delivery.directory, Some(number))?;
+            let specification = read_artifact(&directory, "design/spec.md").is_ok();
+            let mut view = project(delivery, number);
             view["has_specification"] = json!(specification);
             Ok(view)
         }
-        Route::Artifact(id, name) => {
+        Route::Artifact(id, number, name) => {
             let delivery = get(id)?;
-            let terminal = Terminal::load(&delivery.directory, delivery.run_id)?;
-            name.read(&delivery, &terminal)
+            let directory = select_attempt(&delivery.directory, number)?;
+            let terminal = Terminal::load(&directory, delivery.run_id)?;
+            name.read(&directory, &terminal)
         }
     }
+}
+
+fn select_attempt(root: &Path, number: Option<u32>) -> Result<PathBuf> {
+    let numbers = crate::continuation::numbers(root)?;
+    let selected = number.unwrap_or_else(|| numbers.last().copied().unwrap_or(0));
+    if !numbers.contains(&selected) {
+        return Err("Attempt does not exist".into());
+    }
+    Ok(crate::continuation::attempt_path(root, selected))
 }
 
 fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {

@@ -48,15 +48,24 @@ fn exact_commit(repo: &Path, sha: &Sha) -> Result<()> {
     Ok(())
 }
 
-pub fn verified(run: &Captured) -> Result<Sha> {
+pub struct Verified {
+    pub candidate: Sha,
+    pub candidate_ref: String,
+    pub directory: PathBuf,
+    pub attempt: Uuid,
+}
+
+pub fn verified(run: &Captured) -> Result<Verified> {
     crate::retirement::cancelled(&crate::retirement::path(&run.directory))?;
     let contract = &run.contract;
-    let terminal = Terminal::load(&run.directory, contract.run_id)?;
+    let number = crate::continuation::latest(&run.directory)?;
+    let directory = crate::continuation::attempt_path(&run.directory, number);
+    let terminal = Terminal::load(&directory, contract.run_id)?;
     if terminal.outcome != "VERIFIED" || terminal.base_sha != contract.base_sha {
         return Err("application requires a VERIFIED Run for this base".into());
     }
     let attempt: harborist_verify::workflow::Attempt =
-        serde_json::from_str(&read_artifact(&run.directory, "attempt.json")?)?;
+        serde_json::from_str(&read_artifact(&directory, "attempt.json")?)?;
     if attempt != terminal.attempt {
         return Err("packaged Attempt differs from the execution record".into());
     }
@@ -64,7 +73,10 @@ pub fn verified(run: &Captured) -> Result<Sha> {
     let repo = &contract.repository;
     exact_commit(repo, &contract.base_sha)?;
     exact_commit(repo, &candidate)?;
-    let candidate_ref = store::candidate_ref(contract.run_id);
+    let candidate_ref = crate::continuation::selected_ref(contract.run_id, attempt.id(), number);
+    if terminal.candidate_ref.as_deref() != Some(candidate_ref.as_str()) {
+        return Err("packaged candidate ref does not match the selected Attempt".into());
+    }
     if git_text(repo, &["rev-parse", "--verify", &candidate_ref])? != candidate.as_str() {
         return Err("Run-owned candidate ref does not match the verified commit".into());
     }
@@ -81,7 +93,7 @@ pub fn verified(run: &Captured) -> Result<Sha> {
     let inputs = terminal
         .verification_inputs
         .ok_or("Run lacks digests for application evidence")?;
-    let raw = read_artifact(&run.directory, "test/evidence.json")?;
+    let raw = read_artifact(&directory, "test/evidence.json")?;
     if store::digest(raw.as_bytes()) != inputs.test_sha256 {
         return Err("TEST evidence digest does not match the verified Run".into());
     }
@@ -106,8 +118,8 @@ pub fn verified(run: &Captured) -> Result<Sha> {
     {
         return Err("TEST evidence does not prove every frozen check passed".into());
     }
-    let spec = Specification::parse(&read_artifact(&run.directory, "design/spec.md")?)?;
-    let raw = read_artifact(&run.directory, "review/final.json")?;
+    let spec = Specification::parse(&read_artifact(&directory, "design/spec.md")?)?;
+    let raw = read_artifact(&directory, "review/final.json")?;
     if spec.sha256() != inputs.spec_sha256 || store::digest(raw.as_bytes()) != inputs.review_sha256
     {
         return Err("specification or REVIEW digest does not match the verified Run".into());
@@ -121,7 +133,12 @@ pub fn verified(run: &Captured) -> Result<Sha> {
     {
         return Err("REVIEW evidence does not prove every criterion passed".into());
     }
-    Ok(candidate)
+    Ok(Verified {
+        candidate,
+        candidate_ref,
+        directory,
+        attempt: attempt.id(),
+    })
 }
 
 fn branch_sha(repo: &Path, branch: &str, reference: &str) -> Result<Sha> {
@@ -340,11 +357,13 @@ pub fn execute(args: &[OsString]) -> Result<()> {
     };
     let branch = branch.to_str().ok_or("expected a UTF-8 branch name")?;
     let captured = store::load(Path::new(directory))?;
-    let candidate = verified(&captured)?;
+    let _continuation = crate::continuation::lock(&captured.directory)?;
+    let verified = verified(&captured)?;
+    let candidate = verified.candidate;
     let repo = &captured.contract.repository;
     let reference = format!("refs/heads/{branch}");
     let key = store::digest(branch.as_bytes());
-    let directory = captured.directory.join("applications");
+    let directory = verified.directory.join("applications");
     fs::create_dir_all(&directory)?;
     let lock = OpenOptions::new()
         .create(true)
@@ -406,8 +425,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         } else {
             publish(&directory, &prepared, &receipt)?;
         }
-        let candidate_ref = store::candidate_ref(captured.contract.run_id);
-        advance(repo, &reference, &candidate_ref, &previous, &candidate)
+        advance(repo, &reference, &verified.candidate_ref, &previous, &candidate)
             .map_err(|error| format!("Cannot advance target: {error}. Inspect the retained checkout and prepared receipt."))?;
     }
     if branch_sha(repo, branch, &reference)? != candidate {
