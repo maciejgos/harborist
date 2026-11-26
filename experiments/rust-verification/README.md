@@ -47,6 +47,17 @@ and delivery integrations still run in Python. Legacy `shipyard.yaml` loading,
 Python YAML edge cases, worker cancellation, and Docker Sandboxes are outside
 the comparison.
 
+## Rust workflow contracts
+
+The Rust library also implements canonical receipt routing and structured
+REVIEW validation. Routing rejects out-of-order receipts, binds TEST and
+REVIEW to the BUILD candidate, and routes directly to PACKAGE after a mandatory
+check failure. REVIEW validation extracts explicit criterion declarations from
+the specification, binds REVIEW to the expected candidate, and requires
+exact criterion coverage. A REVIEW receipt does not by itself grant
+verification. These contracts run in the Rust test suite and are not yet
+connected to an executable full workflow.
+
 ## Measured result
 
 Docker on Linux ARM64, CPython 3.14.10 and Rust 1.100.0 release build.

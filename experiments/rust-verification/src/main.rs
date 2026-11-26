@@ -1,5 +1,6 @@
 mod process;
 
+use harborist_verify::workflow::Sha;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_yaml::Value;
 use sha2::{Digest, Sha256};
@@ -73,7 +74,7 @@ struct CheckResult {
 
 #[derive(Serialize)]
 struct Evidence {
-    candidate: String,
+    candidate: Sha,
     source_sha256: String,
     passed: bool,
     checks: Vec<CheckResult>,
@@ -138,16 +139,8 @@ fn git(repo: &Path, args: &[&OsStr]) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
-fn commit(value: &OsStr) -> Result<&str> {
-    let value = value.to_str().ok_or("expected a Git SHA")?;
-    if !matches!(value.len(), 40 | 64)
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err("expected a full lowercase Git SHA".into());
-    }
-    Ok(value)
+fn commit(value: &OsStr) -> Result<Sha> {
+    Ok(value.to_str().ok_or("expected a Git SHA")?.parse()?)
 }
 
 fn execute() -> Result<()> {
@@ -173,7 +166,7 @@ fn execute() -> Result<()> {
             format!("{candidate}^{{commit}}").as_ref(),
         ],
     )?;
-    if String::from_utf8(candidate_commit)?.trim_end() != candidate {
+    if String::from_utf8(candidate_commit)?.trim_end() != candidate.as_str() {
         return Err("expected the exact candidate commit SHA".into());
     }
     match fs::symlink_metadata(workspace) {
@@ -193,7 +186,7 @@ fn execute() -> Result<()> {
             "add".as_ref(),
             "--detach".as_ref(),
             workspace.as_os_str(),
-            candidate.as_ref(),
+            candidate.as_str().as_ref(),
         ],
     )?;
     let checks = run_checks(config, workspace, logs);
@@ -209,7 +202,7 @@ fn execute() -> Result<()> {
     cleanup?;
     let checks = checks?;
     let evidence = Evidence {
-        candidate: candidate.to_owned(),
+        candidate,
         source_sha256: format!("{:x}", Sha256::digest(source)),
         passed: checks
             .iter()
