@@ -12,14 +12,14 @@ use std::{
 };
 use uuid::Uuid;
 
-const VERSION: u32 = 1;
+pub const VERSION: u32 = 1;
 pub const TOTAL_SECONDS: u64 = 1800;
 pub const VERIFICATION_RESERVE_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Contract {
-    version: u32,
+    pub version: u32,
     pub run_id: Uuid,
     pub repository: PathBuf,
     pub base_sha: Sha,
@@ -119,15 +119,7 @@ pub fn capture_to(request: Capture<'_>) -> Result<Captured> {
     } = request;
     validate_budget(total_seconds, verification_reserve_seconds)?;
     let repo = repository(path)?;
-    let parent = directory
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."))
-        .canonicalize()?;
-    let directory = parent.join(directory.file_name().ok_or("missing Run directory name")?);
-    if directory.starts_with(&repo) {
-        return Err("Run directory must be outside the source checkout".into());
-    }
+    let directory = new_directory(directory, &repo)?;
     validate_base(&repo, &base_sha)?;
     let frozen = crate::verification_source(&repo, &base_sha)?;
     let config = Config::parse(&frozen)?;
@@ -167,26 +159,44 @@ pub fn capture_to(request: Capture<'_>) -> Result<Captured> {
         verification_reserve_seconds,
         execution,
     };
-    fs::create_dir(&directory)?;
-    write_new(&directory.join("intent.md"), intent.as_bytes())?;
-    write_new(&directory.join("harborist.yaml"), &frozen)?;
-    // Publish the contract only after its referenced inputs are complete.
-    write_new(
-        &directory.join(".contract.pending"),
-        &serde_json::to_vec_pretty(&contract)?,
-    )?;
-    fs::rename(
-        directory.join(".contract.pending"),
-        directory.join("contract.json"),
-    )?;
-    File::open(&directory)?.sync_all()?;
-    File::open(parent)?.sync_all()?;
+    save(&directory, &contract, &intent, &frozen)?;
     Ok(Captured {
         directory,
         contract,
         config,
         intent,
     })
+}
+
+pub fn new_directory(directory: &Path, repo: &Path) -> Result<PathBuf> {
+    let parent = directory
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()?;
+    let directory = parent.join(directory.file_name().ok_or("missing Run directory name")?);
+    if directory.starts_with(repo) {
+        return Err("Run directory must be outside the source checkout".into());
+    }
+    Ok(directory)
+}
+
+pub fn save(directory: &Path, contract: &Contract, intent: &str, frozen: &[u8]) -> Result<()> {
+    fs::create_dir(directory)?;
+    write_new(&directory.join("intent.md"), intent.as_bytes())?;
+    write_new(&directory.join("harborist.yaml"), frozen)?;
+    // Publish the contract only after its referenced inputs are complete.
+    write_new(
+        &directory.join(".contract.pending"),
+        &serde_json::to_vec_pretty(contract)?,
+    )?;
+    fs::rename(
+        directory.join(".contract.pending"),
+        directory.join("contract.json"),
+    )?;
+    File::open(directory)?.sync_all()?;
+    File::open(directory.parent().ok_or("missing Run parent")?)?.sync_all()?;
+    Ok(())
 }
 
 pub fn load(path: &Path) -> Result<Captured> {

@@ -176,6 +176,43 @@ struct Skill {
     stages: Vec<Stage>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyExecution {
+    playbook: Asset,
+    skills: Vec<Asset>,
+    agent_profile: Profile,
+    sandbox_policy: serde_json::Value,
+    budget: LegacyBudget,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyBudget {
+    total_seconds: u64,
+    verification_reserve_seconds: u64,
+}
+
+impl LegacyExecution {
+    pub fn trusted_local(self) -> Result<(Execution, u64, u64)> {
+        if self.sandbox_policy != "trusted-local" {
+            return Err(
+                "importing a Docker Sandboxes Run requires the Rust sandbox runtime".into(),
+            );
+        }
+        let total = self.budget.total_seconds;
+        let reserve = self.budget.verification_reserve_seconds;
+        crate::store::validate_budget(total, reserve)?;
+        let execution = Execution {
+            profile: self.agent_profile,
+            playbook: self.playbook,
+            skills: self.skills,
+        };
+        execution.validate()?;
+        Ok((execution, total, reserve))
+    }
+}
+
 impl Execution {
     pub fn load(repository: &Path, explicit: Option<&Path>) -> Result<Option<Self>> {
         let settings = repository.join("harborist.settings.yaml");

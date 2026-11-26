@@ -31,10 +31,13 @@ def exercise(root: Path) -> None:
     runs, control = root / "runs", root / "control"
     env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
            "INVOCATIONS": str(root / "invocations")}
+    args = [
+        "--json", "--repo", str(repo), "--ref", base, "--settings", str(settings),
+        "--runs-dir", str(runs),
+    ]
     result = subprocess.run([
         sys.executable, "-m", "harborist", "run", f"file:{intent}", "--foreground",
-        "--json", "--repo", str(repo), "--ref", base, "--settings", str(settings),
-        "--runs-dir", str(runs), "--workspace", str(root / "workspace"),
+        *args, "--workspace", str(root / "workspace"),
     ], env=env, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     directory = next(runs.iterdir())
@@ -64,6 +67,28 @@ def exercise(root: Path) -> None:
         finally:
             service.terminate()
     assert (directory / "run.json").read_bytes() == before
+
+
+    rejected = subprocess.run(
+        [binary, "import-python", directory, root / "rejected"], env=env,
+        capture_output=True, text=True, check=False,
+    )
+    assert rejected.returncode != 0 and not (root / "rejected").exists()
+    subprocess.check_call(
+        [sys.executable, "-m", "harborist", "intake", f"file:{intent}", *args], env=env,
+    )
+    original = next(path for path in runs.iterdir() if path != directory)
+    contract_bytes = (original / "contract.json").read_bytes()
+    settings.unlink()
+    intent.unlink()
+    exported = root / "imported"
+    subprocess.check_call([binary, "import-python", original, exported], env=env)
+    outcome = json.loads(subprocess.check_output([binary, "execute", exported], env=env))
+    expected = json.loads(contract_bytes)
+    assert outcome["outcome"] == "VERIFIED" and outcome["run_id"] == expected["run_id"]
+    assert outcome["base_sha"] == expected["base_sha"]
+    assert (original / "contract.json").read_bytes() == contract_bytes
+    assert json.loads((original / "run.json").read_text())["lifecycle"] == "CREATED"
 
 
 if __name__ == "__main__":

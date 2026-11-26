@@ -29,14 +29,14 @@ use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
     version: Value,
     checks: Vec<Check>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Check {
     #[serde(deserialize_with = "strict_string")]
@@ -252,6 +252,7 @@ fn execute() -> Result<()> {
     if let [command, args @ ..] = args.as_slice() {
         match command.to_str() {
             Some("run") => return run_foreground(store::capture(args)?),
+            Some("import-python") => return legacy::import(args),
             Some("intake") => {
                 let capture = store::capture(args)?;
                 println!("{}", serde_json::to_string(&capture.contract)?);

@@ -234,8 +234,21 @@ harborist-verify service CONTROL_DIR --runs-dir EXISTING_RUNS_DIR
 The service includes saved Python Runs in browser history and reads their
 Attempt summaries, reports, specifications, and packaged evidence in place.
 It checks the lifecycle journal and verifies attribution before displaying a
-verified commit. It leaves the saved files untouched. Execution and delivery
-from a Python Run record still require the Python runtime.
+verified commit. It leaves the saved files untouched.
+
+To transfer an unstarted trusted-local Run, stop the Python executor for
+that Run, then use a fresh directory for the Rust copy:
+
+```sh
+harborist-verify import-python PYTHON_RUN_DIR NEW_RUST_RUN_DIR
+harborist-verify execute NEW_RUST_RUN_DIR
+```
+
+The import keeps the Run UUID, intent, exact base, verification checks,
+budget, and captured methodology and profile. It verifies the saved Git
+context and checks the verification bytes at the frozen base revision.
+The original remains inspectable in Python format. Already-started
+Python Runs are not eligible for this import.
 
 ## Run the comparison
 
@@ -273,8 +286,9 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Executing and delivering existing Python Runs, integration management, and
-Docker Sandboxes remain outside the Rust implementation.
+Continuing started Python Runs, delivering candidates from existing Python
+evidence, integration management, and Docker Sandboxes remain outside the
+Rust implementation.
 
 ## Rust workflow contracts
 

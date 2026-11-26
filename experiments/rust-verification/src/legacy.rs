@@ -412,3 +412,89 @@ pub fn default_root() -> Option<PathBuf> {
         .join("runs"),
     )
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedContext {
+    version: u32,
+    run_id: Uuid,
+    repository: PathBuf,
+    runs_root: PathBuf,
+}
+
+pub fn import(args: &[std::ffi::OsString]) -> Result<()> {
+    let [source, destination] = args else {
+        return Err("expected import-python PYTHON_RUN_DIR NEW_RUST_RUN_DIR".into());
+    };
+    let source = Path::new(source).canonicalize()?;
+    let root = source.parent().ok_or("historical Run has no root")?;
+    let id = Uuid::parse_str(
+        source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("historical Run has no UUID directory name")?,
+    )?;
+    locate(root, id)?;
+    let state = snapshot(&source, id)?;
+    if state.lifecycle != Lifecycle::Created
+        || numbers(&source)? != [0]
+        || source.join("attempt.json").try_exists()?
+        || root
+            .join("retirements")
+            .join(format!("{id}.json"))
+            .try_exists()?
+    {
+        return Err(
+            "only unstarted and unretired Python Runs can be imported for execution".into(),
+        );
+    }
+    let view = view(&source, id, Some(0))?;
+    if view["run"]["lifecycle"] != "CREATED" {
+        return Err(format!("historical capture is invalid: {}", view["run_error"]).into());
+    }
+    let raw = read_artifact(&source, "contract.json")?;
+    let contract: Contract = serde_json::from_str(&raw)?;
+    let execution: crate::settings::LegacyExecution =
+        serde_json::from_value(serde_json::from_str::<Value>(&raw)?["execution"].clone())?;
+    let (execution, total_seconds, verification_reserve_seconds) = execution.trusted_local()?;
+    let context: SavedContext =
+        serde_json::from_str(&read_artifact(&source, "execution-context.json")?)?;
+    if context.version != 1
+        || context.run_id != id
+        || context.runs_root != root
+        || !context.repository.is_absolute()
+        || crate::store::repository(&context.repository)? != context.repository
+    {
+        return Err("historical execution context does not match the Run or repository".into());
+    }
+    let frozen = crate::verification_source(&context.repository, &contract.base_sha)?;
+    let source_sha256 = digest(&frozen);
+    if contract.verification["source_sha256"] != source_sha256
+        || contract.verification["config"] != serde_json::to_value(crate::Config::parse(&frozen)?)?
+    {
+        return Err("historical verification differs from the saved base commit".into());
+    }
+    if contract.intent.markdown.trim().is_empty() {
+        return Err("imported intent must contain text".into());
+    }
+    let directory = crate::store::new_directory(Path::new(destination), &context.repository)?;
+    if directory.starts_with(&source) {
+        return Err("import destination must be outside the original Run".into());
+    }
+    let converted = crate::store::Contract {
+        version: crate::store::VERSION,
+        run_id: id,
+        repository: context.repository,
+        base_sha: contract.base_sha,
+        intent_sha256: contract.intent.artifact.sha256,
+        source_ref: Some(contract.intent.source_ref),
+        source_url: contract.intent.source_url,
+        source_sha256,
+        total_seconds,
+        verification_reserve_seconds,
+        execution: Some(execution),
+    };
+    crate::store::save(&directory, &converted, &contract.intent.markdown, &frozen)?;
+    println!("{}", serde_json::to_string(&converted)?);
+    Ok(())
+}
