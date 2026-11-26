@@ -36,6 +36,8 @@ pub struct Delivery {
     pub state: State,
     pub error: Option<String>,
     pub continuation: Option<continuation::Request>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    python_source: Option<PathBuf>,
 }
 
 pub fn queue_directory(root: &Path) -> Result<PathBuf> {
@@ -84,6 +86,27 @@ pub fn submit(args: &[OsString]) -> Result<()> {
     Ok(())
 }
 
+pub fn submit_python_continuation(args: &[OsString]) -> Result<()> {
+    let [control, args @ ..] = args else {
+        return Err("expected submit-python-continuation CONTROL_DIR ACTION PYTHON_RUN_DIR NEW_RUST_RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]".into());
+    };
+    let (source, destination, request) = crate::legacy::continuation_arguments(args)?;
+    let prepared = crate::legacy::prepare_continuation(&source, &destination, &request)?;
+    let queue = queue_directory(Path::new(control))?;
+    let record = Delivery {
+        run_id: prepared.run_id(),
+        directory: prepared.destination.clone(),
+        submitted_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        state: State::Queued,
+        error: None,
+        continuation: Some(request),
+        python_source: Some(source),
+    };
+    persist(&queue, &record, false)?;
+    println!("{}", serde_json::to_string(&record)?);
+    Ok(())
+}
+
 pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
     let queue = queue_directory(control)?;
     let path = queue.join(format!("{}.json", run.contract.run_id));
@@ -94,6 +117,7 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
         state: State::Queued,
         error: None,
         continuation: None,
+        python_source: None,
     };
     let saved = match persist(&queue, &record, false) {
         Ok(()) => record,
@@ -180,6 +204,7 @@ pub fn continue_run(control: &Path, id: Uuid, body: &[u8]) -> Result<serde_json:
         }
     }
     record.continuation = Some(request);
+    record.python_source = None;
     record.state = State::Queued;
     record.error = None;
     record.submitted_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
@@ -221,6 +246,29 @@ fn lock_worker(queue: &Path) -> Result<File> {
         return Err(io::Error::last_os_error().into());
     }
     Ok(file)
+}
+
+fn execute(record: &Delivery) -> Result<serde_json::Value> {
+    if let Some(source) = &record.python_source {
+        let request = record
+            .continuation
+            .as_ref()
+            .ok_or("historical delivery lacks continuation request")?;
+        let prepared = crate::legacy::prepare_continuation(source, &record.directory, request)?;
+        if prepared.run_id() != record.run_id {
+            return Err("historical Run ID does not match delivery".into());
+        }
+        return prepared.execute(request);
+    }
+    let capture = store::load(&record.directory)?;
+    if capture.contract.run_id != record.run_id {
+        return Err("saved Run ID does not match delivery".into());
+    }
+    if let Some(request) = &record.continuation {
+        continuation::run(capture, request)
+    } else {
+        foreground::execute(capture)
+    }
 }
 
 pub fn worker(args: &[OsString]) -> Result<()> {
@@ -266,16 +314,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             record.state = State::Running;
             persist(&queue, &record, true)?;
 
-            let execution = store::load(&record.directory).and_then(|capture| {
-                if capture.contract.run_id != record.run_id {
-                    return Err("saved Run ID does not match delivery".into());
-                }
-                if let Some(request) = &record.continuation {
-                    continuation::run(capture, request)
-                } else {
-                    foreground::execute(capture)
-                }
-            });
+            let execution = execute(&record);
             match execution {
                 _ if marker.try_exists()? => record.state = State::Cancelled,
                 Ok(_) => record.state = State::Finished,

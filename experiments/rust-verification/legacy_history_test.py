@@ -233,6 +233,21 @@ else:
     assert recovered["outcome"] == "VERIFIED"
     assert recovered["attempt"]["start_sha"] == failure["attempt"]["start_sha"]
 
+    queue_control = root / "historical-control"
+    queued_destination = root / "queued-historical"
+    queued = json.loads(subprocess.check_output([
+        binary, "submit-python-continuation", queue_control, "rework", historical,
+        queued_destination, failed["attempt"]["attempt_id"], "Address the failed check",
+    ], env=env))
+    assert queued["state"] == "queued"
+    assert not queued_destination.exists()
+    subprocess.check_call([binary, "worker", queue_control, "--once"], env=env)
+    queued_package = queued_destination / "attempts/000001/evidence.json"
+    assert json.loads(queued_package.read_bytes())["outcome"] == "VERIFIED"
+    delivery = queue_control / "queue" / f"{failed['run']['run_id']}.json"
+    assert json.loads(delivery.read_bytes())["state"] == "finished"
+    assert evidence_path.read_bytes() == original_evidence
+
     evidence_path.unlink()
     interrupted_destination = root / "continued-interruption"
     interrupted_command = [

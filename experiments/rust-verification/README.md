@@ -280,6 +280,16 @@ requested changes. For an interruption, grant enough additional seconds to
 exceed the frozen verification reserve. Rust charges the previous allowance
 in full and reuses DESIGN only when its saved artifacts match the capture.
 
+To enqueue the first Rust Attempt on the local worker, use its control directory:
+
+```sh
+harborist-verify submit-python-continuation CONTROL_DIR rework PYTHON_RUN_DIR NEW_RUST_RUN_DIR EXPECTED_ATTEMPT "Address the failing check"
+```
+
+Use a Run ID that is available in that worker's queue. The worker checks the
+predecessor again when it claims the job and creates the destination at that
+point. Keep the Python evidence available until the worker claims the job.
+
 ## Run the comparison
 
 From the repository root with Docker running:

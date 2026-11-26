@@ -782,7 +782,15 @@ fn interrupted_spec(
 }
 
 pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
-    use std::os::fd::AsRawFd;
+    let (original, destination, request) = continuation_arguments(args)?;
+    continuation::print_result(
+        prepare_continuation(&original, &destination, &request)?.execute(&request)?,
+    )
+}
+
+pub fn continuation_arguments(
+    args: &[std::ffi::OsString],
+) -> Result<(PathBuf, PathBuf, continuation::Request)> {
     let (action, original, destination, expected, feedback, extra) = match args {
         [action, original, destination, expected, feedback, extra @ ..] if extra.len() <= 1 =>
             (action, original, destination, expected, feedback, extra),
@@ -792,6 +800,53 @@ pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
     let mut parsed = vec![original.clone(), expected.clone(), feedback.clone()];
     parsed.extend_from_slice(extra);
     let (original, request) = continuation::parse(action, &parsed)?;
+    Ok((
+        original.canonicalize()?,
+        PathBuf::from(destination),
+        request,
+    ))
+}
+
+pub struct HistoricalContinuation {
+    _lock: fs::File,
+    capture: crate::store::Captured,
+    frozen: Vec<u8>,
+    pub destination: PathBuf,
+    number: u32,
+    start: Sha,
+    rework: crate::foreground::Rework,
+}
+
+impl HistoricalContinuation {
+    pub fn run_id(&self) -> Uuid {
+        self.capture.contract.run_id
+    }
+
+    pub fn execute(self, request: &continuation::Request) -> Result<Value> {
+        let Self {
+            _lock,
+            mut capture,
+            frozen,
+            destination,
+            number,
+            start,
+            rework,
+        } = self;
+        crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
+        capture.directory = destination;
+        let _destination_lock = continuation::lock(&capture.directory)?;
+        let directory = continuation::attempt_path(&capture.directory, number);
+        continuation::execute_prepared(capture, directory, start, rework, request)
+    }
+}
+
+pub fn prepare_continuation(
+    original: &Path,
+    destination: &Path,
+    request: &continuation::Request,
+) -> Result<HistoricalContinuation> {
+    use std::os::fd::AsRawFd;
+    let action = request.action.as_str();
     let original = original.canonicalize()?;
     let parent = original.parent().ok_or("historical Run has no root")?;
     let id = Uuid::parse_str(
@@ -814,7 +869,7 @@ pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
         return Err("historical Run is retired".into());
     }
     let (number, directory) = select(&original, None)?;
-    let (mut capture, frozen) = execution_capture(&original, id)?;
+    let (capture, frozen) = execution_capture(&original, id)?;
     let contract: Value = serde_json::from_str(&read_artifact(&original, "contract.json")?)?;
     let attempt: Attempt = serde_json::from_str(&read_artifact(&directory, "attempt.json")?)?;
     if attempt.id() != request.expected_attempt_id
@@ -976,28 +1031,25 @@ pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
     if destination.starts_with(&original) {
         return Err("continuation destination must be outside the original Run".into());
     }
-    crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
-    capture.directory = destination;
-    let _destination_lock = continuation::lock(&capture.directory)?;
-    let attempt_directory = continuation::attempt_path(
-        &capture.directory,
-        number
+    if destination.symlink_metadata().is_ok() {
+        return Err("historical continuation destination already exists".into());
+    }
+    Ok(HistoricalContinuation {
+        _lock: lock,
+        capture,
+        frozen,
+        destination,
+        number: number
             .checked_add(1)
             .ok_or("historical Attempt number overflow")?,
-    );
-    let result = continuation::execute_prepared(
-        capture,
-        attempt_directory,
         start,
-        crate::foreground::Rework {
+        rework: crate::foreground::Rework {
             context,
             specification: spec,
             spent_seconds,
             granted_seconds,
         },
-        &request,
-    )?;
-    continuation::print_result(result)
+    })
 }
 
 pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> {
