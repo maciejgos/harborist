@@ -80,6 +80,15 @@ the worker and browser UI. The worker can reach the helper via Docker
 Desktop. Only the worker receives its deployment token. Docker and Codex
 credentials stay in the host's Docker Sandboxes credential store.
 
+The service image includes Git and GitHub CLI. Run
+`./deploy/harborist github-login` after starting the stack to sign in for
+GitHub Issue intake and PR publication. The service stores its GitHub CLI
+configuration in its persistent state volume. GitHub CLI may store the token
+in a plaintext configuration file when a credential store is unavailable.
+Protect the state volume and its backups. Git uses the same credentials for
+HTTPS operations against `github.com`. For private GitHub repositories, sign in
+first and use an HTTPS clone URL. Codex runs in the pinned Docker Sandboxes kit.
+
 Keep target repositories in the worker's persistent data directory. For
 example, clone a public repository there with:
 

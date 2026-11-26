@@ -222,7 +222,10 @@ runtime through an authenticated host-loopback helper. The helper allowlists
 `sbx` commands and checks deployment ownership against the live sandbox UUID.
 Bundle and artifact bytes travel through guest stdio. The helper accepts no host
 paths, and the containers receive no Docker Engine socket. The host operator
-owns Docker Sandboxes authentication and policy. The current deployment script requires
+owns Docker Sandboxes authentication and policy. Codex runs in the sandbox kit.
+Git and GitHub CLI run in the worker container. GitHub CLI configuration lives
+in the worker state volume, and the system Git credential helper uses it for
+GitHub HTTPS operations. The current deployment script requires
 Apple silicon macOS with hardware virtualization. See the
 [deployment specification](spec/083-container-deployment/spec.md).
 

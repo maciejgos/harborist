@@ -25,13 +25,25 @@ From a Harborist checkout on the deployment host, run:
 ```
 
 The installer starts the host sandbox helper and two containers. It checks that
-the worker can read the host sandbox policy through the helper. Open
+the worker can run Git and GitHub CLI and read the host sandbox policy through
+the helper. Open
 [http://127.0.0.1:8765](http://127.0.0.1:8765) to use the browser workspace.
+
+If you use GitHub issue intake or PR publication, sign in from the host
+terminal after starting Harborist:
+
+```bash
+./deploy/harborist github-login
+```
+
+Follow the device-code prompt in your host browser, then check the connection
+under **Integrations → GitHub**.
 
 ## 2. Register a repository and select Docker Sandboxes
 
 Put the target Git repository in the worker's persistent data directory.
-For example, replace `REPOSITORY_URL` in this command with a public Git clone URL:
+Replace `REPOSITORY_URL` with an HTTPS clone URL. Sign in as shown above before
+cloning a private GitHub repository.
 
 ```bash
 docker compose --project-name harborist exec -T service \

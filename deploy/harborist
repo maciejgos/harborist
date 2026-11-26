@@ -22,8 +22,11 @@ case "${1:-start}" in
         shift
         exec "${compose[@]}" exec -T service python -m harborist "$@"
         ;;
+    github-login)
+        exec "${compose[@]}" exec service gh auth login --hostname github.com --git-protocol https --web
+        ;;
     start) ;;
-    *) echo "Usage: deploy/harborist [start|stop|remove|exec ARGS...]" >&2; exit 2 ;;
+    *) echo "Usage: deploy/harborist [start|stop|remove|exec ARGS...|github-login]" >&2; exit 2 ;;
 esac
 
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 || "$(sysctl -n kern.hv_support)" != 1 ]]; then
@@ -96,10 +99,15 @@ for attempt in {1..20}; do
     sleep 0.25
 done
 "${compose[@]}" up --build --wait
+if ! "${compose[@]}" exec -T service sh -ec 'git --version && gh --version' >/dev/null; then
+    echo "The deployed worker cannot run Git or GitHub CLI. Rebuild the Harborist service image and retry." >&2
+    exit 1
+fi
 if ! "${compose[@]}" exec -T service python -c \
     'from harborist.sandbox.docker import DockerSandboxRuntime; print(DockerSandboxRuntime().baseline_digest())' >/dev/null; then
     echo "The deployed worker could not reach an initialized Docker Sandboxes helper." >&2
     exit 1
 fi
 echo "Harborist is ready at http://127.0.0.1:${HARBORIST_WEB_PORT:-8765}."
+echo "If needed, sign in to GitHub with ./deploy/harborist github-login."
 echo "If needed, configure Codex on the host with sbx secret set openai --oauth."

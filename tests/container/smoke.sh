@@ -30,6 +30,12 @@ if [[ -z ${HARBORIST_IMAGE:-} ]]; then
     "${compose[@]}" build service
 fi
 "${compose[@]}" up --no-build --wait --wait-timeout 60
+"${compose[@]}" exec -T service git --version
+"${compose[@]}" exec -T service gh --version
+credentials="$(printf 'protocol=https\nhost=github.com\n\n' |
+    "${compose[@]}" exec -T -e GH_TOKEN=harborist-smoke-token -e GIT_TERMINAL_PROMPT=0 \
+        service git credential fill)"
+grep -qx 'password=harborist-smoke-token' <<< "$credentials"
 wait_for_web
 curl --silent --show-error --fail "$base/" | grep -F '<div id="root"></div>'
 curl --silent --show-error --fail "$base/app.js" --output /dev/null
@@ -39,7 +45,8 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --header 'Origin: http://unrelated.example' \
     --header 'X-Harborist-Workspace: 1' --json '{}' "$base/api/workspaces")" = 403
-"${compose[@]}" exec -T service sh -c 'touch "$HOME/.harborist/smoke-marker"'
+"${compose[@]}" exec -T service sh -ec 'mkdir -p "$GH_CONFIG_DIR"; touch "$GH_CONFIG_DIR/smoke-marker"'
 "${compose[@]}" up --no-build --force-recreate --wait --wait-timeout 60
 wait_for_web
-"${compose[@]}" exec -T service sh -c 'test -f "$HOME/.harborist/smoke-marker"'
+"${compose[@]}" exec -T service sh -ec 'test -f "$GH_CONFIG_DIR/smoke-marker"'
+"${compose[@]}" exec -T web sh -ec 'test ! -e /home/harborist/.harborist/github-cli'

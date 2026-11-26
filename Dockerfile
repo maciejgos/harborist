@@ -9,7 +9,9 @@ RUN uv sync --locked --no-dev --no-install-project --no-python-downloads --no-bu
 
 FROM python AS runtime
 RUN apk upgrade --no-cache \
-    && apk add --no-cache git \
+    && apk add --no-cache git github-cli \
+    && git config --system credential.https://github.com.helper '' \
+    && git config --system --add credential.https://github.com.helper '!gh auth git-credential' \
     && python -m pip uninstall -y pip \
     && rm -rf /usr/local/lib/python3.14/ensurepip \
     && addgroup -g 10001 harborist \

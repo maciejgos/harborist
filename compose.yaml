@@ -5,6 +5,8 @@ services:
     init: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    environment:
+      GH_CONFIG_DIR: /home/harborist/.harborist/github-cli
     volumes:
       - state:/home/harborist/.harborist
       - control:/home/harborist/.harborist/control

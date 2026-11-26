@@ -21,11 +21,9 @@ harborist run file:./request.md --repo /path/to/repository
 ```
 
 For a GitHub issue, authenticate the GitHub CLI with access to the issue
-repository. Quote the source selector in shell commands. The default Harborist
-container image includes Git for cloning and local operations. GitHub issue
-intake and PR operations also need an authenticated `gh` in the worker's
-environment. The stock image does not bundle it. The [Docker quickstart](quickstart.md)
-uses Markdown intake.
+repository. For a Docker deployment, sign in to the worker's bundled GitHub
+CLI using the [Docker quickstart](quickstart.md#1-start-harborist).
+Quote the source selector in shell commands.
 
 ```bash
 harborist run 'github:owner/project#42' --repo /path/to/repository
@@ -220,7 +218,8 @@ Rework/recovery does not publish to GitHub or apply code automatically.
 ## Publish a verified candidate to GitHub
 
 Use authenticated GitHub CLI for PR operations and a Git credential for HTTPS
-pushes. Supply the exact candidate SHA printed by Harborist, the destination
+pushes. The Docker worker uses its GitHub CLI login for both. Supply the exact
+candidate SHA printed by Harborist, the destination
 repository, and an existing PR base branch.
 
 ```sh

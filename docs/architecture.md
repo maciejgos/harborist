@@ -54,9 +54,10 @@ A saved Workspace supplies repository and execution defaults for new
 captures. The GitHub ticket Inbox can use an issue from one repository as
 the request for a Run against a different target Workspace. Intake fetches
 the issue again and saves its contents. GitHub operations require an
-authenticated GitHub CLI in the environment performing them. The stock
-Compose worker image ships Git and requires separate provisioning for
-GitHub CLI operations. See [service operation](background-control-plane.md)
+authenticated GitHub CLI in the environment performing them. The Compose
+worker includes Git and GitHub CLI. Use the
+[Docker quickstart](quickstart.md#1-start-harborist) to sign in from the host.
+See [service operation](background-control-plane.md)
 and [Run submission](usage.md#submit-a-run).
 
 ## What a Run freezes
