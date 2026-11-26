@@ -4,10 +4,14 @@ import json
 import os
 import subprocess
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
+
+from harborist.control.client import ControlClient
 
 
 def exercise(root: Path) -> None:
@@ -52,7 +56,11 @@ else:
            "PR_STATE": str(root / "pull.json")}
     binary = ROOT / "target/release/harborist-verify"
     directory = root / "run"
-    evidence = json.loads(subprocess.check_output([binary, "run", repo, base, intent, directory], env=env))
+    control = root / "control"
+    subprocess.check_call([binary, "intake", repo, base, intent, directory], env=env)
+    subprocess.check_call([binary, "submit", control, directory], env=env)
+    subprocess.check_call([binary, "worker", control, "--once"], env=env)
+    evidence = json.loads((directory / "evidence.json").read_text())
 
     def publish(sha: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -76,6 +84,33 @@ else:
     assert git(remote, "rev-parse", f"refs/heads/{branch}") == approval
     assert publish(approval).stdout == result.stdout
     assert len(list((directory / "publication").glob("published-*.json"))) == 1
+
+
+    with subprocess.Popen([binary, "service", control], env=env) as service:
+        try:
+            deadline = time.monotonic() + 5
+            while not (control / "service.sock").exists():
+                assert service.poll() is None and time.monotonic() < deadline
+                time.sleep(0.02)
+            client = ControlClient(control)
+            run_id = evidence["run_id"]
+            state = client.request("GET", f"/runs/{run_id}/github")
+            assert state["publication"]["candidate"] == approval
+            assert state["publication"]["pull"] == 7
+            payload = {
+                "approve": approval, "expected_attempt": evidence["attempt"]["attempt_id"],
+                "destination": "example/project", "base": "main", "expect_head": approval,
+            }
+            route = f"/workspace/runs/{run_id}/publish"
+            try:
+                client.request("POST", route, {**payload, "expected_attempt": str(uuid.uuid4())})
+            except ValueError as error:
+                assert "different Attempt" in str(error)
+            else:
+                raise AssertionError("approval for another Attempt accepted")
+            assert client.request("POST", route, payload)["pull"]["number"] == 7
+        finally:
+            service.terminate()
 
 
 if __name__ == "__main__":

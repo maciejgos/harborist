@@ -25,14 +25,14 @@ struct Approval {
     attempt: Uuid,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Branch {
     #[serde(rename = "ref")]
     name: String,
     sha: Sha,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Pull {
     number: u64,
     html_url: String,
@@ -45,6 +45,7 @@ struct Pull {
 struct Receipt {
     approval: Approval,
     pull: u64,
+    timestamp: Option<u64>,
 }
 
 fn api<T: serde::de::DeserializeOwned>(repo: &Path, endpoint: &str, args: &[&str]) -> Result<T> {
@@ -104,17 +105,76 @@ fn validate_pull(pull: &Pull, approval: &Approval, branch: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublishRequest {
+    approve: Sha,
+    expected_attempt: Option<Uuid>,
+    destination: String,
+    base: String,
+    expect_head: Option<Sha>,
+}
+
+pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
+    let request: PublishRequest = serde_json::from_slice(body)?;
+    if request.expected_attempt.is_none() {
+        return Err("approval must name the expected Attempt".into());
+    }
+    let run = store::load(directory)?;
+    if run.contract.run_id != id {
+        return Err("publication must match the requested Run".into());
+    }
+    Ok(serde_json::json!({"run_id": id, "pull": publish(run, request)?}))
+}
+
+pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
+    let terminal = match Terminal::load(directory, id) {
+        Ok(terminal) => terminal,
+        Err(_) => return Ok(serde_json::json!({"publication": null})),
+    };
+    let path = directory
+        .join("publication")
+        .join(format!("published-{}.json", terminal.attempt.id()));
+    let receipt: Option<Receipt> = read_optional(&path)?;
+    let publication = receipt.map(|receipt| {
+        serde_json::json!({
+            "repository": receipt.approval.destination, "base": receipt.approval.base,
+            "candidate": receipt.approval.candidate, "attempt": receipt.approval.attempt,
+            "previous": null, "timestamp": receipt.timestamp, "pull": receipt.pull,
+        })
+    });
+    Ok(serde_json::json!({"publication": publication}))
+}
+
 pub fn execute(args: &[OsString]) -> Result<()> {
     let [directory, approve, destination, base] = args else {
         return Err("expected publish RUN_DIR APPROVED_SHA OWNER/REPO BASE_BRANCH".into());
     };
-    let destination = destination.to_str().ok_or("expected a GitHub repository")?;
-    if destination.len() > 256 || !github::valid_repository(destination) {
-        return Err("expected a GitHub repository in owner/repo form".into());
+    let request = PublishRequest {
+        destination: destination
+            .to_str()
+            .ok_or("expected a GitHub repository")?
+            .to_owned(),
+        base: base.to_str().ok_or("expected a base branch")?.to_owned(),
+        approve: crate::commit(approve)?,
+        expected_attempt: None,
+        expect_head: None,
+    };
+    let pull = publish(store::load(Path::new(directory))?, request)?;
+    println!("{}", pull.html_url);
+    Ok(())
+}
+
+fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
+    let destination = request.destination.as_str();
+    let base = request.base.as_str();
+    if destination.len() > 256
+        || !github::valid_repository(destination)
+        || base.is_empty()
+        || base.len() > 256
+    {
+        return Err("expected a GitHub repository and base branch".into());
     }
-    let base = base.to_str().ok_or("expected a base branch")?;
-    let approved = crate::commit(approve)?;
-    let run = store::load(Path::new(directory))?;
     let repo = &run.contract.repository;
     let base_ref = format!("refs/heads/{base}");
     git_text(repo, &["check-ref-format", &base_ref])?;
@@ -136,10 +196,16 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         return Err(io::Error::last_os_error().into());
     }
     let candidate = apply::verified(&run)?;
-    if approved != candidate {
+    if request.approve != candidate {
         return Err("approval must match the full VERIFIED candidate SHA".into());
     }
     let terminal = Terminal::load(&run.directory, id)?;
+    if request
+        .expected_attempt
+        .is_some_and(|id| id != terminal.attempt.id())
+    {
+        return Err("approval belongs to a different Attempt".into());
+    }
     let approval = Approval {
         destination: destination.to_owned(),
         base: base.to_owned(),
@@ -156,6 +222,13 @@ pub fn execute(args: &[OsString]) -> Result<()> {
             .is_some_and(|saved| saved.approval != approval)
     {
         return Err("approval conflicts with the existing publication".into());
+    }
+    if request.expect_head.as_ref().is_some_and(|head| {
+        prior
+            .as_ref()
+            .is_none_or(|receipt| &receipt.approval.candidate != head)
+    }) {
+        return Err("expected head differs from the recorded publication".into());
     }
     let url = format!("https://github.com/{destination}.git");
     let observed = remote_head(repo, &url, &reference)?;
@@ -187,8 +260,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         let pull = pull
             .filter(|pull| pull.number == prior.pull)
             .ok_or("previously published PR is unavailable")?;
-        println!("{}", pull.html_url);
-        return Ok(());
+        return Ok(pull);
     }
     if pending.is_none() {
         record(&pending_path, &approval)?;
@@ -244,13 +316,14 @@ pub fn execute(args: &[OsString]) -> Result<()> {
     if remote_head(repo, &url, &reference)?.as_ref() != Some(&approval.candidate) {
         return Err("GitHub head changed before receipt publication".into());
     }
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
     record(
         &receipt_path,
         &Receipt {
             approval,
             pull: pull.number,
+            timestamp: Some(timestamp.as_millis().try_into()?),
         },
     )?;
-    println!("{}", pull.html_url);
-    Ok(())
+    Ok(pull)
 }

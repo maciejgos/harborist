@@ -137,6 +137,7 @@ enum Route {
     Workspaces,
     Runs,
     Run(Uuid),
+    GitHub(Uuid),
     Attempts(Uuid),
     Attempt(Uuid),
     Artifact(Uuid, ArtifactName),
@@ -205,6 +206,7 @@ impl Route {
             ["", "workspaces"] => Some(Self::Workspaces),
             ["", "runs"] => Some(Self::Runs),
             ["", "runs", id] => Some(Self::Run(Uuid::parse_str(id).ok()?)),
+            ["", "runs", id, "github"] => Some(Self::GitHub(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "attempts"] => Some(Self::Attempts(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "attempts", "0"] => Some(Self::Attempt(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "artifacts", name] => Some(Self::Artifact(
@@ -231,6 +233,7 @@ fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
             json!({"runs": queue::records(queue_root)?.into_iter().map(project).collect::<Vec<_>>()}),
         ),
         Route::Run(id) => Ok(project(get(id)?)),
+        Route::GitHub(id) => crate::publication::delivery(&get(id)?.directory, id),
         Route::Attempts(id) => {
             get(id)?;
             Ok(json!({"attempts": [0]}))
@@ -280,15 +283,31 @@ fn request_body(request: &mut Request) -> Result<Vec<u8>> {
     Ok(body)
 }
 
+fn publish_route(route: &str) -> Option<Uuid> {
+    Uuid::parse_str(
+        route
+            .strip_prefix("/workspace/runs/")?
+            .strip_suffix("/publish")?,
+    )
+    .ok()
+}
+
 fn is_write(route: &str) -> bool {
     matches!(
         route,
         "/workspaces" | "/workspace/runs" | "/tickets/list" | "/tickets/queue"
-    )
+    ) || publish_route(route).is_some()
 }
 
 fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
     let body = request_body(request)?;
+    if let Some(id) = publish_route(route) {
+        let delivery = queue::read(&control.join("queue").join(format!("{id}.json")))?;
+        if matches!(delivery.state, State::Queued | State::Running) {
+            return Err("publication requires a terminal Run".into());
+        }
+        return crate::publication::browser(&delivery.directory, id, &body);
+    }
     match route {
         "/workspaces" => workspace::save(control, &body),
         "/workspace/runs" => workspace::capture(control, &body),

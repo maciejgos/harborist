@@ -127,7 +127,9 @@ base branch. The command uses authenticated Git and `gh` in the container. It
 pushes the approved commit to a dedicated Run branch and prints the pull
 request URL. Retrying the same publication checks the prepared record and
 remote head before reusing the existing pull request. This command currently
-supports the initial publication and its retries. The Docker test uses a
+supports the initial publication and its retries. You can also approve it
+from GitHub delivery in the browser for a queued Run that finished verification.
+The browser displays the published commit and pull request from the local receipt. The Docker test uses a
 local Git remote and an offline `gh` fixture.
 
 ## Run the comparison
