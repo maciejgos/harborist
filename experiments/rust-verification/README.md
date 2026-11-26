@@ -143,8 +143,10 @@ harborist-verify github-status RUN_DIR
 An observation records the PR head, merge status, checks, commit statuses,
 and review feedback for the published Run. Harborist checks the PR again
 before saving the observation and rejects it if the PR changed during
-capture. The browser shows the latest saved observation. Selecting feedback
-for a rework Attempt remains part of the continuation migration.
+capture. The browser shows the latest saved observation. Select feedback entries to
+queue rework against the locally verified candidate. The selection is bound
+to the saved observation and that candidate. A changed remote PR head stays
+in the observation and is never imported as the starting revision.
 
 ## Cancel a Run
 

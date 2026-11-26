@@ -559,3 +559,50 @@ pub fn status(args: &[OsString]) -> Result<()> {
     println!("{}", observe(&run.directory, run.contract.run_id)?);
     Ok(())
 }
+
+pub fn select_feedback(
+    directory: &Path,
+    id: Uuid,
+    candidate: &Sha,
+    observation: &Path,
+    keys: &[String],
+) -> Result<String> {
+    if keys.is_empty() || keys.len() > 32 {
+        return Err("select between 1 and 32 GitHub feedback IDs".into());
+    }
+    let parent = directory.join("publication/observations");
+    if observation.parent() != Some(parent.as_path()) {
+        return Err("select saved GitHub evidence belonging to this Run".into());
+    }
+    let name = observation
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|_| {
+            observation
+                .extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .ok_or("invalid saved GitHub observation name")?;
+    let saved: Observation = serde_json::from_str(&read_artifact(&parent, name)?)?;
+    if saved.run_id != id || &saved.verified_candidate != candidate {
+        return Err("observation belongs to another Run or verified candidate".into());
+    }
+    let mut selected = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for key in keys {
+        if seen.insert(key) {
+            let record = saved
+                .feedback
+                .iter()
+                .find(|item| &item.key == key)
+                .ok_or_else(|| format!("unknown GitHub feedback ID {key}"))?;
+            selected.push(format!("[{key}] {}\n{}", record.author, record.body));
+        }
+    }
+    Ok(format!(
+        "GitHub PR {} (observed head {})\n\n{}",
+        saved.url,
+        saved.head,
+        selected.join("\n\n")
+    ))
+}

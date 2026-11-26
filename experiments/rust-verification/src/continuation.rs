@@ -89,6 +89,14 @@ pub struct Request {
     feedback: String,
     #[serde(default)]
     additional_seconds: u64,
+    github_feedback: Option<GitHubFeedback>,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct GitHubFeedback {
+    observation: PathBuf,
+    ids: Vec<String>,
 }
 
 struct Prepared {
@@ -253,14 +261,12 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
         return Err("continuation predecessor does not match the latest Attempt".into());
     }
     if request.action == "rework" {
-        if !matches!(
+        let eligible = matches!(
             terminal.outcome.as_str(),
             "TEST_FAILED" | "CHANGES_REQUIRED"
-        ) || terminal.candidate.is_none()
-        {
-            return Err(
-                "rework requires TEST_FAILED or CHANGES_REQUIRED and a previous candidate".into(),
-            );
+        ) || (terminal.outcome == "VERIFIED" && request.github_feedback.is_some());
+        if !eligible || terminal.candidate.is_none() {
+            return Err("rework requires a previous candidate with a failed check, required change, or selected GitHub feedback".into());
         }
     } else if terminal.outcome != "FAILED"
         || !matches!(
@@ -319,9 +325,29 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
             "insufficient continuation budget; supply an explicit additional time grant".into(),
         );
     }
+    let selected = if let Some(selection) = &request.github_feedback {
+        if request.action != "rework" || terminal.outcome != "VERIFIED" {
+            return Err("GitHub feedback requires rework of the locally verified candidate".into());
+        }
+        let verified = crate::apply::verified(capture)?;
+        let selected = crate::publication::select_feedback(
+            root,
+            capture.contract.run_id,
+            &verified.candidate,
+            &selection.observation,
+            &selection.ids,
+        )?;
+        if feedback.trim().is_empty() {
+            selected
+        } else {
+            format!("{feedback}\n\n{selected}")
+        }
+    } else {
+        feedback.to_owned()
+    };
     let context = serde_json::to_string_pretty(&json!({
         "previous_attempt": expected, "previous_candidate": candidate,
-        "previous_outcome": terminal.outcome, "feedback": feedback,
+        "previous_outcome": terminal.outcome, "feedback": selected,
         "plan": read_artifact(&previous, "build/plan.md").or_else(|_| read_artifact(&previous, "plan/plan.md")).ok(),
         "test_evidence": read_artifact(&previous, "test/evidence.json").ok().map(|raw| serde_json::from_str::<serde_json::Value>(&raw)).transpose()?,
         "review": read_artifact(&previous, "review/review.md").ok(),
@@ -400,6 +426,7 @@ pub fn execute(action: &str, args: &[OsString]) -> Result<()> {
             .ok_or("feedback must be UTF-8")?
             .to_owned(),
         additional_seconds: extra,
+        github_feedback: None,
     };
     let result = run(store::load(Path::new(directory))?, &request)?;
     println!("{result}");

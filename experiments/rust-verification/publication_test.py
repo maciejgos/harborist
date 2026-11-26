@@ -22,7 +22,14 @@ def exercise(root: Path) -> None:
     git(repo, "config", f"url.{remote}.insteadOf", "https://github.com/example/project.git")
     intent = root / "issue.md"
     intent.write_text("Write the requested message.")
-    (root / "codex").write_text(FAKE_CODEX)
+    (root / "codex").write_text(FAKE_CODEX.replace(
+        'if stage == "build":',
+        'if stage == "plan" and os.environ.get("FEEDBACK"):\n'
+        '    context = json.loads(dict(request["inputs"])["continuation-context.json"])\n'
+        '    assert "Please add a test." in context["feedback"]\n'
+        '    assert context["previous_candidate"] == os.environ["LOCAL_CANDIDATE"]\n'
+        'if stage == "build":',
+    ))
     (root / "codex").chmod(0o755)
     (root / "gh").write_text("""#!/usr/bin/env python3
 import json
@@ -139,6 +146,34 @@ else:
             assert not latest["observation"]["head_verified"]
             assert latest["observation"]["verified_candidate"] == approval
             assert observed["observation_path"] != latest["observation_path"]
+            continuation = {
+                "request_id": str(uuid.uuid4()), "action": "rework",
+                "expected_attempt_id": evidence["attempt"]["attempt_id"],
+                "github_feedback": {"observation": latest["observation_path"],
+                                    "ids": ["review:9", "review:9"]},
+            }
+            action = f"/workspace/runs/{run_id}/continue"
+            try:
+                client.request("POST", action, {
+                    **continuation,
+                    "github_feedback": {"observation": latest["observation_path"], "ids": ["review:999"]},
+                })
+            except ValueError as error:
+                assert "feedback ID" in str(error)
+            else:
+                raise AssertionError("unknown feedback accepted")
+            assert client.request("POST", action, continuation)["run_id"] == run_id
+            subprocess.check_call(
+                [binary, "worker", control, "--once"],
+                env={**env, "FEEDBACK": "1", "LOCAL_CANDIDATE": approval},
+            )
+            newest = client.request("GET", f"/runs/{run_id}")
+            assert newest["run"]["outcome"] == "VERIFIED"
+            assert newest["attempt_number"] == 1
+            record = json.loads((directory / "attempts/000001/continuation.json").read_text())
+            assert record["context"]["feedback"].count("Please add a test.") == 1
+            assert record["attempt"]["start_sha"] == approval
+
         finally:
             service.terminate()
 
