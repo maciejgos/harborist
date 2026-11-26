@@ -120,6 +120,27 @@ else:
     assert git(remote, "rev-parse", f"refs/heads/harborist/{run_id}") == receipt["resulting_sha"]
     assert (directory / "run.json").read_bytes() == before
 
+    native_records = runs / "rust-publications" / run_id
+    [completed] = native_records.glob("published-*.json")
+    saved = json.loads(completed.read_text())
+    approval = saved["approval"]
+    historical_records = runs / "publications" / run_id
+    historical_records.mkdir(parents=True)
+    prepared = {**approval, "repository": approval["destination"],
+                "timestamp": "2026-01-01T00:00:00Z", "pull": None}
+    prepared.pop("destination")
+    (historical_records / f"prepared-{approval['attempt']}.json").write_text(
+        json.dumps(prepared)
+    )
+    historical_receipt = historical_records / "published-000000.json"
+    historical_receipt.write_text(json.dumps({**prepared, "pull": saved["pull"]}))
+    historical_bytes = historical_receipt.read_bytes()
+    completed.unlink()
+    (native_records / f"prepared-{approval['attempt']}.json").unlink()
+    assert subprocess.check_output(publish, env=env, text=True).strip() == url
+    assert historical_receipt.read_bytes() == historical_bytes
+    assert not list(native_records.glob("published-*.json"))
+
     rejected = subprocess.run(
         [binary, "import-python", directory, root / "rejected"], env=env,
         capture_output=True, text=True, check=False,

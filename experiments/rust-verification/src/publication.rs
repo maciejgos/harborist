@@ -45,6 +45,73 @@ struct Receipt {
     timestamp: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct PythonPublication {
+    #[serde(flatten)]
+    approval: PythonApproval,
+    pull: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct PythonApproval {
+    repository: String,
+    base: String,
+    candidate: Sha,
+    attempt: Uuid,
+    previous: Option<Sha>,
+}
+
+impl From<PythonApproval> for Approval {
+    fn from(value: PythonApproval) -> Self {
+        Self {
+            destination: value.repository,
+            base: value.base,
+            candidate: value.candidate,
+            attempt: value.attempt,
+            previous: value.previous,
+        }
+    }
+}
+
+fn python_published(directory: &Path) -> Result<Option<Receipt>> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let mut latest = None;
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Some(number) = name
+            .strip_prefix("published-")
+            .and_then(|name| name.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        let number = number.parse::<u64>()?;
+        if latest
+            .as_ref()
+            .is_none_or(|(previous, _)| number > *previous)
+        {
+            latest = Some((number, entry.path()));
+        }
+    }
+    let Some((_, path)) = latest else {
+        return Ok(None);
+    };
+    let record: PythonPublication = serde_json::from_slice(&fs::read(path)?)?;
+    Ok(Some(Receipt {
+        approval: record.approval.into(),
+        pull: record
+            .pull
+            .filter(|number| *number > 0)
+            .ok_or("missing Python publication PR number")?,
+        timestamp: None,
+    }))
+}
+
 fn api<T: serde::de::DeserializeOwned>(repo: &Path, endpoint: &str, args: &[&str]) -> Result<T> {
     let mut command = vec!["api", "--hostname", "github.com", endpoint];
     command.extend_from_slice(args);
@@ -217,6 +284,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
         PublicationRun {
             root: &run.directory,
             receipts: run.directory.join("publication"),
+            python_receipts: None,
             repo: &run.contract.repository,
             id: run.contract.run_id,
             base: &run.contract.base_sha,
@@ -236,15 +304,6 @@ fn publish_python(root: &Path, request: PublishRequest) -> Result<Pull> {
     let (id, repo, verified) = crate::legacy::verified(root)?;
     let parent = root.parent().ok_or("historical Run has no parent")?;
     let previous_records = parent.join("publications").join(id.to_string());
-    if previous_records.try_exists()?
-        && fs::read_dir(previous_records)?.any(|item| {
-            item.is_err()
-                || item
-                    .is_ok_and(|item| item.file_name().to_string_lossy().starts_with("published-"))
-        })
-    {
-        return Err("this Run already has a Python publication receipt".into());
-    }
     let raw = read_artifact(root, "contract.json")?;
     let persisted: serde_json::Value = serde_json::from_str(&raw)?;
     let base: Sha = serde_json::from_value(persisted["base_sha"].clone())?;
@@ -254,6 +313,7 @@ fn publish_python(root: &Path, request: PublishRequest) -> Result<Pull> {
         PublicationRun {
             root,
             receipts,
+            python_receipts: Some(previous_records),
             repo: &repo,
             id,
             base: &base,
@@ -267,6 +327,7 @@ fn publish_python(root: &Path, request: PublishRequest) -> Result<Pull> {
 struct PublicationRun<'a> {
     root: &'a Path,
     receipts: std::path::PathBuf,
+    python_receipts: Option<std::path::PathBuf>,
     repo: &'a Path,
     id: Uuid,
     base: &'a Sha,
@@ -315,7 +376,13 @@ fn publish_verified(run: PublicationRun<'_>, request: PublishRequest) -> Result<
     {
         return Err("approval belongs to a different Attempt".into());
     }
-    let prior = published_in(run.root, &directory, id)?;
+    let python_prior = run
+        .python_receipts
+        .as_deref()
+        .map(python_published)
+        .transpose()?
+        .flatten();
+    let prior = published_in(run.root, &directory, id)?.or(python_prior);
     if prior.as_ref().is_some_and(|receipt| {
         receipt.approval.destination != destination || receipt.approval.base != base
     }) {
@@ -350,11 +417,26 @@ fn publish_verified(run: PublicationRun<'_>, request: PublishRequest) -> Result<
         None => read_optional::<Approval>(&directory.join("prepared.json"))?
             .filter(|saved| saved.attempt == approval.attempt),
     };
-    if pending.as_ref().is_some_and(|saved| saved != &approval)
+    let python_pending = run
+        .python_receipts
+        .as_ref()
+        .map(|directory| {
+            read_optional::<PythonPublication>(
+                &directory.join(format!("prepared-{}.json", approval.attempt)),
+            )
+        })
+        .transpose()?
+        .flatten()
+        .map(|saved| Approval::from(saved.approval));
+    if python_pending
+        .as_ref()
+        .is_some_and(|saved| saved != &approval)
+        || pending.as_ref().is_some_and(|saved| saved != &approval)
         || completed.is_some_and(|saved| saved.approval != approval)
     {
         return Err("approval conflicts with the existing publication".into());
     }
+    let pending = pending.or(python_pending);
     let url = format!("https://github.com/{destination}.git");
     let observed = remote_head(repo, &url, &reference)?;
     let pushed = observed.as_ref() == Some(&approval.candidate);

@@ -257,9 +257,10 @@ Run-owned Git ref. Rust stores the application receipt outside the Python
 Run directory so the original PACKAGE index stays valid.
 
 The Rust `publish` command also accepts a verified Python Run directory for
-its first GitHub publication. It validates the same historical evidence and
-writes publication records beside the Python Runs directory. If the Run
-already has a Python publication receipt, keep using that publication path.
+GitHub publication. It validates the same historical evidence and writes
+new publication records beside the Python Runs directory. A retry of a
+completed Python publication checks the recorded branch and pull request
+and preserves the original receipt.
 
 ## Run the comparison
 
