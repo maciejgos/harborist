@@ -1,8 +1,9 @@
 use crate::{
     Config, Evidence, Result, git, git_text,
     native::{Codex, NativeAgent, Output, Request},
+    record::VerificationInputs,
     run_checks_with_budget,
-    store::{self, Captured, TOTAL_SECONDS, VERIFICATION_RESERVE_SECONDS},
+    store::{self, Captured},
 };
 use harborist_verify::{
     review::{Review, Specification},
@@ -27,7 +28,8 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
     let base = contract.base_sha;
     let id = contract.run_id;
     let source_sha256 = contract.source_sha256;
-    let candidate_ref = format!("refs/harborist/rust-runs/{id}/candidate");
+    let candidate_ref = store::candidate_ref(id);
+    let agent = Codex(contract.execution.as_ref());
     let mut run = Run {
         repo: &repo,
         dir: &directory,
@@ -35,10 +37,13 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
         attempt: &attempt,
         workflow: Workflow::new(attempt.clone()),
         candidate: None,
+        verification_inputs: None,
         candidate_ref: &candidate_ref,
         source_sha256: &source_sha256,
         started: Instant::now(),
-        agent: &Codex,
+        total_seconds: contract.total_seconds,
+        verification_reserve_seconds: contract.verification_reserve_seconds,
+        agent: &agent,
     };
 
     let result = run.run(&intent, config);
@@ -75,6 +80,7 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
         "candidate_ref": run.candidate.as_ref().map(|_| candidate_ref.as_str()),
         "source_sha256": source_sha256,
         "receipts": run.workflow.receipts(),
+        "verification_inputs": run.verification_inputs,
     });
     store::write_new(
         &directory.join("report.md"),
@@ -103,9 +109,12 @@ struct Run<'a> {
     attempt: &'a Attempt,
     workflow: Workflow,
     candidate: Option<Sha>,
+    verification_inputs: Option<VerificationInputs>,
     candidate_ref: &'a str,
     source_sha256: &'a str,
     started: Instant,
+    total_seconds: u64,
+    verification_reserve_seconds: u64,
     agent: &'a dyn NativeAgent,
 }
 
@@ -149,9 +158,9 @@ impl Run<'_> {
 
     fn allowance(&self, stage: Stage) -> Result<Duration> {
         let seconds = if matches!(stage, Stage::Test | Stage::Review) {
-            TOTAL_SECONDS
+            self.total_seconds
         } else {
-            TOTAL_SECONDS - VERIFICATION_RESERVE_SECONDS
+            self.total_seconds - self.verification_reserve_seconds
         };
         let left = Duration::from_secs(seconds).saturating_sub(self.started.elapsed());
         if left.as_secs() == 0 {
@@ -214,8 +223,20 @@ impl Run<'_> {
         if !passed {
             return Ok("TEST_FAILED");
         }
+        let process_report = match fs::read_to_string(self.dir.join("build/build-process.json")) {
+            Ok(report) => Some(report),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        let mut review_inputs = vec![
+            ("spec.md", spec.as_str()),
+            ("test-evidence.json", test.as_str()),
+        ];
+        if let Some(report) = process_report.as_deref() {
+            review_inputs.push(("build-process.json", report));
+        }
         let specification = Specification::parse(&spec)?;
-        let review = with_worktree(
+        let (review, review_sha256) = with_worktree(
             repo,
             &self.dir.join("review-workspace"),
             candidate.as_str(),
@@ -224,7 +245,7 @@ impl Run<'_> {
                     Stage::Review,
                     "review",
                     workspace,
-                    &[("spec.md", &spec), ("test-evidence.json", &test)],
+                    &review_inputs,
                     Some(&identity),
                 )?;
                 require_clean(workspace, candidate.as_str())?;
@@ -234,10 +255,15 @@ impl Run<'_> {
                     self.dir.join("review/review.md"),
                     response.artifact.ok_or("missing review artifact")?,
                 )?;
-                Ok(receipt)
+                Ok((receipt, response.sha256))
             },
         )?;
         let outcome = if review.outcome == Outcome::Succeeded {
+            self.verification_inputs = Some(VerificationInputs {
+                spec_sha256: specification.sha256().to_owned(),
+                test_sha256: store::digest(test.as_bytes()),
+                review_sha256,
+            });
             "VERIFIED"
         } else {
             "CHANGES_REQUIRED"
@@ -280,6 +306,18 @@ impl Run<'_> {
             &[upstream[0], upstream[1], ("plan.md", &plan)],
             None,
         )?;
+        if let Some(report) = output.process_report {
+            let evidence = json!({
+                "run_id": self.attempt.run_id(),
+                "attempt_id": self.attempt.id(),
+                "provenance": "agent-reported",
+                "report": report,
+            });
+            fs::write(
+                self.dir.join("build/build-process.json"),
+                serde_json::to_vec(&evidence)?,
+            )?;
+        }
         if let Some(plan) = output.plan_update {
             fs::write(self.dir.join("build/plan.md"), plan)?;
         }
@@ -341,6 +379,7 @@ fn require_clean(workspace: &Path, expected: &str) -> Result<()> {
             ],
         )?
         .is_empty()
+        || crate::hidden_index_flags(workspace)?
     {
         return Err("read-only stage changed the candidate checkout".into());
     }

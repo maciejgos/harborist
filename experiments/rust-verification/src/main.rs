@@ -1,9 +1,14 @@
+mod apply;
 mod control;
 mod foreground;
+mod github;
 mod native;
 mod process;
 mod queue;
+mod record;
+mod settings;
 mod store;
+mod workspace;
 
 use harborist_verify::workflow::Sha;
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -64,7 +69,7 @@ impl Config {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct CheckResult {
     id: String,
     command: String,
@@ -77,7 +82,7 @@ struct CheckResult {
     stderr_truncated: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct Evidence {
     candidate: Sha,
     source_sha256: String,
@@ -148,16 +153,46 @@ fn run_checks_with_budget(
         .collect()
 }
 
+fn git_command(repo: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(repo);
+    for variable in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_INDEX_FILE",
+        "GIT_NAMESPACE",
+        "GIT_PREFIX",
+        "GIT_SHALLOW_FILE",
+        "GIT_GRAFT_FILE",
+        "GIT_REPLACE_REF_BASE",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0");
+    command
+}
+
 fn git(repo: &Path, args: &[&OsStr]) -> Result<Vec<u8>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .output()?;
+    let output = git_command(repo).args(args).output()?;
     if !output.status.success() {
         return Err(format!("git failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }
     Ok(output.stdout)
+}
+
+fn hidden_index_flags(repo: &Path) -> Result<bool> {
+    Ok(
+        git(repo, &["ls-files".as_ref(), "-v".as_ref(), "-z".as_ref()])?
+            .split(|byte| *byte == 0)
+            .filter_map(|entry| entry.first())
+            .any(|flag| flag.is_ascii_lowercase() || *flag == b'S'),
+    )
 }
 
 fn git_text(repo: &Path, args: &[&str]) -> Result<String> {
@@ -198,6 +233,7 @@ fn execute() -> Result<()> {
                 };
                 return run_foreground(store::load(Path::new(directory))?);
             }
+            Some("apply") => return apply::execute(args),
             Some("submit") => return queue::submit(args),
             Some("delivery") => return queue::delivery(args),
             Some("worker") => return queue::worker(args),

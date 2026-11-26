@@ -77,7 +77,13 @@ pub fn submit(args: &[OsString]) -> Result<()> {
         return Err("expected submit CONTROL_DIR RUN_DIR".into());
     };
     let run = store::load(Path::new(directory))?;
-    let queue = queue_directory(Path::new(control))?;
+    let saved = enqueue(Path::new(control), run)?;
+    println!("{}", serde_json::to_string(&saved)?);
+    Ok(())
+}
+
+pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
+    let queue = queue_directory(control)?;
     let path = queue.join(format!("{}.json", run.contract.run_id));
     let record = Delivery {
         run_id: run.contract.run_id,
@@ -101,8 +107,7 @@ pub fn submit(args: &[OsString]) -> Result<()> {
         }
         Err(error) => return Err(error),
     };
-    println!("{}", serde_json::to_string(&saved)?);
-    Ok(())
+    Ok(saved)
 }
 
 pub fn delivery(args: &[OsString]) -> Result<()> {

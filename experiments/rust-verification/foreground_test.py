@@ -81,6 +81,8 @@ if __name__ == "__main__":
             ("failure", "exit 7", "TEST_FAILED", ["design", "plan", "build"]),
             ("mutation", "printf changed > message.txt", "TEST_FAILED",
              ["design", "plan", "build"]),
+            ("hidden-mutation", "git update-index --assume-unchanged message.txt && printf changed > message.txt",
+             "TEST_FAILED", ["design", "plan", "build"]),
         ]:
             folder = root / name
             folder.mkdir()

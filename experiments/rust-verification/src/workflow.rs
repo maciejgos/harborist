@@ -88,7 +88,7 @@ pub struct Candidate {
     candidate_sha: Sha,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     Intake,
@@ -101,7 +101,7 @@ pub enum Stage {
 }
 
 impl Stage {
-    const ORDER: [Self; 7] = [
+    pub const ORDER: [Self; 7] = [
         Self::Intake,
         Self::Design,
         Self::Plan,

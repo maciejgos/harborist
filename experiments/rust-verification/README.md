@@ -14,10 +14,12 @@ The Docker build used by the comparison produces the release executable in
 Git and an authenticated Codex CLI on PATH, run:
 
 ```sh
-harborist-verify run REPO BASE_SHA INTENT_FILE NEW_RUN_DIR
+harborist-verify run REPO BASE_SHA SOURCE NEW_RUN_DIR
 ```
 
 Use an exact base commit and a fresh Run directory outside the source checkout.
+For SOURCE, use a Markdown path, `github:OWNER/REPO#NUMBER`, or a GitHub Issue
+URL. GitHub capture requires an authenticated `gh` CLI in the container.
 The checkout must have Git author identity configured. The runner freezes the
 Markdown intent and base revision's verification config, then invokes fresh
 Codex processes for DESIGN, PLAN, BUILD, and REVIEW. It commits BUILD in a
@@ -26,19 +28,23 @@ A check failure or tracked checkout change prevents REVIEW. PACKAGE writes
 `report.md` and `evidence.json` under the Run directory. The Run's candidate ref
 keeps the candidate reachable after worktree cleanup.
 
-The adapter uses the installed Codex CLI's default model. The Docker suite
-exercises the adapter with a deterministic executable fixture. It has no
-credentials and makes no external model calls.
+With `harborist.settings.yaml` in the checkout or an explicit
+`--settings FILE` argument, intake captures the trusted-local policy, Codex
+model and arguments, playbook, and skills. Saved Runs use the captured
+settings and asset content. Docker Sandboxes policies require the Python
+runtime. When there is no settings file, the Rust adapter uses the installed
+Codex CLI's default model. The Docker suite supplies a deterministic Codex
+fixture and makes no external model calls.
 
 ## Save a Run and execute it later
 
 ```sh
-harborist-verify intake REPO BASE_SHA INTENT_FILE NEW_RUN_DIR
+harborist-verify intake REPO BASE_SHA SOURCE NEW_RUN_DIR
 harborist-verify execute RUN_DIR
 ```
 
-Intake prints the Run UUID and saves the Markdown, verification config, and
-their digests. It has no Codex dependency. Execution checks the saved digests
+Intake prints the Run UUID and saves the captured intent, verification config,
+and their digests. It has no Codex dependency. Execution checks the saved digests
 and uses the recorded base commit. Changes to the original Markdown or to
 the repository's current HEAD do not change the Run. Only one caller can
 admit a fresh Run. The original execution records stay available if execution
@@ -84,13 +90,31 @@ artifacts over `CONTROL_DIR/service.sock`. Its GET responses are accessible
 through Harborist's existing Unix-socket client. The loopback browser serves
 the existing workspace assets and forwards allowlisted GETs through that
 socket. The monitor supports the Run list, Run detail, and named report, specification, test log, and
-evidence reads for the initial Attempt. Workspace and integration commands still require the Python service.
+evidence reads for the initial Attempt. The Workspaces page saves checkout defaults. New Run accepts Markdown and
+GitHub Issue sources. Tickets lists open issues and queues a selected issue to
+a saved Workspace. Start the worker to execute queued Runs. GitHub transport
+is tested using an offline `gh` fixture.
 
 Use the Docker checks when validating the port without performance timing:
 
 ```sh
 ./experiments/rust-verification/docker-check.sh
 ```
+
+## Apply a verified candidate
+
+```sh
+harborist-verify apply RUN_DIR BRANCH
+```
+
+Application requires a packaged VERIFIED Run with matching specification,
+TEST, and REVIEW digests. The command verifies the Run-owned candidate ref
+and fast-forwards an existing local branch using the expected old SHA.
+The recorded checkout must be clean when it has the target checked out.
+Application refuses a branch checked out in another worktree. The Run's
+terminal evidence stays intact and a separate receipt records the application.
+Older Rust evidence without verification digests requires a fresh Run before
+application.
 
 ## Run the comparison
 
@@ -128,9 +152,8 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Python settings and methodology capture, existing Python Run formats,
-rework and recovery, write endpoints and workspace features, candidate
-application, GitHub integrations,
+Existing Python Run formats, rework and recovery, cancellation and
+supersession, GitHub publication and collaboration, integration management,
 legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
 outside the Rust foreground implementation.
 

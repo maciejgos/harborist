@@ -1,6 +1,6 @@
 //! Filesystem capture and exclusive admission for a fresh Rust Run.
 
-use crate::{Config, Result, commit, git, git_text};
+use crate::{Config, Result, commit, git, git_text, settings::Execution};
 use harborist_verify::workflow::{Attempt, Sha};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -23,10 +23,13 @@ pub struct Contract {
     pub run_id: Uuid,
     pub repository: PathBuf,
     pub base_sha: Sha,
-    intent_sha256: String,
+    pub intent_sha256: String,
+    pub source_ref: Option<String>,
+    pub source_url: Option<String>,
     pub source_sha256: String,
-    total_seconds: u64,
-    verification_reserve_seconds: u64,
+    pub total_seconds: u64,
+    pub verification_reserve_seconds: u64,
+    pub execution: Option<Execution>,
 }
 
 pub struct Captured {
@@ -36,7 +39,11 @@ pub struct Captured {
     pub intent: String,
 }
 
-fn digest(content: &[u8]) -> String {
+pub fn candidate_ref(run_id: Uuid) -> String {
+    format!("refs/harborist/rust-runs/{run_id}/candidate")
+}
+
+pub fn digest(content: &[u8]) -> String {
     format!("{:x}", Sha256::digest(content))
 }
 
@@ -46,7 +53,7 @@ pub fn write_new(path: &Path, content: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
-fn repository(path: &Path) -> Result<PathBuf> {
+pub fn repository(path: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(git_text(path, &["rev-parse", "--show-toplevel"])?).canonicalize()?)
 }
 
@@ -58,11 +65,56 @@ fn validate_base(repo: &Path, sha: &Sha) -> Result<()> {
 }
 
 pub fn capture(args: &[OsString]) -> Result<Captured> {
-    let [repo, base, intent_path, directory] = args else {
-        return Err("expected REPO BASE_SHA INTENT_FILE NEW_RUN_DIR".into());
+    let (repo, base, intent_path, directory, settings) = match args {
+        [repo, base, intent, directory] => (repo, base, intent, directory, None),
+        [repo, base, intent, directory, flag, settings] if flag == "--settings" => {
+            (repo, base, intent, directory, Some(Path::new(settings)))
+        }
+        _ => return Err("expected REPO BASE_SHA INTENT_FILE NEW_RUN_DIR [--settings FILE]".into()),
     };
-    let repo = repository(Path::new(repo))?;
-    let directory = Path::new(directory);
+    capture_to(Capture {
+        repository: Path::new(repo),
+        base_sha: commit(base)?,
+        source: intent_path,
+        directory: Path::new(directory),
+        settings,
+        run_id: Uuid::new_v4(),
+        total_seconds: TOTAL_SECONDS,
+        verification_reserve_seconds: VERIFICATION_RESERVE_SECONDS,
+    })
+}
+
+pub struct Capture<'a> {
+    pub repository: &'a Path,
+    pub base_sha: Sha,
+    pub source: &'a std::ffi::OsStr,
+    pub directory: &'a Path,
+    pub settings: Option<&'a Path>,
+    pub run_id: Uuid,
+    pub total_seconds: u64,
+    pub verification_reserve_seconds: u64,
+}
+
+pub fn validate_budget(total: u64, reserve: u64) -> Result<()> {
+    if reserve == 0 || reserve >= total || total > u32::MAX as u64 {
+        return Err("total time must exceed a positive verification reserve".into());
+    }
+    Ok(())
+}
+
+pub fn capture_to(request: Capture<'_>) -> Result<Captured> {
+    let Capture {
+        repository: path,
+        base_sha,
+        source,
+        directory,
+        settings,
+        run_id,
+        total_seconds,
+        verification_reserve_seconds,
+    } = request;
+    validate_budget(total_seconds, verification_reserve_seconds)?;
+    let repo = repository(path)?;
     let parent = directory
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
@@ -72,7 +124,6 @@ pub fn capture(args: &[OsString]) -> Result<Captured> {
     if directory.starts_with(&repo) {
         return Err("Run directory must be outside the source checkout".into());
     }
-    let base_sha = commit(base)?;
     validate_base(&repo, &base_sha)?;
     let frozen = git(
         &repo,
@@ -82,19 +133,41 @@ pub fn capture(args: &[OsString]) -> Result<Captured> {
         ],
     )?;
     let config = Config::parse(&frozen)?;
-    let intent = fs::read_to_string(intent_path)?;
+    let (intent, source_ref, source_url) = match source.to_str() {
+        Some(text) if text.starts_with("github:") || text.starts_with("https://") => {
+            let selector = crate::github::selector(text)?;
+            let (intent, url) = crate::github::capture(&repo, &selector)?;
+            (intent, Some(selector), Some(url))
+        }
+        text => {
+            let path = text
+                .and_then(|text| text.strip_prefix("file:"))
+                .map(Path::new)
+                .unwrap_or_else(|| Path::new(source))
+                .canonicalize()?;
+            (
+                fs::read_to_string(&path)?,
+                Some(format!("file:{}", path.display())),
+                None,
+            )
+        }
+    };
     if intent.trim().is_empty() {
         return Err("intent must contain text".into());
     }
+    let execution = Execution::load(&repo, settings)?;
     let contract = Contract {
         version: VERSION,
-        run_id: Uuid::new_v4(),
+        run_id,
         repository: repo,
         base_sha,
         intent_sha256: digest(intent.as_bytes()),
+        source_ref,
+        source_url,
         source_sha256: digest(&frozen),
-        total_seconds: TOTAL_SECONDS,
-        verification_reserve_seconds: VERIFICATION_RESERVE_SECONDS,
+        total_seconds,
+        verification_reserve_seconds,
+        execution,
     };
     fs::create_dir(&directory)?;
     write_new(&directory.join("intent.md"), intent.as_bytes())?;
@@ -121,12 +194,13 @@ pub fn capture(args: &[OsString]) -> Result<Captured> {
 pub fn load(path: &Path) -> Result<Captured> {
     let directory = path.canonicalize()?;
     let contract: Contract = serde_json::from_slice(&fs::read(directory.join("contract.json"))?)?;
-    if contract.version != VERSION
-        || contract.total_seconds != TOTAL_SECONDS
-        || contract.verification_reserve_seconds != VERIFICATION_RESERVE_SECONDS
-    {
-        return Err("unsupported Run contract version or budget".into());
+    if contract.version != VERSION {
+        return Err("unsupported Run contract version".into());
     }
+    validate_budget(
+        contract.total_seconds,
+        contract.verification_reserve_seconds,
+    )?;
     let repo = repository(&contract.repository)?;
     if repo != contract.repository || directory.starts_with(&repo) {
         return Err("Run checkout or directory does not match the saved context".into());
@@ -138,6 +212,9 @@ pub fn load(path: &Path) -> Result<Captured> {
         || digest(&frozen) != contract.source_sha256
     {
         return Err("captured input digest mismatch".into());
+    }
+    if let Some(execution) = &contract.execution {
+        execution.validate()?;
     }
     let config = Config::parse(&frozen)?;
     Ok(Captured {

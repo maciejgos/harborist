@@ -3,13 +3,14 @@
 use crate::{
     Result,
     queue::{self, Delivery, State},
+    record::{Terminal, read_artifact},
+    workspace,
 };
-use harborist_verify::workflow::{Attempt, Outcome, Receipt, Sha, Stage, Workflow};
-use serde::Deserialize;
+use harborist_verify::workflow::{Outcome, Stage};
 use serde_json::{Value, json};
 use std::{
     ffi::OsString,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{self, Read, Write},
     os::{
         fd::AsRawFd,
@@ -25,7 +26,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use uuid::Uuid;
 
 const JSON: &str = "application/json";
-const LIMIT: u64 = 2 * 1024 * 1024;
+const MAX_REQUEST: usize = 64 * 1024;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const ASSETS: [(&str, &str, &[u8]); 4] = [
     (
@@ -50,91 +51,6 @@ const ASSETS: [(&str, &str, &[u8]); 4] = [
     ),
 ];
 
-#[derive(Deserialize)]
-struct Terminal {
-    run_id: Uuid,
-    base_sha: Sha,
-    attempt: Attempt,
-    candidate: Option<Sha>,
-    outcome: String,
-    error: Option<String>,
-    receipts: Vec<Receipt>,
-}
-
-impl Terminal {
-    fn load(delivery: &Delivery) -> Result<Self> {
-        let evidence = artifact(delivery, "evidence.json")?;
-        let terminal: Self = serde_json::from_str(&evidence)?;
-        if terminal.run_id != delivery.run_id
-            || terminal.attempt.run_id() != delivery.run_id
-            || terminal.attempt.start_sha() != &terminal.base_sha
-        {
-            return Err("terminal evidence identity mismatch".into());
-        }
-        let workflow =
-            Workflow::replay(terminal.attempt.clone(), terminal.receipts.iter().cloned())?;
-        if workflow.next_stage().is_some() {
-            return Err("terminal routing evidence is incomplete".into());
-        }
-        let mut receipts = workflow.receipts().iter().rev();
-        if receipts.next().is_none_or(|receipt| {
-            receipt.stage != Stage::Package || receipt.outcome != Outcome::Succeeded
-        }) {
-            return Err("terminal PACKAGE evidence is incomplete".into());
-        }
-        let previous = receipts.next().ok_or("missing terminal stage receipt")?;
-        let expected = match previous.outcome {
-            Outcome::Succeeded if previous.stage == Stage::Review => "VERIFIED",
-            Outcome::TestFailed => "TEST_FAILED",
-            Outcome::ChangesRequired => "CHANGES_REQUIRED",
-            Outcome::NeedsClarification => "NEEDS_CLARIFICATION",
-            Outcome::NeedsRescoping => "NEEDS_RESCOPING",
-            Outcome::Failed => "FAILED",
-            _ => return Err("unsupported terminal stage result".into()),
-        };
-        let candidate = workflow
-            .receipts()
-            .iter()
-            .find(|receipt| receipt.stage == Stage::Build)
-            .and_then(|receipt| receipt.candidate.as_ref());
-        if terminal.outcome != expected
-            || terminal
-                .candidate
-                .as_ref()
-                .map(|sha| terminal.attempt.candidate(sha.clone()))
-                .as_ref()
-                != candidate
-        {
-            return Err("terminal outcome or candidate contradicts routing evidence".into());
-        }
-        Ok(terminal)
-    }
-}
-
-fn artifact(delivery: &Delivery, name: &str) -> Result<String> {
-    if delivery.directory.canonicalize()? != delivery.directory {
-        return Err("Run directory does not match the recorded path".into());
-    }
-    let path = delivery.directory.join(name);
-    let parent = path.parent().ok_or("missing artifact directory")?;
-    if parent.canonicalize()? != parent {
-        return Err("artifact directory does not match its recorded path".into());
-    }
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    if !file.metadata()?.is_file() {
-        return Err("artifact must be a regular file".into());
-    }
-    let mut data = Vec::new();
-    file.take(LIMIT + 1).read_to_end(&mut data)?;
-    if data.len() as u64 > LIMIT {
-        return Err("artifact exceeds the 2 MiB viewing limit".into());
-    }
-    Ok(String::from_utf8(data)?)
-}
-
 fn project(delivery: Delivery) -> Value {
     let state = match delivery.state {
         State::Queued => "QUEUED",
@@ -149,8 +65,32 @@ fn project(delivery: Delivery) -> Value {
         "stages": {}, "stage_errors": {}, "attempt_number": 0, "package_available": false,
         "artifacts": {}, "run": null, "error": delivery.error,
     });
+    if let Ok(raw) = read_artifact(&delivery.directory, "contract.json") {
+        if let Ok(contract) = serde_json::from_str::<crate::store::Contract>(&raw) {
+            if contract.run_id == delivery.run_id {
+                view["repository"] = json!(contract.repository);
+                view["source_ref"] = json!(contract.source_ref);
+                view["source_url"] = json!(contract.source_url);
+                if let Ok(intent) = read_artifact(&delivery.directory, "intent.md") {
+                    if crate::store::digest(intent.as_bytes()) == contract.intent_sha256 {
+                        view["title"] = json!(
+                            intent
+                                .lines()
+                                .find(|line| !line.trim().is_empty())
+                                .unwrap_or("Untitled request")
+                                .trim()
+                                .trim_start_matches(['#', ' '])
+                                .chars()
+                                .take(200)
+                                .collect::<String>()
+                        );
+                    }
+                }
+            }
+        }
+    }
     if delivery.state == State::Finished || delivery.directory.join("evidence.json").is_file() {
-        match Terminal::load(&delivery) {
+        match Terminal::load(&delivery.directory, delivery.run_id) {
             Ok(terminal) => {
                 let lifecycle = if terminal.outcome == "FAILED" {
                     "FAILED"
@@ -194,6 +134,7 @@ fn project(delivery: Delivery) -> Value {
 
 enum Route {
     Health,
+    Workspaces,
     Runs,
     Run(Uuid),
     Attempts(Uuid),
@@ -252,7 +193,7 @@ impl ArtifactName {
                 )
             }
         };
-        Ok(json!({"name": name, "content": artifact(delivery, &path)?}))
+        Ok(json!({"name": name, "content": read_artifact(&delivery.directory, &path)?}))
     }
 }
 
@@ -261,6 +202,7 @@ impl Route {
         let parts: Vec<_> = path.split('/').collect();
         match parts.as_slice() {
             ["", "health"] => Some(Self::Health),
+            ["", "workspaces"] => Some(Self::Workspaces),
             ["", "runs"] => Some(Self::Runs),
             ["", "runs", id] => Some(Self::Run(Uuid::parse_str(id).ok()?)),
             ["", "runs", id, "attempts"] => Some(Self::Attempts(Uuid::parse_str(id).ok()?)),
@@ -282,6 +224,9 @@ fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
     let get = |id: Uuid| queue::read(&queue_root.join(format!("{id}.json")));
     match route {
         Route::Health => Ok(json!({"version": 1, "stopping": false})),
+        Route::Workspaces => {
+            workspace::list(queue_root.parent().ok_or("missing control directory")?)
+        }
         Route::Runs => Ok(
             json!({"runs": queue::records(queue_root)?.into_iter().map(project).collect::<Vec<_>>()}),
         ),
@@ -292,16 +237,64 @@ fn serve_route(queue_root: &Path, route: Route) -> Result<Value> {
         }
         Route::Attempt(id) => {
             let delivery = get(id)?;
-            let specification = artifact(&delivery, "design/spec.md").is_ok();
+            let specification = read_artifact(&delivery.directory, "design/spec.md").is_ok();
             let mut view = project(delivery);
             view["has_specification"] = json!(specification);
             Ok(view)
         }
         Route::Artifact(id, name) => {
             let delivery = get(id)?;
-            let terminal = Terminal::load(&delivery)?;
+            let terminal = Terminal::load(&delivery.directory, delivery.run_id)?;
             name.read(&delivery, &terminal)
         }
+    }
+}
+
+fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
+    let mut values = request
+        .headers()
+        .iter()
+        .filter(|header| header.field.as_str().as_str().eq_ignore_ascii_case(name));
+    let first = values.next()?;
+    if values.next().is_some() {
+        return None;
+    }
+    Some(first.value.as_str())
+}
+
+fn request_body(request: &mut Request) -> Result<Vec<u8>> {
+    let length = header(request, "Content-Length")
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|&length| length > 0 && length <= MAX_REQUEST)
+        .ok_or("expected a bounded JSON body")?;
+    if request
+        .headers()
+        .iter()
+        .any(|header| header.field.equiv("Transfer-Encoding"))
+        || header(request, "Content-Type").and_then(|value| value.split(';').next()) != Some(JSON)
+    {
+        return Err("expected a bounded JSON body".into());
+    }
+    let mut body = vec![0; length];
+    request.as_reader().read_exact(&mut body)?;
+    Ok(body)
+}
+
+fn is_write(route: &str) -> bool {
+    matches!(
+        route,
+        "/workspaces" | "/workspace/runs" | "/tickets/list" | "/tickets/queue"
+    )
+}
+
+fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
+    let body = request_body(request)?;
+    match route {
+        "/workspaces" => workspace::save(control, &body),
+        "/workspace/runs" => workspace::capture(control, &body),
+        "/tickets/list" => crate::github::list(control, &body),
+        "/tickets/queue" => workspace::queue_ticket(control, &body),
+        _ => Err("unknown control command".into()),
     }
 }
 
@@ -313,7 +306,8 @@ fn respond(request: Request, status: u16, mime: &str, body: Vec<u8>) {
         .with_status_code(status)
         .with_header(header("Content-Type", mime))
         .with_header(header("Cache-Control", "no-store"))
-        .with_header(header("X-Content-Type-Options", "nosniff"));
+        .with_header(header("X-Content-Type-Options", "nosniff"))
+        .with_header(header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"));
     let _ = request.respond(response);
 }
 
@@ -360,7 +354,15 @@ pub fn service(args: &[OsString]) -> Result<()> {
     let listener = UnixListener::bind(&path)?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let server = Server::from_listener(listener, None).map_err(|error| error.to_string())?;
-    for request in server.incoming_requests() {
+    for mut request in server.incoming_requests() {
+        if request.method() == &Method::Post && is_write(request.url()) {
+            let route = request.url().to_owned();
+            match command(control, &route, &mut request) {
+                Ok(value) => respond_json(request, 200, value),
+                Err(error) => error_response(request, 400, error),
+            }
+            continue;
+        }
         let route = Route::parse(request.url());
         match (request.method(), route) {
             (&Method::Get, Some(route)) => match serve_route(&queue_root, route) {
@@ -374,15 +376,24 @@ pub fn service(args: &[OsString]) -> Result<()> {
     Ok(())
 }
 
-fn proxy(control: &Path, route: &str) -> Result<(u16, Vec<u8>)> {
+fn proxy(control: &Path, route: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>)> {
     let mut stream = UnixStream::connect(socket_path(control))?;
-    let timeout = Some(Duration::from_secs(5));
+    let timeout = Some(Duration::from_secs(if body.is_some() { 45 } else { 5 }));
     stream.set_read_timeout(timeout)?;
     stream.set_write_timeout(timeout)?;
-    write!(
-        stream,
-        "GET {route} HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-    )?;
+    if let Some(body) = body {
+        write!(
+            stream,
+            "POST {route} HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )?;
+        stream.write_all(body)?;
+    } else {
+        write!(
+            stream,
+            "GET {route} HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        )?;
+    }
     let mut raw = Vec::new();
     stream.take(MAX_RESPONSE + 1).read_to_end(&mut raw)?;
     if raw.len() as u64 > MAX_RESPONSE {
@@ -415,39 +426,60 @@ pub fn web(args: &[OsString]) -> Result<()> {
     }
     let allowed = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
     let server = Server::http(("127.0.0.1", port)).map_err(|error| error.to_string())?;
-    for request in server.incoming_requests() {
-        let hosts: Vec<_> = request
-            .headers()
-            .iter()
-            .filter(|header| header.field.equiv("Host"))
-            .collect();
-        if !matches!(hosts.as_slice(), [host] if allowed.iter().any(|value| value == host.value.as_str()))
-        {
+    for mut request in server.incoming_requests() {
+        let Some(host) =
+            header(&request, "Host").filter(|host| allowed.iter().any(|value| value == host))
+        else {
             error_response(request, 403, "Loopback host required");
             continue;
+        };
+        let path = request
+            .url()
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+        if request.method() == &Method::Post {
+            if let Some(route) = path.strip_prefix("/api").filter(|route| is_write(route)) {
+                if header(&request, "Origin") != Some(format!("http://{host}").as_str())
+                    || header(&request, "X-Harborist-Workspace") != Some("1")
+                {
+                    error_response(request, 403, "Same-origin workspace request required");
+                } else {
+                    match request_body(&mut request) {
+                        Ok(body) => match proxy(control, route, Some(&body)) {
+                            Ok((status, body)) => respond(request, status, JSON, body),
+                            Err(error) => error_response(request, 503, error),
+                        },
+                        Err(error) => error_response(request, 400, error),
+                    }
+                }
+                continue;
+            }
         }
         if request.method() != &Method::Get {
-            error_response(request, 405, "Read-only browser monitor");
+            error_response(request, 405, "Unsupported browser command");
             continue;
         }
-        let path = request.url().split('?').next().unwrap_or_default();
         if let Some(route) = path.strip_prefix("/api") {
             if Route::parse(route).is_none() {
                 error_response(request, 404, "Unknown API route");
             } else {
-                match proxy(control, route) {
+                match proxy(control, route, None) {
                     Ok((status, body)) => respond(request, status, JSON, body),
                     Err(error) => error_response(request, 503, error),
                 }
             }
             continue;
         }
-        let page = if matches!(path, "/runs" | "/evidence")
-            || matches!(Route::parse(path), Some(Route::Run(_)))
+        let page = if matches!(
+            path.as_str(),
+            "/runs" | "/evidence" | "/workspaces" | "/tickets"
+        ) || matches!(Route::parse(&path), Some(Route::Run(_)))
         {
             "/"
         } else {
-            path
+            path.as_str()
         };
         if let Some((_, mime, body)) = ASSETS.iter().find(|(name, _, _)| name == &page) {
             respond(request, 200, mime, body.to_vec());
