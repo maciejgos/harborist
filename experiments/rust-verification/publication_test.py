@@ -42,7 +42,16 @@ args = sys.argv[1:]
 assert args[:3] == ["api", "--hostname", "github.com"]
 state = Path(os.environ["PR_STATE"])
 if args[3].startswith("repos/example/project/pulls?"):
-    print("[" + state.read_text() + "]" if state.exists() else "[]")
+    if state.exists():
+        pull = json.loads(state.read_text())
+        if pull.get("follow_remote"):
+            pull["head"]["sha"] = subprocess.check_output([
+                "git", "--git-dir", os.environ["TEST_REMOTE"], "rev-parse",
+                "refs/heads/" + pull["head"]["ref"],
+            ], text=True).strip()
+        print(json.dumps([pull]))
+    else:
+        print("[]")
 elif args[3] == "repos/example/project/pulls/7":
     pull = json.loads(state.read_text())
     pull.update(merged=False, merged_at=None, merge_commit_sha=None)
@@ -53,6 +62,16 @@ elif "/check-runs?" in args[3]:
     ]}))
 elif "/status?" in args[3]:
     print(json.dumps({"state": "success", "total_count": 0, "statuses": []}))
+elif args[3] == "repos/example/project/issues/7/comments":
+    comments = state.with_name("comments.json")
+    written = json.loads(comments.read_text()) if comments.exists() else []
+    if "--method" in args:
+        body = next(value.removeprefix("body=") for value in args if value.startswith("body="))
+        written.append({"body": body})
+        comments.write_text(json.dumps(written))
+        print(json.dumps(written[-1]))
+    else:
+        print(json.dumps([written]))
 elif args[3].endswith("?per_page=50"):
     feedback = [{"id": 9, "user": {"login": "reviewer"}, "body": "Please add a test."}]
     print(json.dumps(feedback if "/reviews?" in args[3] else []))
@@ -173,6 +192,27 @@ else:
             record = json.loads((directory / "attempts/000001/continuation.json").read_text())
             assert record["context"]["feedback"].count("Please add a test.") == 1
             assert record["attempt"]["start_sha"] == approval
+
+            previous = client.request("GET", f"/runs/{run_id}/github")["publication"]
+            assert previous["candidate"] == approval
+            updated = {
+                **payload, "approve": newest["candidate_sha"],
+                "expected_attempt": newest["attempt_id"], "expect_head": approval,
+            }
+            try:
+                client.request("POST", route, {**updated, "expect_head": unrelated})
+            except ValueError as error:
+                assert "expected head" in str(error)
+            else:
+                raise AssertionError("incorrect expected remote head accepted")
+            pull_path.write_text(json.dumps({**changed, "follow_remote": True}))
+            assert client.request("POST", route, updated)["pull"]["number"] == 7
+            assert git(remote, "rev-parse", f"refs/heads/{branch}") == newest["candidate_sha"]
+            assert client.request("POST", route, {**updated, "expect_head": newest["candidate_sha"]})["pull"]["number"] == 7
+            comments = json.loads((root / "comments.json").read_text())
+            assert len(comments) == 1 and newest["candidate_sha"] in comments[0]["body"]
+            receipt = client.request("GET", f"/runs/{run_id}/github")["publication"]
+            assert receipt["candidate"] == newest["candidate_sha"] and receipt["previous"] == approval
 
         finally:
             service.terminate()

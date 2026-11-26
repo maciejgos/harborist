@@ -1,10 +1,6 @@
 //! Explicit publication of the verified commit to a Run-owned GitHub branch.
 
-use crate::{
-    Result, apply, git_text, github,
-    record::{Terminal, read_artifact},
-    store,
-};
+use crate::{Result, apply, git_text, github, record::read_artifact, store};
 use harborist_verify::workflow::Sha;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -23,6 +19,7 @@ struct Approval {
     base: String,
     candidate: Sha,
     attempt: Uuid,
+    previous: Option<Sha>,
 }
 
 #[derive(Deserialize, Serialize, Eq, PartialEq)]
@@ -89,10 +86,10 @@ fn record(path: &Path, value: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-fn validate_pull(pull: &Pull, approval: &Approval, branch: &str) -> Result<()> {
+fn validate_pull(pull: &Pull, approval: &Approval, branch: &str, head: &Sha) -> Result<()> {
     if pull.number == 0
         || pull.state != "open"
-        || pull.head.sha != approval.candidate
+        || &pull.head.sha != head
         || pull.head.name != branch
         || pull.base.name != approval.base
         || !pull.html_url.eq_ignore_ascii_case(&format!(
@@ -128,16 +125,27 @@ pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Va
 }
 
 fn published(directory: &Path, id: Uuid) -> Result<Option<Receipt>> {
-    let number = crate::continuation::latest(directory)?;
-    let attempt_directory = crate::continuation::attempt_path(directory, number);
-    let terminal = match Terminal::load(&attempt_directory, id) {
-        Ok(terminal) => terminal,
-        Err(_) => return Ok(None),
-    };
-    let path = directory
-        .join("publication")
-        .join(format!("published-{}.json", terminal.attempt.id()));
-    read_optional(&path)
+    for number in crate::continuation::numbers(directory)?.into_iter().rev() {
+        let attempt_directory = crate::continuation::attempt_path(directory, number);
+        let Some(attempt): Option<harborist_verify::workflow::Attempt> =
+            read_optional(&attempt_directory.join("attempt.json"))?
+        else {
+            continue;
+        };
+        if attempt.run_id() != id {
+            return Err("publication Attempt belongs to another Run".into());
+        }
+        let path = directory
+            .join("publication")
+            .join(format!("published-{}.json", attempt.id()));
+        if let Some(receipt) = read_optional::<Receipt>(&path)? {
+            if receipt.approval.attempt != attempt.id() {
+                return Err("publication receipt belongs to another Attempt".into());
+            }
+            return Ok(Some(receipt));
+        }
+    }
+    Ok(None)
 }
 
 pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
@@ -146,7 +154,7 @@ pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
         serde_json::json!({
             "repository": receipt.approval.destination, "base": receipt.approval.base,
             "candidate": receipt.approval.candidate, "attempt": receipt.approval.attempt,
-            "previous": null, "timestamp": receipt.timestamp, "pull": receipt.pull,
+            "previous": receipt.approval.previous, "timestamp": receipt.timestamp, "pull": receipt.pull,
         })
     });
     let mut result = serde_json::json!({"publication": publication});
@@ -162,8 +170,21 @@ pub fn delivery(directory: &Path, id: Uuid) -> Result<serde_json::Value> {
 }
 
 pub fn execute(args: &[OsString]) -> Result<()> {
-    let [directory, approve, destination, base] = args else {
-        return Err("expected publish RUN_DIR APPROVED_SHA OWNER/REPO BASE_BRANCH".into());
+    let (directory, approve, destination, base, expect_head) = match args {
+        [directory, approve, destination, base] => (directory, approve, destination, base, None),
+        [directory, approve, destination, base, flag, head] if flag == "--expect-head" => (
+            directory,
+            approve,
+            destination,
+            base,
+            Some(crate::commit(head)?),
+        ),
+        _ => {
+            return Err(
+                "expected publish RUN_DIR APPROVED_SHA OWNER/REPO BASE_BRANCH [--expect-head SHA]"
+                    .into(),
+            );
+        }
     };
     let request = PublishRequest {
         destination: destination
@@ -173,7 +194,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         base: base.to_str().ok_or("expected a base branch")?.to_owned(),
         approve: crate::commit(approve)?,
         expected_attempt: None,
-        expect_head: None,
+        expect_head,
     };
     let pull = publish(store::load(Path::new(directory))?, request)?;
     println!("{}", pull.html_url);
@@ -222,36 +243,52 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     {
         return Err("approval belongs to a different Attempt".into());
     }
+    let prior = published(&run.directory, id)?;
+    if prior.as_ref().is_some_and(|receipt| {
+        receipt.approval.destination != destination || receipt.approval.base != base
+    }) {
+        return Err("destination differs from existing publication".into());
+    }
+    let completed = prior
+        .as_ref()
+        .filter(|receipt| receipt.approval.attempt == verified.attempt);
+    let previous = match (&prior, completed) {
+        (_, Some(receipt)) => receipt.approval.previous.clone(),
+        (Some(receipt), None) => Some(receipt.approval.candidate.clone()),
+        (None, None) => None,
+    };
+    if request.expect_head != previous
+        && !completed.is_some_and(|receipt| {
+            request.expect_head.as_ref() == Some(&receipt.approval.candidate)
+        })
+    {
+        return Err("expected head differs from the recorded publication".into());
+    }
     let approval = Approval {
         destination: destination.to_owned(),
         base: base.to_owned(),
         candidate,
         attempt: verified.attempt,
+        previous,
     };
-    let pending_path = directory.join("prepared.json");
+    let pending_path = directory.join(format!("prepared-{}.json", approval.attempt));
     let receipt_path = directory.join(format!("published-{}.json", approval.attempt));
-    let pending: Option<Approval> = read_optional(&pending_path)?;
-    let prior: Option<Receipt> = read_optional(&receipt_path)?;
+    let pending = match read_optional::<Approval>(&pending_path)? {
+        Some(saved) => Some(saved),
+        None => read_optional::<Approval>(&directory.join("prepared.json"))?
+            .filter(|saved| saved.attempt == approval.attempt),
+    };
     if pending.as_ref().is_some_and(|saved| saved != &approval)
-        || prior
-            .as_ref()
-            .is_some_and(|saved| saved.approval != approval)
+        || completed.is_some_and(|saved| saved.approval != approval)
     {
         return Err("approval conflicts with the existing publication".into());
     }
-    if request.expect_head.as_ref().is_some_and(|head| {
-        prior
-            .as_ref()
-            .is_none_or(|receipt| &receipt.approval.candidate != head)
-    }) {
-        return Err("expected head differs from the recorded publication".into());
-    }
     let url = format!("https://github.com/{destination}.git");
     let observed = remote_head(repo, &url, &reference)?;
-    if observed
-        .as_ref()
-        .is_some_and(|head| head != &approval.candidate)
-        || (observed.is_some() && pending.is_none())
+    let pushed = observed.as_ref() == Some(&approval.candidate);
+    if (pushed && pending.is_none())
+        || (!pushed && observed != approval.previous)
+        || (completed.is_some() && !pushed)
     {
         return Err("GitHub head changed or is not owned by this publication".into());
     }
@@ -261,28 +298,40 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     let owner = destination.split_once('/').ok_or("missing GitHub owner")?.0;
     let endpoint = format!("repos/{destination}/pulls");
     let lookup = format!("{endpoint}?state=all&head={owner}:{branch}&per_page=2");
-    let mut matches: Vec<Pull> = api(repo, &lookup, &[])?;
-    if matches.len() > 1 {
-        return Err("multiple GitHub PRs use the Run branch".into());
-    }
-    let pull = matches.pop();
+    let pull = find_pull(repo, &lookup)?;
     if let Some(pull) = &pull {
-        if pending.is_none() || observed.is_none() {
+        if prior
+            .as_ref()
+            .is_some_and(|receipt| pull.number != receipt.pull)
+            || (prior.is_none() && pending.is_none())
+        {
             return Err("existing PR is not owned by this publication".into());
         }
-        validate_pull(pull, &approval, &branch)?;
+        let head = observed.as_ref().ok_or("published PR has no branch head")?;
+        validate_pull(pull, &approval, &branch, head)?;
+    } else if prior.is_some() {
+        return Err("previously published PR is unavailable".into());
     }
-    if let Some(prior) = prior {
-        let pull = pull
-            .filter(|pull| pull.number == prior.pull)
-            .ok_or("previously published PR is unavailable")?;
-        return Ok(pull);
+    if completed.is_some() {
+        return pull.ok_or_else(|| "previously published PR is unavailable".into());
     }
     if pending.is_none() {
         record(&pending_path, &approval)?;
     }
-    if observed.is_none() {
-        let lease = format!("--force-with-lease={reference}:");
+    if !pushed {
+        let expected = approval.previous.as_ref().map_or("", Sha::as_str);
+        if let Some(previous) = approval.previous.as_ref() {
+            git_text(
+                repo,
+                &[
+                    "merge-base",
+                    "--is-ancestor",
+                    previous.as_str(),
+                    approval.candidate.as_str(),
+                ],
+            )?;
+        }
+        let lease = format!("--force-with-lease={reference}:{expected}");
         let update = format!("{}:{reference}", approval.candidate);
         git_text(
             repo,
@@ -298,37 +347,56 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
             ],
         )?;
     }
-    let pull = match pull {
-        Some(pull) => pull,
-        None => {
-            let review = read_artifact(&verified.directory, "review/review.md")?;
-            let body = format!(
-                "body=<!-- harborist-publication:{} -->\n\n## Request\n\n{}\n\nBase: `{}`\n\nCandidate: `{}`\n\n## REVIEW\n\n{}",
-                approval.attempt,
-                run.intent.chars().take(8000).collect::<String>(),
-                run.contract.base_sha,
-                approval.candidate,
-                review.chars().take(8000).collect::<String>(),
-            );
-            api(
-                repo,
-                &endpoint,
-                &[
-                    "--method",
-                    "POST",
-                    "--raw-field",
-                    &format!("title=Harborist Run {id}"),
-                    "--raw-field",
-                    &format!("base={base}"),
-                    "--raw-field",
-                    &format!("head={branch}"),
-                    "--raw-field",
-                    &body,
-                ],
-            )?
+    let review = read_artifact(&verified.directory, "review/review.md")?;
+    let marker = format!("<!-- harborist-publication:{} -->", approval.attempt);
+    let body = format!(
+        "body={marker}\n\n## Request\n\n{}\n\nBase: `{}`\n\nCandidate: `{}`\n\n## REVIEW\n\n{}",
+        run.intent.chars().take(8000).collect::<String>(),
+        run.contract.base_sha,
+        approval.candidate,
+        review.chars().take(8000).collect::<String>(),
+    );
+    let pull = if let Some(existing) = pull {
+        let current = find_pull(repo, &lookup)?
+            .filter(|pull| pull.number == existing.number)
+            .ok_or("GitHub PR changed after the branch update")?;
+        validate_pull(&current, &approval, &branch, &approval.candidate)?;
+        if prior.is_some() {
+            let comments = format!("repos/{destination}/issues/{}/comments", current.number);
+            let pages: Vec<Vec<Comment>> = api(repo, &comments, &["--paginate", "--slurp"])?;
+            if !pages.iter().flatten().any(|comment| {
+                comment
+                    .body
+                    .as_deref()
+                    .is_some_and(|body| body.lines().next() == Some(marker.as_str()))
+            }) {
+                api::<serde_json::Value>(
+                    repo,
+                    &comments,
+                    &["--method", "POST", "--raw-field", &body],
+                )?;
+            }
         }
+        current
+    } else {
+        api(
+            repo,
+            &endpoint,
+            &[
+                "--method",
+                "POST",
+                "--raw-field",
+                &format!("title=Harborist Run {id}"),
+                "--raw-field",
+                &format!("base={base}"),
+                "--raw-field",
+                &format!("head={branch}"),
+                "--raw-field",
+                &body,
+            ],
+        )?
     };
-    validate_pull(&pull, &approval, &branch)?;
+    validate_pull(&pull, &approval, &branch, &approval.candidate)?;
     if remote_head(repo, &url, &reference)?.as_ref() != Some(&approval.candidate) {
         return Err("GitHub head changed before receipt publication".into());
     }
@@ -342,6 +410,19 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
         },
     )?;
     Ok(pull)
+}
+
+fn find_pull(repo: &Path, lookup: &str) -> Result<Option<Pull>> {
+    let mut matches: Vec<Pull> = api(repo, lookup, &[])?;
+    if matches.len() > 1 {
+        return Err("multiple GitHub PRs use the Run branch".into());
+    }
+    Ok(matches.pop())
+}
+
+#[derive(Deserialize)]
+struct Comment {
+    body: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -126,11 +126,14 @@ Use the full candidate SHA from packaged verification and an existing GitHub
 base branch. The command uses authenticated Git and `gh` in the container. It
 pushes the approved commit to a dedicated Run branch and prints the pull
 request URL. Retrying the same publication checks the prepared record and
-remote head before reusing the existing pull request. This command currently
-supports the initial publication and its retries. You can also approve it
-from GitHub delivery in the browser for a queued Run that finished verification.
-The browser displays the published commit and pull request from the local receipt. The Docker test uses a
-local Git remote and an offline `gh` fixture.
+remote head before reusing the existing pull request. For a later verified
+Attempt, append `--expect-head PREVIOUS_PUBLISHED_SHA`.
+Harborist advances the existing PR branch only if its head matches the expected
+SHA and the new commit descends from it. The update adds a verification comment
+to the existing PR. You can also approve it from GitHub delivery in the
+browser for a queued Run that finished verification. The browser displays the
+published commit and pull request from the local receipt. The Docker test uses
+a local Git remote and an offline `gh` fixture.
 
 ## Refresh GitHub PR evidence
 
@@ -248,9 +251,8 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Existing Python Run formats, rework and recovery, subsequent GitHub publications and collaboration, integration management,
-legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
-outside the Rust foreground implementation.
+Existing Python Run formats, integration management, legacy YAML
+compatibility, and Docker Sandboxes remain outside the Rust implementation.
 
 ## Rust workflow contracts
 
