@@ -320,8 +320,11 @@ fn request_body(request: &mut Request) -> Result<Vec<u8>> {
 
 fn run_command_route(route: &str) -> Option<(Uuid, &str)> {
     let (id, action) = route.strip_prefix("/workspace/runs/")?.split_once('/')?;
-    matches!(action, "publish" | "observe" | "cancel" | "supersede")
-        .then_some((Uuid::parse_str(id).ok()?, action))
+    matches!(
+        action,
+        "publish" | "observe" | "cancel" | "supersede" | "continue"
+    )
+    .then_some((Uuid::parse_str(id).ok()?, action))
 }
 
 fn is_write(route: &str) -> bool {
@@ -334,6 +337,9 @@ fn is_write(route: &str) -> bool {
 fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
     let body = request_body(request)?;
     if let Some((id, action)) = run_command_route(route) {
+        if action == "continue" {
+            return queue::continue_run(control, id, &body);
+        }
         let delivery = queue::read(&control.join("queue").join(format!("{id}.json")))?;
         if action == "supersede" {
             return workspace::supersede(control, &delivery, &body);

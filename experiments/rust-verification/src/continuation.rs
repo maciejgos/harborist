@@ -7,7 +7,8 @@ use crate::{
     record::{Terminal, read_artifact},
     store,
 };
-use harborist_verify::workflow::Attempt;
+use harborist_verify::workflow::{Attempt, Sha};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     ffi::OsString,
@@ -78,29 +79,39 @@ pub fn lock(root: &Path) -> Result<File> {
     Ok(file)
 }
 
-pub fn execute(args: &[OsString]) -> Result<()> {
-    let (directory, expected, feedback, extra) = match args {
-        [directory, expected, feedback] => (directory, expected, feedback, 0),
-        [directory, expected, feedback, extra] => (
-            directory,
-            expected,
-            feedback,
-            extra.to_str().ok_or("invalid time grant")?.parse::<u64>()?,
-        ),
-        _ => {
-            return Err(
-                "expected rework RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]".into(),
-            );
-        }
-    };
-    let expected = Uuid::parse_str(expected.to_str().ok_or("expected an Attempt UUID")?)?;
-    let feedback = feedback.to_str().ok_or("feedback must be UTF-8")?;
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Request {
+    pub request_id: Uuid,
+    action: String,
+    expected_attempt_id: Uuid,
+    #[serde(default)]
+    feedback: String,
+    #[serde(default)]
+    additional_seconds: u64,
+}
+
+struct Prepared {
+    directory: PathBuf,
+    candidate: Sha,
+    rework: Rework,
+}
+
+pub fn validate(capture: &store::Captured, request: &Request) -> Result<()> {
+    prepare(capture, request).map(|_| ())
+}
+
+fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
+    if request.action != "rework" {
+        return Err("unsupported continuation action".into());
+    }
+    let expected = request.expected_attempt_id;
+    let feedback = &request.feedback;
+    let extra = request.additional_seconds;
     if feedback.chars().count() > 32768 || extra > u32::MAX as u64 {
         return Err("feedback or additional time exceeds the supported limit".into());
     }
-    let capture = store::load(Path::new(directory))?;
     let root = &capture.directory;
-    let _lock = lock(root)?;
     crate::retirement::cancelled(&crate::retirement::path(root))?;
     let number = latest(root)?;
     let previous = attempt_path(root, number);
@@ -155,6 +166,25 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         "review": read_artifact(&previous, "review/review.md").ok(),
     }))?;
     let directory = attempt_path(root, number + 1);
+    Ok(Prepared {
+        directory,
+        candidate,
+        rework: Rework {
+            context,
+            specification: spec,
+            spent_seconds: spent,
+            granted_seconds: granted,
+        },
+    })
+}
+
+pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Value> {
+    let _lock = lock(&capture.directory)?;
+    let Prepared {
+        directory,
+        candidate,
+        rework,
+    } = prepare(&capture, request)?;
     fs::create_dir_all(
         directory
             .parent()
@@ -169,9 +199,9 @@ pub fn execute(args: &[OsString]) -> Result<()> {
     store::write_new(
         &directory.join("continuation.json"),
         &serde_json::to_vec_pretty(&json!({
-            "action": "rework", "previous_attempt": expected, "attempt": attempt,
-            "spec_sha256": terminal.spec_sha256, "spent_seconds": spent, "granted_seconds": granted,
-            "context": serde_json::from_str::<serde_json::Value>(&context)?,
+            "action": "rework", "previous_attempt": request.expected_attempt_id, "request_id": request.request_id, "attempt": attempt,
+            "spec_sha256": store::digest(rework.specification.as_bytes()), "spent_seconds": rework.spent_seconds, "granted_seconds": rework.granted_seconds,
+            "context": serde_json::from_str::<serde_json::Value>(&rework.context)?,
         }))?,
     )?;
     File::open(&directory)?.sync_all()?;
@@ -181,17 +211,35 @@ pub fn execute(args: &[OsString]) -> Result<()> {
             .ok_or("missing Attempt directory parent")?,
     )?
     .sync_all()?;
-    let result = foreground::execute_attempt(
-        capture,
-        directory,
-        attempt,
-        Some(Rework {
-            context,
-            specification: spec,
-            spent_seconds: spent,
-            granted_seconds: granted,
-        }),
-    )?;
+    foreground::execute_attempt(capture, directory, attempt, Some(rework))
+}
+
+pub fn execute(args: &[OsString]) -> Result<()> {
+    let (directory, expected, feedback, extra) = match args {
+        [directory, expected, feedback] => (directory, expected, feedback, 0),
+        [directory, expected, feedback, extra] => (
+            directory,
+            expected,
+            feedback,
+            extra.to_str().ok_or("invalid time grant")?.parse::<u64>()?,
+        ),
+        _ => {
+            return Err(
+                "expected rework RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]".into(),
+            );
+        }
+    };
+    let request = Request {
+        request_id: Uuid::new_v4(),
+        action: "rework".to_owned(),
+        expected_attempt_id: Uuid::parse_str(expected.to_str().ok_or("expected an Attempt UUID")?)?,
+        feedback: feedback
+            .to_str()
+            .ok_or("feedback must be UTF-8")?
+            .to_owned(),
+        additional_seconds: extra,
+    };
+    let result = run(store::load(Path::new(directory))?, &request)?;
     println!("{result}");
     if result["outcome"] != "VERIFIED" {
         return Err(result["error"]

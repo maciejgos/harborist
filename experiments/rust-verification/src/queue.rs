@@ -1,6 +1,6 @@
 //! Durable delivery state for one local worker.
 
-use crate::{Result, foreground, store};
+use crate::{Result, continuation, foreground, store};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{OsStr, OsString},
@@ -35,6 +35,7 @@ pub struct Delivery {
     submitted_ns: u128,
     pub state: State,
     pub error: Option<String>,
+    pub continuation: Option<continuation::Request>,
 }
 
 pub fn queue_directory(root: &Path) -> Result<PathBuf> {
@@ -92,6 +93,7 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
         submitted_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
         state: State::Queued,
         error: None,
+        continuation: None,
     };
     let saved = match persist(&queue, &record, false) {
         Ok(()) => record,
@@ -109,6 +111,80 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
         Err(error) => return Err(error),
     };
     Ok(saved)
+}
+
+pub fn continue_run(control: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
+    let request: continuation::Request = serde_json::from_slice(body)?;
+    let queue = queue_directory(control)?;
+    let path = queue.join(format!("{id}.json"));
+    let observed = read(&path)?;
+    if let Some(previous) = &observed.continuation {
+        if previous.request_id == request.request_id {
+            if previous != &request {
+                return Err("continuation request ID has different inputs".into());
+            }
+            return Ok(serde_json::json!({"run_id": id}));
+        }
+    }
+    let directory = observed.directory;
+    let _lock = continuation::lock(&directory)?;
+    let mut record = read(&path)?;
+    if record.directory != directory {
+        return Err("Run directory changed during continuation admission".into());
+    }
+    let accepted = serde_json::json!({"run_id": id});
+    if let Some(previous) = &record.continuation {
+        if previous.request_id == request.request_id {
+            if previous != &request {
+                return Err("continuation request ID has different inputs".into());
+            }
+            return Ok(accepted);
+        }
+    }
+    let history = queue.join("continuations").join(id.to_string());
+    let receipt = |request_id: Uuid| history.join(format!("{request_id}.json"));
+    match fs::read(receipt(request.request_id)) {
+        Ok(raw) => {
+            let previous: continuation::Request = serde_json::from_slice(&raw)?;
+            if previous != request {
+                return Err("continuation request ID has different inputs".into());
+            }
+            return Ok(accepted);
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
+    }
+    if matches!(
+        record.state,
+        State::Queued | State::Running | State::Cancelled
+    ) {
+        return Err("continuation requires an available terminal delivery".into());
+    }
+    let capture = store::load(&directory)?;
+    if capture.contract.run_id != id {
+        return Err("saved Run ID does not match continuation request".into());
+    }
+    continuation::validate(&capture, &request)?;
+    if let Some(previous) = &record.continuation {
+        fs::create_dir_all(&history)?;
+        let path = receipt(previous.request_id);
+        match store::write_new(&path, &serde_json::to_vec(previous)?) {
+            Ok(()) => File::open(&history)?.sync_all()?,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let saved: continuation::Request = serde_json::from_slice(&fs::read(path)?)?;
+                if &saved != previous {
+                    return Err("continuation history disagrees with the active record".into());
+                }
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    record.continuation = Some(request);
+    record.state = State::Queued;
+    record.error = None;
+    record.submitted_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    persist(&queue, &record, true)?;
+    Ok(accepted)
 }
 
 pub fn delivery(args: &[OsString]) -> Result<()> {
@@ -187,7 +263,11 @@ pub fn worker(args: &[OsString]) -> Result<()> {
                 if capture.contract.run_id != record.run_id {
                     return Err("saved Run ID does not match delivery".into());
                 }
-                foreground::execute(capture)
+                if let Some(request) = &record.continuation {
+                    continuation::run(capture, request)
+                } else {
+                    foreground::execute(capture)
+                }
             });
             match execution {
                 _ if marker.try_exists()? => record.state = State::Cancelled,

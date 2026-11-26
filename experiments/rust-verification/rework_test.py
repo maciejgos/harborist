@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from compare import ROOT, fixture, git
@@ -77,6 +78,38 @@ if stage == "build":''',
             assert historical["run"]["outcome"] == "TEST_FAILED"
             latest = client.request("GET", f"{route}/attempts/1/artifacts/evidence.json")
             assert json.loads(latest["content"])["candidate"] == second["candidate"]
+        finally:
+            service.terminate()
+    (control / "service.sock").unlink(missing_ok=True)
+
+    queued = root / "queued-rework"
+    subprocess.check_call([binary, "intake", repo, base, intent, queued], env=env)
+    subprocess.check_call([binary, "submit", control, queued], env=env)
+    subprocess.check_call([binary, "worker", control, "--once"], env=env)
+    predecessor = json.loads((queued / "evidence.json").read_text())
+    queued_id = predecessor["run_id"]
+    with subprocess.Popen([binary, "service", control], env=env) as service:
+        try:
+            deadline = time.monotonic() + 5
+            while not (control / "service.sock").exists():
+                assert service.poll() is None and time.monotonic() < deadline
+                time.sleep(0.02)
+            client = ControlClient(control)
+            payload = {
+                "request_id": str(uuid.uuid4()), "action": "rework",
+                "expected_attempt_id": predecessor["attempt"]["attempt_id"],
+                "feedback": "Address the failing check", "additional_seconds": 0,
+            }
+            route = f"/workspace/runs/{queued_id}/continue"
+            assert client.request("POST", route, payload)["run_id"] == queued_id
+            assert client.request("POST", route, payload)["run_id"] == queued_id
+            assert not (queued / "attempts").exists()
+            assert client.request("GET", f"/runs/{queued_id}")["state"] == "QUEUED"
+            subprocess.check_call([binary, "worker", control, "--once"], env={**env, "REWORK": "1"})
+            result = client.request("GET", f"/runs/{queued_id}")
+            assert result["state"] == "FINISHED"
+            assert result["run"]["outcome"] == "VERIFIED" and result["attempt_number"] == 1
+            assert client.request("POST", route, payload)["run_id"] == queued_id
         finally:
             service.terminate()
 

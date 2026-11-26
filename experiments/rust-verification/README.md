@@ -185,10 +185,11 @@ candidate gets fresh TEST and REVIEW results. The earlier Attempt's
 artifacts and Git ref are preserved. Supply an optional final argument
 in seconds to increase the remaining budget.
 
-This entry point runs in the foreground. The Run summary defaults to the
-latest Attempt, and the browser's Attempt selector opens historical evidence.
-Candidate application uses verification and the Git ref from the latest
-Attempt. Queued and browser continuation are still being migrated.
+The CLI command runs in the foreground. **Rework Run** in the browser queues
+the request for the worker, which checks the expected predecessor again
+before starting. The Run summary defaults to the latest Attempt, and the
+Attempt selector opens historical evidence. Candidate application uses the
+latest Attempt’s verification and Git ref.
 
 ## Run the comparison
 
