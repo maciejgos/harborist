@@ -3,7 +3,12 @@
 use crate::Result;
 use harborist_verify::workflow::{Attempt, Outcome, Receipt, Sha, Stage, Workflow};
 use serde::{Deserialize, Serialize};
-use std::{fs::OpenOptions, io::Read, os::unix::fs::OpenOptionsExt, path::Path};
+use std::{
+    fs::{File, OpenOptions},
+    io::Read,
+    os::unix::fs::OpenOptionsExt,
+    path::Path,
+};
 use uuid::Uuid;
 
 const LIMIT: u64 = 2 * 1024 * 1024;
@@ -87,7 +92,7 @@ impl Terminal {
     }
 }
 
-pub fn read_artifact(directory: &Path, name: &str) -> Result<String> {
+pub fn open_artifact(directory: &Path, name: &str) -> Result<File> {
     if directory.canonicalize()? != directory {
         return Err("Run directory does not match the recorded path".into());
     }
@@ -103,6 +108,11 @@ pub fn read_artifact(directory: &Path, name: &str) -> Result<String> {
     if !file.metadata()?.is_file() {
         return Err("artifact must be a regular file".into());
     }
+    Ok(file)
+}
+
+pub fn read_artifact(directory: &Path, name: &str) -> Result<String> {
+    let file = open_artifact(directory, name)?;
     let mut data = Vec::new();
     file.take(LIMIT + 1).read_to_end(&mut data)?;
     if data.len() as u64 > LIMIT {

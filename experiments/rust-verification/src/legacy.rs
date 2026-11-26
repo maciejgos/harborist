@@ -498,3 +498,265 @@ pub fn import(args: &[std::ffi::OsString]) -> Result<()> {
     println!("{}", serde_json::to_string(&converted)?);
     Ok(())
 }
+
+#[derive(Deserialize)]
+struct FileEntry {
+    path: String,
+    size_bytes: u64,
+    sha256: String,
+}
+
+fn checked_index(directory: &Path, records: &Value) -> Result<std::collections::HashSet<String>> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let entries: Vec<FileEntry> = serde_json::from_value(records.clone())?;
+    let mut names = std::collections::HashSet::new();
+    for entry in entries {
+        if entry.path == "evidence.json"
+            || entry.path.split('/').next() == Some("workspace")
+            || entry
+                .path
+                .split('/')
+                .any(|part| matches!(part, "" | "." | ".."))
+            || !names.insert(entry.path.clone())
+        {
+            return Err("unsafe or duplicate historical evidence path".into());
+        }
+        let mut file = crate::record::open_artifact(directory, &entry.path)?;
+        if file.metadata()?.len() != entry.size_bytes {
+            return Err(
+                format!("historical evidence length/digest mismatch: {}", entry.path).into(),
+            );
+        }
+        let mut hasher = Sha256::new();
+        let mut buffer = [0; 65536];
+        let mut size = 0u64;
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            size += count as u64;
+            hasher.update(&buffer[..count]);
+        }
+        if size != entry.size_bytes || format!("{:x}", hasher.finalize()) != entry.sha256 {
+            return Err(
+                format!("historical evidence length/digest mismatch: {}", entry.path).into(),
+            );
+        }
+    }
+    Ok(names)
+}
+
+pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> {
+    let parent = root.parent().ok_or("historical Run has no root")?;
+    let id = Uuid::parse_str(
+        root.file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("historical Run has no UUID directory name")?,
+    )?;
+    locate(parent, id)?;
+    if parent
+        .join("retirements")
+        .join(format!("{id}.json"))
+        .try_exists()?
+    {
+        return Err("historical Run is retired".into());
+    }
+    let (number, directory) = select(root, None)?;
+    let package: Value = serde_json::from_str(&read_artifact(&directory, "evidence.json")?)?;
+    if package["version"] != 1 || !package["error"].is_null() {
+        return Err("historical PACKAGE version or outcome is invalid".into());
+    }
+    let index = checked_index(&directory, &package["files"])?;
+    let get = |name: &str| -> Result<String> {
+        if !index.contains(name) {
+            return Err(format!("historical evidence index lacks {name}").into());
+        }
+        read_artifact(&directory, name)
+    };
+    for name in [
+        "run.json",
+        "contract.json",
+        "events.jsonl",
+        "intent.json",
+        "intent.md",
+        "attempt.json",
+        "report.md",
+    ] {
+        get(name)?;
+    }
+    for name in [
+        "workspace-layout.json",
+        "execution-context.json",
+        "execution-workspace.json",
+    ] {
+        if directory.join(name).symlink_metadata().is_ok() {
+            get(name)?;
+        }
+    }
+    let raw = get("contract.json")?;
+    let contract: Contract = serde_json::from_str(&raw)?;
+    let observed = view(root, id, Some(number))?;
+    let saved = snapshot(&directory, id)?;
+    let attempt: Attempt = serde_json::from_str(&get("attempt.json")?)?;
+    let verification = saved
+        .verification
+        .as_ref()
+        .ok_or("historical Run lacks verification")?;
+    let candidate: Sha = serde_json::from_value(observed["candidate_sha"].clone())?;
+    let identity = json!(attempt.candidate(candidate.clone()));
+    if observed["run"]["outcome"] != "VERIFIED"
+        || package["run"] != json!(saved)
+        || package["contract"] != serde_json::from_str::<Value>(&raw)?
+        || package["attempt"] != json!(attempt)
+        || package["candidate"] != identity
+    {
+        return Err("historical PACKAGE conflicts with validated verification".into());
+    }
+    let test_raw = get("test/manifest.json")?;
+    let test: Value = serde_json::from_str(&test_raw)?;
+    if package["test"] != test
+        || test["run_id"] != json!(id)
+        || test["attempt_id"] != json!(attempt.id())
+        || test["verification"] != contract.verification
+        || test["receipt"]["stage"] != "test"
+        || test["receipt"]["outcome"] != "succeeded"
+        || test["receipt"]["candidate"] != identity
+        || test.get("workspace_error") != Some(&Value::Null)
+    {
+        return Err("historical TEST capture does not match PACKAGE".into());
+    }
+    let checks = test["collection"]["checks"]
+        .as_array()
+        .ok_or("missing historical TEST checks")?;
+    let approved = verification["checks"]
+        .as_array()
+        .ok_or("missing historical passing checks")?;
+    if checks.len() != approved.len() {
+        return Err("historical TEST checks differ from verification".into());
+    }
+    for (position, (check, expected)) in checks.iter().zip(approved).enumerate() {
+        if check["id"] != expected["id"]
+            || check["command"] != expected["command"]
+            || check["returncode"] != 0
+            || check["timed_out"] != false
+            || !check["error"].is_null()
+        {
+            return Err("historical TEST checks did not pass".into());
+        }
+        for stream in ["stdout", "stderr"] {
+            let name = format!("test/logs/{position:04}.{stream}.log");
+            if !index.contains(&name)
+                || check[format!("{stream}_path")] != json!(directory.join(&name))
+            {
+                return Err("historical TEST log attribution does not match".into());
+            }
+        }
+    }
+    let specification_name = if package["reused_spec_sha256"].is_string() {
+        let record: Value = serde_json::from_str(&get("continuation.json")?)?;
+        if record["attempt"] != json!(attempt)
+            || record["spec_digest"] != package["reused_spec_sha256"]
+        {
+            return Err("historical specification lineage does not match".into());
+        }
+        "frozen-spec.md"
+    } else {
+        "design/spec.md"
+    };
+    let spec = get(specification_name)?;
+    let parsed = harborist_verify::review::Specification::parse(&spec)?;
+    if verification["specification"]["sha256"] != parsed.sha256()
+        || verification["specification"]["criterion_ids"] != json!(parsed.criterion_ids())
+    {
+        return Err("historical specification does not match verification".into());
+    }
+    let stages = package["stages"]
+        .as_array()
+        .ok_or("missing historical native stage captures")?;
+    let expected_stages: &[&str] = if specification_name == "frozen-spec.md" {
+        &["plan", "build", "review"]
+    } else {
+        &["design", "plan", "build", "review"]
+    };
+    if stages.len() != expected_stages.len() {
+        return Err("historical PACKAGE lacks the canonical stage captures".into());
+    }
+    for (stage, name) in stages.iter().zip(expected_stages) {
+        if stage["stage"] != *name
+            || stage["run_id"] != json!(id)
+            || stage["attempt_id"] != json!(attempt.id())
+            || stage["output"]["result"]["stage"] != *name
+            || stage["output"]["result"]["status"] != "ready"
+            || serde_json::from_str::<Value>(&get(&format!("{name}/manifest.json"))?)? != *stage
+            || serde_json::from_str::<Value>(&get(&format!("{name}/stage-result.json"))?)?
+                != stage["output"]["result"]
+        {
+            return Err("historical native stage capture conflicts with PACKAGE".into());
+        }
+    }
+    let review = stages.last().ok_or("historical Run lacks REVIEW")?;
+    let request: Value = serde_json::from_str(&get("review/request.json")?)?;
+    let inputs = request["inputs"]
+        .as_array()
+        .ok_or("missing historical REVIEW inputs")?;
+    let input = |name: &str| {
+        inputs
+            .iter()
+            .find(|item| item["name"] == name)
+            .and_then(|item| item["content"].as_str())
+    };
+    if request["candidate"] != identity
+        || input("spec.md") != Some(spec.as_str())
+        || input("test-evidence.json") != Some(test_raw.as_str())
+        || review["test_evidence_sha256"] != digest(test_raw.as_bytes())
+        || review["output"]["result"] != verification["review"]
+        || review["review_decision"]["verification"] != *verification
+    {
+        return Err("historical REVIEW does not match the exact TEST and candidate".into());
+    }
+    let context: SavedContext =
+        serde_json::from_str(&read_artifact(root, "execution-context.json")?)?;
+    let repo = context.repository;
+    if context.version != 1
+        || context.run_id != id
+        || context.runs_root != parent
+        || !repo.is_absolute()
+        || crate::store::repository(&repo)? != repo
+    {
+        return Err("historical execution context does not match the Run or repository".into());
+    }
+    crate::apply::exact_commit(&repo, &contract.base_sha)?;
+    crate::apply::exact_commit(&repo, &candidate)?;
+    let candidate_ref = if number == 0 {
+        format!("refs/shipyard/runs/{id}/candidate")
+    } else {
+        format!(
+            "refs/shipyard/runs/{id}/attempts/{}/candidate",
+            attempt.id()
+        )
+    };
+    if crate::git_text(&repo, &["rev-parse", "--verify", &candidate_ref])? != candidate.as_str() {
+        return Err("historical Run-owned candidate ref does not match verification".into());
+    }
+    crate::git_text(
+        &repo,
+        &[
+            "merge-base",
+            "--is-ancestor",
+            contract.base_sha.as_str(),
+            candidate.as_str(),
+        ],
+    )?;
+    Ok((
+        id,
+        repo,
+        crate::apply::Verified {
+            candidate,
+            candidate_ref,
+            directory,
+            attempt: attempt.id(),
+        },
+    ))
+}

@@ -250,6 +250,12 @@ context and checks the verification bytes at the frozen base revision.
 The original remains inspectable in Python format. Already-started
 Python Runs are not eligible for this import.
 
+For an already verified Python Run, the Rust `apply RUN_DIR BRANCH`
+command can apply the recorded candidate directly. It checks the PACKAGE
+file digests, passing TEST capture, exact REVIEW inputs, and the original
+Run-owned Git ref. Rust stores the application receipt outside the Python
+Run directory so the original PACKAGE index stays valid.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -286,9 +292,8 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Continuing started Python Runs, delivering candidates from existing Python
-evidence, integration management, and Docker Sandboxes remain outside the
-Rust implementation.
+Continuing started Python Runs, publishing from Python evidence, integration
+management, and Docker Sandboxes remain outside the Rust implementation.
 
 ## Rust workflow contracts
 

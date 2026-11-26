@@ -7,7 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from compare import ROOT, fixture
+from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
 
 from harborist.control.client import ControlClient
@@ -44,6 +44,7 @@ def exercise(root: Path) -> None:
     evidence = json.loads((directory / "evidence.json").read_text())
     run_id = evidence["run"]["run_id"]
     before = (directory / "run.json").read_bytes()
+    journal = (directory / "events.jsonl").read_bytes()
     binary = ROOT / "target/release/harborist-verify"
     with subprocess.Popen([binary, "service", control, "--runs-dir", runs], env=env) as service:
         try:
@@ -68,6 +69,21 @@ def exercise(root: Path) -> None:
             service.terminate()
     assert (directory / "run.json").read_bytes() == before
 
+
+    (directory / "events.jsonl").write_bytes(journal)
+    git(repo, "branch", "legacy-delivery", base)
+    log = directory / "test/logs/0000.stdout.log"
+    frozen_log = log.read_bytes()
+    log.write_bytes(frozen_log + b"tampered")
+    command = [binary, "apply", directory, "legacy-delivery"]
+    refused = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
+    assert refused.returncode != 0 and "digest" in refused.stderr
+    assert git(repo, "rev-parse", "legacy-delivery") == base
+    log.write_bytes(frozen_log)
+    receipt = json.loads(subprocess.check_output(command, env=env))
+    assert receipt["resulting_sha"] == evidence["candidate"]["candidate_sha"]
+    assert git(repo, "rev-parse", "legacy-delivery") == receipt["resulting_sha"]
+    assert (directory / "run.json").read_bytes() == before
 
     rejected = subprocess.run(
         [binary, "import-python", directory, root / "rejected"], env=env,

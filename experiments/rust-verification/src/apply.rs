@@ -39,7 +39,7 @@ enum Operation {
     ObservedNoop,
 }
 
-fn exact_commit(repo: &Path, sha: &Sha) -> Result<()> {
+pub fn exact_commit(repo: &Path, sha: &Sha) -> Result<()> {
     if git_text(repo, &["cat-file", "-t", sha.as_str()])? != "commit"
         || !git_text(repo, &["for-each-ref", &format!("refs/replace/{sha}")])?.is_empty()
     {
@@ -356,14 +356,46 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         return Err("expected apply RUN_DIR BRANCH".into());
     };
     let branch = branch.to_str().ok_or("expected a UTF-8 branch name")?;
-    let captured = store::load(Path::new(directory))?;
+    let root = Path::new(directory).canonicalize()?;
+    let contract: Value = serde_json::from_str(&read_artifact(&root, "contract.json")?)?;
+    if contract.get("intent").is_some() && contract.get("version").is_none() {
+        let lock = File::open(&root)?;
+        // Python locks the original directory inode for competing Run operations.
+        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let (id, repo, verified) = crate::legacy::verified(&root)?;
+        let receipts = root
+            .parent()
+            .ok_or("historical Run has no parent")?
+            .join("rust-applications")
+            .join(id.to_string())
+            .join(verified.attempt.to_string());
+        return apply_candidate(id, &repo, branch, verified, receipts);
+    }
+    let captured = store::load(&root)?;
     let _continuation = crate::continuation::lock(&captured.directory)?;
     let verified = verified(&captured)?;
+    let receipts = verified.directory.join("applications");
+    apply_candidate(
+        captured.contract.run_id,
+        &captured.contract.repository,
+        branch,
+        verified,
+        receipts,
+    )
+}
+
+fn apply_candidate(
+    run_id: Uuid,
+    repo: &Path,
+    branch: &str,
+    verified: Verified,
+    directory: PathBuf,
+) -> Result<()> {
     let candidate = verified.candidate;
-    let repo = &captured.contract.repository;
     let reference = format!("refs/heads/{branch}");
     let key = store::digest(branch.as_bytes());
-    let directory = verified.directory.join("applications");
     fs::create_dir_all(&directory)?;
     let lock = OpenOptions::new()
         .create(true)
@@ -380,7 +412,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         directory.join(format!("{key}.prepared")),
     );
     if let Some(receipt) = read_receipt(&path)? {
-        if receipt.run_id != captured.contract.run_id
+        if receipt.run_id != run_id
             || receipt.branch != branch
             || receipt.resulting_sha != candidate
             || previous != candidate
@@ -393,7 +425,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         return Ok(());
     }
     let mut receipt = Receipt {
-        run_id: captured.contract.run_id,
+        run_id: run_id,
         branch: branch.to_owned(),
         previous_sha: previous.clone(),
         resulting_sha: candidate.clone(),
