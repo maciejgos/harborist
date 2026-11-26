@@ -675,6 +675,112 @@ impl<'a> HistoricalPackage<'a> {
     }
 }
 
+fn interrupted_spec(
+    directory: &Path,
+    attempt: &Attempt,
+    contract: &Value,
+    inherited: Option<&str>,
+) -> Result<Option<String>> {
+    if let Some(expected) = inherited {
+        let spec = read_artifact(directory, "frozen-spec.md")?;
+        if digest(spec.as_bytes()) != expected {
+            return Err("historical inherited specification digest mismatch".into());
+        }
+        harborist_verify::review::Specification::parse(&spec)?;
+        return Ok(Some(spec));
+    }
+    if !directory.join("design/manifest.json").try_exists()? {
+        return Ok(None);
+    }
+    let manifest: Value = serde_json::from_str(&read_artifact(directory, "design/manifest.json")?)?;
+    let attempt_id = json!(attempt.id());
+    let run_id = json!(attempt.run_id());
+    if manifest["run_id"] != run_id
+        || manifest["attempt_id"] != attempt_id
+        || manifest["stage"] != "design"
+        || manifest["output"]["result"]["stage"] != "design"
+        || manifest["output"]["result"]["status"] != "ready"
+        || !manifest["candidate"].is_null()
+        || !manifest["review_decision"].is_null()
+    {
+        return Err("historical interrupted DESIGN attribution mismatch".into());
+    }
+    let mut expected = Vec::new();
+    for (name, kind) in [
+        ("request.json", "log"),
+        ("stdout.log", "log"),
+        ("stderr.log", "log"),
+        ("invocation.json", "log"),
+        ("stage-result.json", "stage_result"),
+        ("spec.md", "spec"),
+    ] {
+        use std::io::Read;
+        let mut file = crate::record::open_artifact(directory, &format!("design/{name}"))?;
+        let mut raw = Vec::new();
+        (&mut file).take(2_097_153).read_to_end(&mut raw)?;
+        if raw.len() > 2_097_152 {
+            return Err(
+                "historical interrupted DESIGN artifact exceeds the supported limit".into(),
+            );
+        }
+        expected.push(json!([kind, raw.len(), digest(&raw)]));
+    }
+    let refs = manifest["artifacts"]
+        .as_array()
+        .ok_or("historical DESIGN has no artifact index")?;
+    for reference in refs {
+        let identity = json!([
+            reference["kind"],
+            reference["size_bytes"],
+            reference["sha256"]
+        ]);
+        let position = expected
+            .iter()
+            .position(|expected| *expected == identity)
+            .ok_or("historical interrupted DESIGN artifact digest mismatch")?;
+        if reference["run_id"] != run_id
+            || reference["attempt_id"] != attempt_id
+            || reference["produced_by"] != "design"
+        {
+            return Err("historical interrupted DESIGN artifact ownership mismatch".into());
+        }
+        expected.swap_remove(position);
+    }
+    if !expected.is_empty() {
+        return Err("historical interrupted DESIGN artifact index is incomplete".into());
+    }
+    let request: Value = serde_json::from_str(&read_artifact(directory, "design/request.json")?)?;
+    let workspace_name = if directory.join("execution-workspace.json").try_exists()? {
+        "execution-workspace.json"
+    } else {
+        "workspace.json"
+    };
+    let workspace: Value = serde_json::from_str(&read_artifact(directory, workspace_name)?)?;
+    let result: Value =
+        serde_json::from_str(&read_artifact(directory, "design/stage-result.json")?)?;
+    let spec = read_artifact(directory, "design/spec.md")?;
+    if request["stage"] != "design"
+        || !request["candidate"].is_null()
+        || request["profile"] != contract["execution"]["agent_profile"]
+        || request["guidance"]["stage"] != "design"
+        || request["inputs"]
+            != json!([{"name": "intent.md", "content": contract["intent"]["markdown"]}])
+        || workspace["version"] != 1
+        || workspace["run_id"] != run_id
+        || workspace["attempt_id"] != attempt_id
+        || !workspace["path"]
+            .as_str()
+            .is_some_and(|path| Path::new(path).is_absolute())
+        || request["workspace"] != workspace["path"]
+        || result != manifest["output"]["result"]
+        || spec != manifest["output"]["artifact"]
+    {
+        return Err("historical interrupted DESIGN does not match the frozen invocation".into());
+    }
+    harborist_verify::review::Specification::parse(&spec)?;
+    Ok(Some(spec))
+}
+
 pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
     use std::os::fd::AsRawFd;
     let (action, original, destination, expected, feedback, extra) = match args {
@@ -708,104 +814,141 @@ pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
         return Err("historical Run is retired".into());
     }
     let (number, directory) = select(&original, None)?;
-    let previous = HistoricalPackage::load(&directory, id)?;
-    if previous.attempt.id() != request.expected_attempt_id
-        || serde_json::from_str::<Value>(&read_artifact(&original, "contract.json")?)?
-            != previous.package["contract"]
+    let (mut capture, frozen) = execution_capture(&original, id)?;
+    let contract: Value = serde_json::from_str(&read_artifact(&original, "contract.json")?)?;
+    let attempt: Attempt = serde_json::from_str(&read_artifact(&directory, "attempt.json")?)?;
+    if attempt.id() != request.expected_attempt_id
+        || attempt.run_id() != id
+        || serde_json::from_str::<Value>(&read_artifact(&directory, "contract.json")?)? != contract
     {
         return Err("historical continuation predecessor or frozen contract changed".into());
     }
-    let (mut capture, frozen) = execution_capture(&original, id)?;
-    let spec = previous.specification()?.map(|(text, _)| text);
-    let candidate = if previous.package["candidate"].is_null() {
+    let state = snapshot(&directory, id)?;
+    let interrupted =
+        state.lifecycle == Lifecycle::Running || !directory.join("evidence.json").try_exists()?;
+    let continuation_record: Option<Value> = if number == 0 {
         None
     } else {
-        let sha: Sha =
-            serde_json::from_value(previous.package["candidate"]["candidate_sha"].clone())?;
-        if previous.package["candidate"] != json!(previous.attempt.candidate(sha.clone())) {
-            return Err("historical candidate belongs to another Attempt".into());
-        }
-        let reference = if number == 0 {
-            format!("refs/shipyard/runs/{id}/candidate")
-        } else {
-            format!(
-                "refs/shipyard/runs/{id}/attempts/{}/candidate",
-                previous.attempt.id()
-            )
-        };
-        let repo = &capture.contract.repository;
-        if crate::git_text(repo, &["rev-parse", "--verify", &reference])? != sha.as_str() {
-            return Err("historical candidate ref changed".into());
-        }
-        crate::apply::exact_commit(repo, &sha)?;
-        crate::git_text(
-            repo,
-            &[
-                "merge-base",
-                "--is-ancestor",
-                capture.contract.base_sha.as_str(),
-                sha.as_str(),
-            ],
-        )?;
-        Some(sha)
-    };
-    match action {
-        "rework"
-            if previous.saved.lifecycle == Lifecycle::Completed
-                && matches!(
-                    previous.saved.outcome.as_deref(),
-                    Some("TEST_FAILED" | "CHANGES_REQUIRED")
-                )
-                && candidate.is_some()
-                && spec.is_some() =>
-        {
-            ()
-        }
-        "recover"
-            if previous.saved.lifecycle == Lifecycle::Failed
-                && matches!(
-                    previous.saved.failure_reason.as_deref(),
-                    Some(
-                        "EXECUTION_FAILED"
-                            | "INVALID_STAGE_OUTPUT"
-                            | "CREDENTIAL_UNAVAILABLE"
-                            | "CREDENTIAL_REJECTED"
-                    )
-                ) =>
-        {
-            ()
-        }
-        _ => {
-            return Err("historical Attempt is not eligible for the requested continuation".into());
-        }
-    }
-    let prior_grants = if number == 0 {
-        0
-    } else {
-        let record: Value = serde_json::from_str(&previous.get("continuation.json")?)?;
-        if record["attempt"] != json!(previous.attempt) || record["previous_number"] != number - 1 {
+        let record: Value = serde_json::from_str(&read_artifact(&directory, "continuation.json")?)?;
+        if record["attempt"] != json!(attempt) || record["previous_number"] != number - 1 {
             return Err("historical time grant belongs to another Attempt".into());
         }
+        Some(record)
+    };
+    let prior_grants = continuation_record.as_ref().map_or(Ok(0), |record| {
         record["granted_seconds"]
             .as_u64()
-            .ok_or("invalid historical time grant")?
-    };
+            .ok_or("invalid historical time grant")
+    })?;
     let original_allowance = capture
         .contract
         .total_seconds
         .checked_add(prior_grants)
         .ok_or("historical time budget overflow")?;
-    let timing = &previous.package["timing"];
-    let remaining = timing["remaining_seconds"]
-        .as_f64()
-        .ok_or("missing historical time accounting")?;
-    if timing["original_seconds"] != original_allowance
-        || !(0.0..=original_allowance as f64).contains(&remaining)
-    {
-        return Err("historical Package has inconsistent time accounting".into());
-    }
-    // The Rust executor budgets whole seconds. Round spending up to preserve the cap.
-    let spent_seconds = original_allowance - remaining.floor() as u64;
+    let (candidate, spec, spent_seconds) = if interrupted {
+        if action != "recover"
+            || request.additional_seconds == 0
+            || state.lifecycle == Lifecycle::Created
+        {
+            return Err(
+                "interrupted historical Attempt requires explicit recovery with additional seconds"
+                    .into(),
+            );
+        }
+        let inherited = continuation_record
+            .as_ref()
+            .and_then(|record| record["spec_digest"].as_str());
+        (
+            None,
+            interrupted_spec(&directory, &attempt, &contract, inherited)?,
+            original_allowance,
+        )
+    } else {
+        let previous = HistoricalPackage::load(&directory, id)?;
+        if number != 0 {
+            previous.get("continuation.json")?;
+        }
+        let spec = previous.specification()?.map(|(text, _)| text);
+        let candidate = if previous.package["candidate"].is_null() {
+            None
+        } else {
+            let sha: Sha =
+                serde_json::from_value(previous.package["candidate"]["candidate_sha"].clone())?;
+            if previous.package["candidate"] != json!(previous.attempt.candidate(sha.clone())) {
+                return Err("historical candidate belongs to another Attempt".into());
+            }
+            let reference = if number == 0 {
+                format!("refs/shipyard/runs/{id}/candidate")
+            } else {
+                format!(
+                    "refs/shipyard/runs/{id}/attempts/{}/candidate",
+                    previous.attempt.id()
+                )
+            };
+            let repo = &capture.contract.repository;
+            if crate::git_text(repo, &["rev-parse", "--verify", &reference])? != sha.as_str() {
+                return Err("historical candidate ref changed".into());
+            }
+            crate::apply::exact_commit(repo, &sha)?;
+            crate::git_text(
+                repo,
+                &[
+                    "merge-base",
+                    "--is-ancestor",
+                    capture.contract.base_sha.as_str(),
+                    sha.as_str(),
+                ],
+            )?;
+            Some(sha)
+        };
+        match action {
+            "rework"
+                if previous.saved.lifecycle == Lifecycle::Completed
+                    && matches!(
+                        previous.saved.outcome.as_deref(),
+                        Some("TEST_FAILED" | "CHANGES_REQUIRED")
+                    )
+                    && candidate.is_some()
+                    && spec.is_some() =>
+            {
+                ()
+            }
+            "recover"
+                if previous.saved.lifecycle == Lifecycle::Failed
+                    && matches!(
+                        previous.saved.failure_reason.as_deref(),
+                        Some(
+                            "EXECUTION_FAILED"
+                                | "INVALID_STAGE_OUTPUT"
+                                | "CREDENTIAL_UNAVAILABLE"
+                                | "CREDENTIAL_REJECTED"
+                        )
+                    ) =>
+            {
+                ()
+            }
+            _ => {
+                return Err(
+                    "historical Attempt is not eligible for the requested continuation".into(),
+                );
+            }
+        }
+        let timing = &previous.package["timing"];
+        let remaining = timing["remaining_seconds"]
+            .as_f64()
+            .ok_or("missing historical time accounting")?;
+        if timing["original_seconds"] != original_allowance
+            || !(0.0..=original_allowance as f64).contains(&remaining)
+        {
+            return Err("historical Package has inconsistent time accounting".into());
+        }
+        // The Rust executor budgets whole seconds. Round spending up to preserve the cap.
+        (
+            candidate,
+            spec,
+            original_allowance - remaining.floor() as u64,
+        )
+    };
     let granted_seconds = prior_grants
         .checked_add(request.additional_seconds)
         .ok_or("historical time grant overflow")?;
@@ -820,13 +963,13 @@ pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
         return Err("insufficient historical continuation budget; grant additional seconds".into());
     }
     let context = serde_json::to_string_pretty(&json!({
-        "previous_attempt": previous.attempt.id(),
+        "previous_attempt": attempt.id(),
         "previous_candidate": candidate,
-        "previous_outcome": previous.saved.outcome,
-        "previous_evidence": directory.join("evidence.json"),
+        "previous_outcome": state.outcome,
+        "previous_evidence": (!interrupted).then(|| directory.join("evidence.json")),
         "feedback": request.feedback,
     }))?;
-    let start = candidate.unwrap_or_else(|| previous.attempt.start_sha().clone());
+    let start = candidate.unwrap_or_else(|| attempt.start_sha().clone());
     crate::apply::exact_commit(&capture.contract.repository, &start)?;
     let destination =
         crate::store::new_directory(Path::new(destination), &capture.contract.repository)?;

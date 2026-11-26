@@ -275,7 +275,10 @@ exists. Rust validates the previous PACKAGE, carries forward its time
 accounting, and reuses the validated specification. It stores the new
 Attempt under its next sequence number in the destination. The Python Run
 remains the source for earlier evidence. This command supports packaged
-failures and rework after failed checks or requested changes.
+failures, interruptions before PACKAGE, and rework after failed checks or
+requested changes. For an interruption, grant enough additional seconds to
+exceed the frozen verification reserve. Rust charges the previous allowance
+in full and reuses DESIGN only when its saved artifacts match the capture.
 
 ## Run the comparison
 

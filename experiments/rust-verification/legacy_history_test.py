@@ -233,6 +233,27 @@ else:
     assert recovered["outcome"] == "VERIFIED"
     assert recovered["attempt"]["start_sha"] == failure["attempt"]["start_sha"]
 
+    evidence_path.unlink()
+    interrupted_destination = root / "continued-interruption"
+    interrupted_command = [
+        binary, "continue-python", "recover", historical, interrupted_destination,
+        failed["attempt"]["attempt_id"], "Recover interrupted execution",
+    ]
+    refused = subprocess.run(interrupted_command, env=env, capture_output=True, text=True)
+    assert refused.returncode != 0 and "explicit" in refused.stderr
+    assert not interrupted_destination.exists()
+    spec_path = historical / "design/spec.md"
+    durable_spec = spec_path.read_bytes()
+    spec_path.write_bytes(durable_spec + b"tampered")
+    refused = subprocess.run([*interrupted_command, "600"], env=env, capture_output=True, text=True)
+    assert refused.returncode != 0 and "digest" in refused.stderr
+    assert not interrupted_destination.exists()
+    spec_path.write_bytes(durable_spec)
+    recovered = json.loads(subprocess.check_output([*interrupted_command, "600"], env=env))
+    assert recovered["attempt"]["start_sha"] == failed["attempt"]["start_sha"]
+    assert recovered["outcome"] == "VERIFIED"
+    assert (interrupted_destination / "attempts/000001/design/spec.md").read_bytes() == durable_spec
+
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
