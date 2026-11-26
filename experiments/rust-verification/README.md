@@ -191,6 +191,21 @@ before starting. The Run summary defaults to the latest Attempt, and the
 Attempt selector opens historical evidence. Candidate application uses the
 latest Attempt’s verification and Git ref.
 
+## Recover a failed execution
+
+Use **Recover Run** in the browser for an eligible execution or stage-output
+failure, or run:
+
+```sh
+harborist-verify recover RUN_DIR EXPECTED_ATTEMPT "Retry the failed stage"
+```
+
+Recovery creates a new Attempt and preserves the failure evidence. If the
+previous Attempt recorded a valid specification, recovery checks its digest
+and starts at PLAN. Otherwise it starts with a fresh DESIGN invocation.
+An optional final argument grants additional seconds. Abrupt worker-loss
+recovery is still being migrated.
+
 ## Run the comparison
 
 From the repository root with Docker running:

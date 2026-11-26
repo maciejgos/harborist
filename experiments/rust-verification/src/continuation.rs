@@ -102,7 +102,7 @@ pub fn validate(capture: &store::Captured, request: &Request) -> Result<()> {
 }
 
 fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
-    if request.action != "rework" {
+    if !matches!(request.action.as_str(), "rework" | "recover") {
         return Err("unsupported continuation action".into());
     }
     let expected = request.expected_attempt_id;
@@ -117,30 +117,56 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
     let previous = attempt_path(root, number);
     let terminal = Terminal::load(&previous, capture.contract.run_id)?;
     if terminal.attempt.id() != expected || terminal.base_sha != capture.contract.base_sha {
-        return Err("rework predecessor does not match the latest Attempt".into());
+        return Err("continuation predecessor does not match the latest Attempt".into());
     }
-    if !matches!(
-        terminal.outcome.as_str(),
-        "TEST_FAILED" | "CHANGES_REQUIRED"
-    ) {
-        return Err("rework requires TEST_FAILED or CHANGES_REQUIRED".into());
-    }
-    let candidate = terminal
-        .candidate
-        .ok_or("rework requires a previous candidate")?;
-    let reference = selected_ref(capture.contract.run_id, expected, number);
-    if terminal.candidate_ref.as_deref() != Some(reference.as_str())
-        || git_text(
-            &capture.contract.repository,
-            &["rev-parse", "--verify", &reference],
-        )? != candidate.as_str()
+    if request.action == "rework" {
+        if !matches!(
+            terminal.outcome.as_str(),
+            "TEST_FAILED" | "CHANGES_REQUIRED"
+        ) || terminal.candidate.is_none()
+        {
+            return Err(
+                "rework requires TEST_FAILED or CHANGES_REQUIRED and a previous candidate".into(),
+            );
+        }
+    } else if terminal.outcome != "FAILED"
+        || !matches!(
+            terminal.failure_reason.as_deref(),
+            Some(
+                "EXECUTION_FAILED"
+                    | "INVALID_STAGE_OUTPUT"
+                    | "CREDENTIAL_UNAVAILABLE"
+                    | "CREDENTIAL_REJECTED"
+            )
+        )
     {
-        return Err("previous Attempt candidate ref does not match".into());
+        return Err("failure is not eligible for explicit recovery".into());
     }
-    let spec = read_artifact(&previous, "design/spec.md")?;
-    if terminal.spec_sha256.as_deref() != Some(store::digest(spec.as_bytes()).as_str()) {
-        return Err("previous Attempt specification digest does not match".into());
-    }
+    let candidate = if let Some(candidate) = terminal.candidate {
+        let reference = selected_ref(capture.contract.run_id, expected, number);
+        if terminal.candidate_ref.as_deref() != Some(reference.as_str())
+            || git_text(
+                &capture.contract.repository,
+                &["rev-parse", "--verify", &reference],
+            )? != candidate.as_str()
+        {
+            return Err("previous Attempt candidate ref does not match".into());
+        }
+        candidate
+    } else {
+        terminal.attempt.start_sha().clone()
+    };
+    let spec = if let Some(expected) = terminal.spec_sha256 {
+        let spec = read_artifact(&previous, "design/spec.md")?;
+        if expected != store::digest(spec.as_bytes()) {
+            return Err("previous Attempt specification digest does not match".into());
+        }
+        Some(spec)
+    } else if request.action == "recover" {
+        None
+    } else {
+        return Err("rework requires a frozen specification".into());
+    };
     let spent = terminal
         .spent_seconds
         .ok_or("previous Attempt has no recorded spending")?;
@@ -156,13 +182,15 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
     if total > u32::MAX as u64
         || total.saturating_sub(spent) <= capture.contract.verification_reserve_seconds
     {
-        return Err("insufficient rework budget; supply an explicit additional time grant".into());
+        return Err(
+            "insufficient continuation budget; supply an explicit additional time grant".into(),
+        );
     }
     let context = serde_json::to_string_pretty(&json!({
         "previous_attempt": expected, "previous_candidate": candidate,
         "previous_outcome": terminal.outcome, "feedback": feedback,
-        "plan": read_artifact(&previous, "build/plan.md").or_else(|_| read_artifact(&previous, "plan/plan.md"))?,
-        "test_evidence": serde_json::from_str::<serde_json::Value>(&read_artifact(&previous, "test/evidence.json")?)?,
+        "plan": read_artifact(&previous, "build/plan.md").or_else(|_| read_artifact(&previous, "plan/plan.md")).ok(),
+        "test_evidence": read_artifact(&previous, "test/evidence.json").ok().map(|raw| serde_json::from_str::<serde_json::Value>(&raw)).transpose()?,
         "review": read_artifact(&previous, "review/review.md").ok(),
     }))?;
     let directory = attempt_path(root, number + 1);
@@ -199,8 +227,8 @@ pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Va
     store::write_new(
         &directory.join("continuation.json"),
         &serde_json::to_vec_pretty(&json!({
-            "action": "rework", "previous_attempt": request.expected_attempt_id, "request_id": request.request_id, "attempt": attempt,
-            "spec_sha256": store::digest(rework.specification.as_bytes()), "spent_seconds": rework.spent_seconds, "granted_seconds": rework.granted_seconds,
+            "action": request.action, "previous_attempt": request.expected_attempt_id, "request_id": request.request_id, "attempt": attempt,
+            "spec_sha256": rework.specification.as_ref().map(|spec| store::digest(spec.as_bytes())), "spent_seconds": rework.spent_seconds, "granted_seconds": rework.granted_seconds,
             "context": serde_json::from_str::<serde_json::Value>(&rework.context)?,
         }))?,
     )?;
@@ -214,7 +242,7 @@ pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Va
     foreground::execute_attempt(capture, directory, attempt, Some(rework))
 }
 
-pub fn execute(args: &[OsString]) -> Result<()> {
+pub fn execute(action: &str, args: &[OsString]) -> Result<()> {
     let (directory, expected, feedback, extra) = match args {
         [directory, expected, feedback] => (directory, expected, feedback, 0),
         [directory, expected, feedback, extra] => (
@@ -225,13 +253,14 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         ),
         _ => {
             return Err(
-                "expected rework RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]".into(),
+                "expected rework or recover RUN_DIR EXPECTED_ATTEMPT FEEDBACK [ADDITIONAL_SECONDS]"
+                    .into(),
             );
         }
     };
     let request = Request {
         request_id: Uuid::new_v4(),
-        action: "rework".to_owned(),
+        action: action.to_owned(),
         expected_attempt_id: Uuid::parse_str(expected.to_str().ok_or("expected an Attempt UUID")?)?,
         feedback: feedback
             .to_str()

@@ -30,6 +30,7 @@ pub struct Terminal {
     pub candidate: Option<Sha>,
     pub outcome: String,
     pub error: Option<String>,
+    pub failure_reason: Option<String>,
     pub receipts: Vec<Receipt>,
     pub verification_inputs: Option<VerificationInputs>,
 }

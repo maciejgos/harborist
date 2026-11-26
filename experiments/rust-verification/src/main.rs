@@ -243,7 +243,7 @@ fn execute() -> Result<()> {
                 return run_foreground(store::load(Path::new(directory))?);
             }
             Some("apply") => return apply::execute(args),
-            Some("rework") => return continuation::execute(args),
+            Some(action @ ("rework" | "recover")) => return continuation::execute(action, args),
             Some("cancel") => return retirement::execute(args),
             Some("publish") => return publication::execute(args),
             Some("github-status") => return publication::status(args),

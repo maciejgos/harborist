@@ -120,7 +120,7 @@ fn project(delivery: Delivery, number: u32) -> Value {
                 view["run"] = json!({
                     "run_id": terminal.run_id, "lifecycle": lifecycle,
                     "outcome": (lifecycle == "COMPLETED").then_some(&terminal.outcome),
-                    "failure_reason": terminal.error,
+                    "failure_reason": terminal.failure_reason.as_ref().or(terminal.error.as_ref()),
                 });
                 if terminal.outcome == "VERIFIED" {
                     view["candidate_sha"] = json!(terminal.candidate);

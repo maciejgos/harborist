@@ -1,6 +1,6 @@
 use crate::{
     Config, Evidence, Result, git, git_text,
-    native::{Codex, NativeAgent, Output, Request},
+    native::{AgentFailure, Codex, NativeAgent, Output, Request},
     record::VerificationInputs,
     run_checks_with_budget,
     store::{self, Captured},
@@ -24,7 +24,7 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
 
 pub struct Rework {
     pub context: String,
-    pub specification: String,
+    pub specification: Option<String>,
     pub spent_seconds: u64,
     pub granted_seconds: u64,
 }
@@ -81,17 +81,26 @@ pub fn execute_attempt(
 
     let result = run.run(&intent, config);
     // External errors still produce terminal artifacts, with no successful software outcome.
-    let (outcome, error) = match result {
-        Ok(outcome) => (outcome, None),
+    let (outcome, error, failure_reason) = match result {
+        Ok(outcome) => (outcome, None, None),
         Err(error)
             if error
                 .downcast_ref::<std::io::Error>()
                 .is_some_and(|error| error.kind() == std::io::ErrorKind::Interrupted)
                 && cancellation.exists() =>
         {
-            ("CANCELLED", None)
+            ("CANCELLED", None, None)
         }
-        Err(error) => ("FAILED", Some(error.to_string())),
+        Err(error) => {
+            let reason = if let Some(agent) = error.downcast_ref::<AgentFailure>() {
+                agent.reason
+            } else if error.is::<harborist_verify::review::ReviewError>() {
+                "INVALID_STAGE_OUTPUT"
+            } else {
+                "INTERNAL_ERROR"
+            };
+            ("FAILED", Some(error.to_string()), Some(reason))
+        }
     };
     if matches!(outcome, "FAILED" | "CANCELLED") {
         if let Some(stage) = run
@@ -126,6 +135,7 @@ pub fn execute_attempt(
         "attempt": attempt,
         "outcome": outcome,
         "error": error,
+        "failure_reason": failure_reason,
         "candidate": run.candidate,
         "candidate_ref": run.candidate.as_ref().map(|_| candidate_ref.as_str()),
         "source_sha256": source_sha256,
@@ -197,15 +207,31 @@ impl Run<'_> {
         let left = self.allowance(stage)?;
         let directory = self.dir.join(name);
         fs::create_dir(&directory)?;
-        let response = self.agent.execute(Request {
-            stage,
-            directory: &directory,
-            workspace,
-            inputs,
-            candidate,
-            allowance: left,
-            cancellation: self.cancellation,
-        })?;
+        let response = self
+            .agent
+            .execute(Request {
+                stage,
+                directory: &directory,
+                workspace,
+                inputs,
+                candidate,
+                allowance: left,
+                cancellation: self.cancellation,
+            })
+            .map_err(|error| {
+                if error.is::<AgentFailure>()
+                    || error
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|io| io.kind() == std::io::ErrorKind::Interrupted)
+                {
+                    return error;
+                }
+                AgentFailure {
+                    reason: "EXECUTION_FAILED",
+                    message: error.to_string(),
+                }
+                .into()
+            })?;
         self.allowance(stage)?;
         Ok(response)
     }
@@ -335,13 +361,11 @@ impl Run<'_> {
     }
 
     fn design_plan_build(&mut self, workspace: &Path, intent: &str) -> Result<BuildDecision> {
-        let spec = if let Some(rework) = self.rework {
+        let spec = if let Some(spec) = self.rework.and_then(|rework| rework.specification.as_ref())
+        {
             fs::create_dir(self.dir.join("design"))?;
-            store::write_new(
-                &self.dir.join("design/spec.md"),
-                rework.specification.as_bytes(),
-            )?;
-            rework.specification.clone()
+            store::write_new(&self.dir.join("design/spec.md"), spec.as_bytes())?;
+            spec.clone()
         } else {
             let output = self.invoke(
                 Stage::Design,

@@ -10,6 +10,20 @@ use std::{
     time::Duration,
 };
 
+#[derive(Debug)]
+pub struct AgentFailure {
+    pub reason: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for AgentFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for AgentFailure {}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Output {
@@ -208,10 +222,17 @@ impl NativeAgent for Codex<'_> {
         fs::write(directory.join("stdout.log"), &result.stdout.bytes)?;
         fs::write(directory.join("stderr.log"), &result.stderr.bytes)?;
         if result.timed_out || result.returncode != 0 {
-            return Err(format!(
-                "Codex {name} failed (exit {}, timeout {})",
-                result.returncode, result.timed_out
-            )
+            return Err(AgentFailure {
+                reason: if result.timed_out {
+                    "TIME_BUDGET_EXCEEDED"
+                } else {
+                    "EXECUTION_FAILED"
+                },
+                message: format!(
+                    "Codex {name} failed (exit {}, timeout {})",
+                    result.returncode, result.timed_out
+                ),
+            }
             .into());
         }
         const MAX: u64 = 4 * 1024 * 1024;
@@ -220,9 +241,10 @@ impl NativeAgent for Codex<'_> {
             .take(MAX + 1)
             .read_to_end(&mut response)?;
         if response.len() as u64 > MAX {
-            return Err("Codex final output exceeded size limit".into());
+            return Err(invalid("Codex final output exceeded size limit".to_owned()).into());
         }
-        let mut parsed: Output = serde_json::from_slice(&response)?;
+        let mut parsed: Output =
+            serde_json::from_slice(&response).map_err(|error| invalid(error.to_string()))?;
         if parsed.result["stage"] != name
             || !parsed.result["status"]
                 .as_str()
@@ -248,9 +270,16 @@ impl NativeAgent for Codex<'_> {
                     .as_object()
                     .is_some_and(|result| result.len() == 2))
         {
-            return Err(format!("invalid structured {name} output").into());
+            return Err(invalid(format!("invalid structured {name} output")).into());
         }
         parsed.sha256 = crate::store::digest(&response);
         Ok(parsed)
+    }
+}
+
+fn invalid(message: String) -> AgentFailure {
+    AgentFailure {
+        reason: "INVALID_STAGE_OUTPUT",
+        message,
     }
 }

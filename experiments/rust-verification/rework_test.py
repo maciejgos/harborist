@@ -122,7 +122,41 @@ if stage == "build":''',
     assert git(repo, "rev-parse", "delivery") == second["candidate"]
 
 
+def recover(root: Path) -> None:
+    repo, base, _ = fixture(root, ["test -f message.txt"])
+    intent = root / "issue.md"
+    intent.write_text("Recover a failed execution.")
+    codex = root / "codex"
+    codex.write_text(FAKE_CODEX.replace(
+        'if stage == "build":',
+        'if stage == "plan" and not os.environ.get("RECOVER"):\n'
+        '    raise SystemExit(17)\n'
+        'if stage == "build":',
+    ))
+    codex.chmod(0o755)
+    env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+           "INVOCATIONS": str(root / "invocations")}
+    binary = ROOT / "target/release/harborist-verify"
+    directory = root / "run"
+    run = subprocess.run([binary, "run", repo, base, intent, directory], env=env,
+                         capture_output=True, text=True, check=False)
+    assert run.returncode != 0
+    raw = (directory / "evidence.json").read_bytes()
+    failed = json.loads(raw)
+    result = subprocess.run(
+        [binary, "recover", directory, failed["attempt"]["attempt_id"], "Retry PLAN"],
+        env={**env, "RECOVER": "1"}, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert failed["failure_reason"] == "EXECUTION_FAILED"
+    assert json.loads(result.stdout)["outcome"] == "VERIFIED"
+    assert (directory / "evidence.json").read_bytes() == raw
+    assert (root / "invocations").read_text().splitlines() == ["design", "plan", "build", "review"]
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory))
-    print("Rust rework checks passed.")
+    with tempfile.TemporaryDirectory() as directory:
+        recover(Path(directory))
+    print("Rust rework and recovery checks passed.")
