@@ -226,6 +226,7 @@ pub fn load(path: &Path) -> Result<Captured> {
 }
 
 pub fn admit(capture: &Captured) -> Result<Attempt> {
+    crate::retirement::cancelled(&crate::retirement::path(&capture.directory))?;
     let attempt = Attempt::new(capture.contract.run_id, capture.contract.base_sha.clone());
     let written = write_new(
         &capture.directory.join("attempt.json"),

@@ -57,6 +57,7 @@ impl Terminal {
             Outcome::NeedsClarification => "NEEDS_CLARIFICATION",
             Outcome::NeedsRescoping => "NEEDS_RESCOPING",
             Outcome::Failed => "FAILED",
+            Outcome::Cancelled => "CANCELLED",
             _ => return Err("unsupported terminal stage result".into()),
         };
         let candidate = workflow

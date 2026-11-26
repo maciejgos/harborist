@@ -146,6 +146,21 @@ before saving the observation and rejects it if the PR changed during
 capture. The browser shows the latest saved observation. Selecting feedback
 for a rework Attempt remains part of the continuation migration.
 
+## Cancel a Run
+
+Use **Cancel Run** in the workspace or run the following command in a
+container that sees the saved Run directory:
+
+```sh
+harborist-verify cancel RUN_DIR "Operator stopped this Run"
+```
+
+A queued Run is skipped. For an active Run, the worker stops the current
+Codex or TEST process group and records the cancelled stage in terminal
+evidence. Cancellation preserves existing artifacts and prevents further
+execution, candidate application, and GitHub publication. The operator
+reason stays in the saved retirement record.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -182,8 +197,7 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Existing Python Run formats, rework and recovery, cancellation and
-supersession, subsequent GitHub publications and collaboration, integration management,
+Existing Python Run formats, rework and recovery, supersession, subsequent GitHub publications and collaboration, integration management,
 legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
 outside the Rust foreground implementation.
 

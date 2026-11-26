@@ -58,6 +58,7 @@ fn project(delivery: Delivery) -> Value {
         State::Finished => "FINISHED",
         State::Failed => "FAILED",
         State::Interrupted => "INTERRUPTED",
+        State::Cancelled => "CANCELLED",
     };
     let mut view = json!({
         "version": 1, "source": "service", "state": state,
@@ -89,13 +90,25 @@ fn project(delivery: Delivery) -> Value {
             }
         }
     }
+    if let Ok(record) = read_artifact(&delivery.directory, "retirement.json")
+        .and_then(|data| Ok(serde_json::from_str::<Value>(&data)?))
+    {
+        if record["run_id"] == json!(delivery.run_id) {
+            view["retirement"] = record;
+            if matches!(delivery.state, State::Queued | State::Cancelled) {
+                view["state"] = json!("CANCELLED");
+                view["run"] =
+                    json!({"run_id": delivery.run_id, "lifecycle": "CANCELLED", "outcome": null});
+            }
+        }
+    }
     if delivery.state == State::Finished || delivery.directory.join("evidence.json").is_file() {
         match Terminal::load(&delivery.directory, delivery.run_id) {
             Ok(terminal) => {
-                let lifecycle = if terminal.outcome == "FAILED" {
-                    "FAILED"
-                } else {
-                    "COMPLETED"
+                let lifecycle = match terminal.outcome.as_str() {
+                    "FAILED" => "FAILED",
+                    "CANCELLED" => "CANCELLED",
+                    _ => "COMPLETED",
                 };
                 view["run"] = json!({
                     "run_id": terminal.run_id, "lifecycle": lifecycle,
@@ -283,22 +296,26 @@ fn request_body(request: &mut Request) -> Result<Vec<u8>> {
     Ok(body)
 }
 
-fn github_route(route: &str) -> Option<(Uuid, &str)> {
+fn run_command_route(route: &str) -> Option<(Uuid, &str)> {
     let (id, action) = route.strip_prefix("/workspace/runs/")?.split_once('/')?;
-    matches!(action, "publish" | "observe").then_some((Uuid::parse_str(id).ok()?, action))
+    matches!(action, "publish" | "observe" | "cancel")
+        .then_some((Uuid::parse_str(id).ok()?, action))
 }
 
 fn is_write(route: &str) -> bool {
     matches!(
         route,
         "/workspaces" | "/workspace/runs" | "/tickets/list" | "/tickets/queue"
-    ) || github_route(route).is_some()
+    ) || run_command_route(route).is_some()
 }
 
 fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
     let body = request_body(request)?;
-    if let Some((id, action)) = github_route(route) {
+    if let Some((id, action)) = run_command_route(route) {
         let delivery = queue::read(&control.join("queue").join(format!("{id}.json")))?;
+        if action == "cancel" {
+            return crate::retirement::cancel(&delivery.directory, id, &body);
+        }
         if matches!(delivery.state, State::Queued | State::Running) {
             return Err("publication requires a terminal Run".into());
         }

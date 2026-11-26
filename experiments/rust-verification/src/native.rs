@@ -83,6 +83,7 @@ pub struct Request<'a> {
     pub inputs: &'a [(&'a str, &'a str)],
     pub candidate: Option<&'a Candidate>,
     pub allowance: Duration,
+    pub cancellation: &'a Path,
 }
 
 pub trait NativeAgent {
@@ -100,6 +101,7 @@ impl NativeAgent for Codex<'_> {
             inputs,
             candidate,
             allowance,
+            cancellation,
         } = request;
         let (name, instructions, statuses) = match stage {
             Stage::Design => (
@@ -201,7 +203,8 @@ impl NativeAgent for Codex<'_> {
             .args(["--color", "never", "-"])
             .current_dir(workspace)
             .stdin(File::open(input_path)?);
-        let result = process::capture_command(&mut command, allowance, 65536)?;
+        let result =
+            process::capture_cancellable(&mut command, allowance, 65536, Some(cancellation))?;
         fs::write(directory.join("stdout.log"), &result.stdout.bytes)?;
         fs::write(directory.join("stderr.log"), &result.stderr.bytes)?;
         if result.timed_out || result.returncode != 0 {

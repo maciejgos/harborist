@@ -7,6 +7,7 @@ mod process;
 mod publication;
 mod queue;
 mod record;
+mod retirement;
 mod settings;
 mod store;
 mod workspace;
@@ -98,6 +99,7 @@ fn run_checks(config: Config, workspace: &Path, logs: &Path) -> Result<Vec<Check
         logs,
         Duration::from_secs(2),
         Duration::from_secs(15),
+        None,
     )
 }
 
@@ -107,6 +109,7 @@ fn run_checks_with_budget(
     logs: &Path,
     per_check: Duration,
     total: Duration,
+    cancellation: Option<&Path>,
 ) -> Result<Vec<CheckResult>> {
     let deadline = Instant::now() + total;
     let workspace = workspace.canonicalize()?;
@@ -137,7 +140,8 @@ fn run_checks_with_budget(
                 result.timed_out = true;
                 result.error = Some("Shared TEST deadline exhausted before invocation".into());
             } else {
-                match process::capture(&result.command, &workspace, allowance, 65536) {
+                match process::capture(&result.command, &workspace, allowance, 65536, cancellation)
+                {
                     Ok(capture) => {
                         stdout.write_all(&capture.stdout.bytes)?;
                         stderr.write_all(&capture.stderr.bytes)?;
@@ -145,6 +149,9 @@ fn run_checks_with_budget(
                         result.timed_out = capture.timed_out;
                         result.stdout_truncated = capture.stdout.truncated;
                         result.stderr_truncated = capture.stderr.truncated;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                        return Err(error.into());
                     }
                     Err(error) => result.error = Some(error.to_string()),
                 }
@@ -235,6 +242,7 @@ fn execute() -> Result<()> {
                 return run_foreground(store::load(Path::new(directory))?);
             }
             Some("apply") => return apply::execute(args),
+            Some("cancel") => return retirement::execute(args),
             Some("publish") => return publication::execute(args),
             Some("github-status") => return publication::status(args),
             Some("submit") => return queue::submit(args),

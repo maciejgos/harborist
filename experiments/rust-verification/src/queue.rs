@@ -24,6 +24,7 @@ pub enum State {
     Finished,
     Failed,
     Interrupted,
+    Cancelled,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -156,7 +157,11 @@ pub fn worker(args: &[OsString]) -> Result<()> {
     let _guard = lock_worker(&queue)?;
     for mut record in records(&queue)? {
         if record.state == State::Running {
-            record.state = State::Interrupted;
+            record.state = if crate::retirement::path(&record.directory).exists() {
+                State::Cancelled
+            } else {
+                State::Interrupted
+            };
             record.error = Some("Previous worker stopped during delivery".into());
             persist(&queue, &record, true)?;
         }
@@ -166,6 +171,15 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             .into_iter()
             .find(|record| record.state == State::Queued);
         if let Some(mut record) = next {
+            let marker = crate::retirement::path(&record.directory);
+            if marker.try_exists()? {
+                record.state = State::Cancelled;
+                persist(&queue, &record, true)?;
+                if once {
+                    return Ok(());
+                }
+                continue;
+            }
             record.state = State::Running;
             persist(&queue, &record, true)?;
 
@@ -176,6 +190,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
                 foreground::execute(capture)
             });
             match execution {
+                _ if marker.try_exists()? => record.state = State::Cancelled,
                 Ok(_) => record.state = State::Finished,
                 Err(error) => {
                     record.state = State::Failed;

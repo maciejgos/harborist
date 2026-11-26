@@ -17,6 +17,7 @@ use std::{
 };
 
 pub fn execute(capture: Captured) -> Result<serde_json::Value> {
+    let cancellation = crate::retirement::path(&capture.directory);
     let attempt = store::admit(&capture)?;
     let Captured {
         directory,
@@ -33,6 +34,7 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
     let mut run = Run {
         repo: &repo,
         dir: &directory,
+        cancellation: &cancellation,
         base: &base,
         attempt: &attempt,
         workflow: Workflow::new(attempt.clone()),
@@ -50,9 +52,17 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
     // External errors still produce terminal artifacts, with no successful software outcome.
     let (outcome, error) = match result {
         Ok(outcome) => (outcome, None),
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::Interrupted)
+                && cancellation.exists() =>
+        {
+            ("CANCELLED", None)
+        }
         Err(error) => ("FAILED", Some(error.to_string())),
     };
-    if outcome == "FAILED" {
+    if matches!(outcome, "FAILED" | "CANCELLED") {
         if let Some(stage) = run
             .workflow
             .next_stage()
@@ -64,7 +74,12 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
                 }
                 _ => None,
             };
-            run.accept(stage, Outcome::Failed, candidate)?;
+            let disposition = if outcome == "FAILED" {
+                Outcome::Failed
+            } else {
+                Outcome::Cancelled
+            };
+            run.accept(stage, disposition, candidate)?;
         }
     }
     if run.workflow.next_stage() == Some(Stage::Package) {
@@ -105,6 +120,7 @@ pub fn execute(capture: Captured) -> Result<serde_json::Value> {
 struct Run<'a> {
     repo: &'a Path,
     dir: &'a Path,
+    cancellation: &'a Path,
     base: &'a Sha,
     attempt: &'a Attempt,
     workflow: Workflow,
@@ -151,12 +167,14 @@ impl Run<'_> {
             inputs,
             candidate,
             allowance: left,
+            cancellation: self.cancellation,
         })?;
         self.allowance(stage)?;
         Ok(response)
     }
 
     fn allowance(&self, stage: Stage) -> Result<Duration> {
+        crate::retirement::cancelled(self.cancellation)?;
         let seconds = if matches!(stage, Stage::Test | Stage::Review) {
             self.total_seconds
         } else {
@@ -188,8 +206,14 @@ impl Run<'_> {
             |workspace| {
                 require_clean(workspace, candidate.as_str())?;
                 let left = self.allowance(Stage::Test)?;
-                let checks =
-                    run_checks_with_budget(config, workspace, &self.dir.join("test"), left, left)?;
+                let checks = run_checks_with_budget(
+                    config,
+                    workspace,
+                    &self.dir.join("test"),
+                    left,
+                    left,
+                    Some(self.cancellation),
+                )?;
                 let workspace_error = git_text(workspace, &["clean", "-fdX"])
                     .and_then(|_| require_clean(workspace, candidate.as_str()))
                     .err()

@@ -49,6 +49,7 @@ fn exact_commit(repo: &Path, sha: &Sha) -> Result<()> {
 }
 
 pub fn verified(run: &Captured) -> Result<Sha> {
+    crate::retirement::cancelled(&crate::retirement::path(&run.directory))?;
     let contract = &run.contract;
     let terminal = Terminal::load(&run.directory, contract.run_id)?;
     if terminal.outcome != "VERIFIED" || terminal.base_sha != contract.base_sha {

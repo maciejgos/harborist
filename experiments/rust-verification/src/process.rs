@@ -74,13 +74,14 @@ pub fn capture(
     workspace: &Path,
     allowance: Duration,
     limit: usize,
+    cancellation: Option<&Path>,
 ) -> io::Result<Capture> {
     let mut shell = Command::new("/bin/sh");
     shell
         .args(["-c", command])
         .current_dir(workspace)
         .stdin(Stdio::null());
-    capture_command(&mut shell, allowance, limit)
+    capture_cancellable(&mut shell, allowance, limit, cancellation)
 }
 
 pub fn capture_command(
@@ -88,6 +89,18 @@ pub fn capture_command(
     allowance: Duration,
     limit: usize,
 ) -> io::Result<Capture> {
+    capture_cancellable(command, allowance, limit, None)
+}
+
+pub fn capture_cancellable(
+    command: &mut Command,
+    allowance: Duration,
+    limit: usize,
+    cancellation: Option<&Path>,
+) -> io::Result<Capture> {
+    if let Some(marker) = cancellation {
+        crate::retirement::cancelled(marker)?;
+    }
     let deadline = Instant::now() + allowance;
     let mut group = ProcessGroup(
         command
@@ -107,6 +120,9 @@ pub fn capture_command(
     let mut timed_out = false;
 
     loop {
+        if let Some(marker) = cancellation {
+            crate::retirement::cancelled(marker)?;
+        }
         let remaining = deadline.saturating_duration_since(Instant::now());
         let mut status = group.0.try_wait()?;
         if status.is_none() && remaining.is_zero() {
