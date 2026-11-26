@@ -566,6 +566,79 @@ fn checked_index(directory: &Path, records: &Value) -> Result<std::collections::
     Ok(names)
 }
 
+struct HistoricalPackage<'a> {
+    directory: &'a Path,
+    package: Value,
+    index: std::collections::HashSet<String>,
+    contract: Contract,
+    saved: Snapshot,
+    attempt: Attempt,
+}
+
+impl<'a> HistoricalPackage<'a> {
+    fn load(directory: &'a Path, id: Uuid) -> Result<Self> {
+        let package: Value = serde_json::from_str(&read_artifact(directory, "evidence.json")?)?;
+        if package["version"] != 1 {
+            return Err("historical PACKAGE version is invalid".into());
+        }
+        let index = checked_index(directory, &package["files"])?;
+        let get = |name: &str| -> Result<String> {
+            if !index.contains(name) {
+                return Err(format!("historical evidence index lacks {name}").into());
+            }
+            read_artifact(directory, name)
+        };
+        for name in [
+            "run.json",
+            "contract.json",
+            "events.jsonl",
+            "intent.json",
+            "intent.md",
+            "attempt.json",
+            "report.md",
+        ] {
+            get(name)?;
+        }
+        for name in [
+            "workspace-layout.json",
+            "execution-context.json",
+            "execution-workspace.json",
+        ] {
+            if directory.join(name).symlink_metadata().is_ok() {
+                get(name)?;
+            }
+        }
+        let raw = get("contract.json")?;
+        let contract: Contract = serde_json::from_str(&raw)?;
+        let saved = snapshot(directory, id)?;
+        let attempt: Attempt = serde_json::from_str(&get("attempt.json")?)?;
+        if contract.run_id != id
+            || attempt.run_id() != id
+            || matches!(saved.lifecycle, Lifecycle::Created | Lifecycle::Running)
+            || package["run"] != json!(saved)
+            || package["contract"] != serde_json::from_str::<Value>(&raw)?
+            || package["attempt"] != json!(attempt)
+        {
+            return Err("historical PACKAGE conflicts with the saved Attempt".into());
+        }
+        Ok(Self {
+            directory,
+            package,
+            index,
+            contract,
+            saved,
+            attempt,
+        })
+    }
+
+    fn get(&self, name: &str) -> Result<String> {
+        if !self.index.contains(name) {
+            return Err(format!("historical evidence index lacks {name}").into());
+        }
+        read_artifact(self.directory, name)
+    }
+}
+
 pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> {
     let parent = root.parent().ok_or("historical Run has no root")?;
     let id = Uuid::parse_str(
@@ -582,54 +655,23 @@ pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> 
         return Err("historical Run is retired".into());
     }
     let (number, directory) = select(root, None)?;
-    let package: Value = serde_json::from_str(&read_artifact(&directory, "evidence.json")?)?;
-    if package["version"] != 1 || !package["error"].is_null() {
-        return Err("historical PACKAGE version or outcome is invalid".into());
+    let historical = HistoricalPackage::load(&directory, id)?;
+    let package = &historical.package;
+    if !package["error"].is_null() {
+        return Err("historical PACKAGE outcome is invalid".into());
     }
-    let index = checked_index(&directory, &package["files"])?;
-    let get = |name: &str| -> Result<String> {
-        if !index.contains(name) {
-            return Err(format!("historical evidence index lacks {name}").into());
-        }
-        read_artifact(&directory, name)
-    };
-    for name in [
-        "run.json",
-        "contract.json",
-        "events.jsonl",
-        "intent.json",
-        "intent.md",
-        "attempt.json",
-        "report.md",
-    ] {
-        get(name)?;
-    }
-    for name in [
-        "workspace-layout.json",
-        "execution-context.json",
-        "execution-workspace.json",
-    ] {
-        if directory.join(name).symlink_metadata().is_ok() {
-            get(name)?;
-        }
-    }
-    let raw = get("contract.json")?;
-    let contract: Contract = serde_json::from_str(&raw)?;
+    let contract = &historical.contract;
     let observed = view(root, id, Some(number))?;
-    let saved = snapshot(&directory, id)?;
-    let attempt: Attempt = serde_json::from_str(&get("attempt.json")?)?;
-    let verification = saved
+    let attempt = &historical.attempt;
+    let get = |name: &str| historical.get(name);
+    let verification = historical
+        .saved
         .verification
         .as_ref()
         .ok_or("historical Run lacks verification")?;
     let candidate: Sha = serde_json::from_value(observed["candidate_sha"].clone())?;
     let identity = json!(attempt.candidate(candidate.clone()));
-    if observed["run"]["outcome"] != "VERIFIED"
-        || package["run"] != json!(saved)
-        || package["contract"] != serde_json::from_str::<Value>(&raw)?
-        || package["attempt"] != json!(attempt)
-        || package["candidate"] != identity
-    {
+    if observed["run"]["outcome"] != "VERIFIED" || package["candidate"] != identity {
         return Err("historical PACKAGE conflicts with validated verification".into());
     }
     let test_raw = get("test/manifest.json")?;
@@ -665,7 +707,7 @@ pub fn verified(root: &Path) -> Result<(Uuid, PathBuf, crate::apply::Verified)> 
         }
         for stream in ["stdout", "stderr"] {
             let name = format!("test/logs/{position:04}.{stream}.log");
-            if !index.contains(&name)
+            if !historical.index.contains(&name)
                 || check[format!("{stream}_path")] != json!(directory.join(&name))
             {
                 return Err("historical TEST log attribution does not match".into());
