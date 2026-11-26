@@ -28,10 +28,45 @@ pub fn cancelled(marker: &Path) -> io::Result<()> {
 
 pub fn cancel(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
     let request: Request = serde_json::from_slice(body)?;
-    let reason = request.reason.trim();
+    retire(directory, id, &request.reason, None)
+}
+
+pub fn validate_reason(reason: &str) -> Result<&str> {
+    let reason = reason.trim();
     if reason.is_empty() || reason.chars().count() > 1000 {
-        return Err("cancellation requires a reason of 1 to 1000 characters".into());
+        return Err("retirement requires a reason of 1 to 1000 characters".into());
     }
+    Ok(reason)
+}
+
+pub fn existing(
+    directory: &Path,
+    id: Uuid,
+    reason: &str,
+    replacement: Option<Uuid>,
+) -> Result<Option<serde_json::Value>> {
+    let raw = match fs::read(path(directory)) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let previous: serde_json::Value = serde_json::from_slice(&raw)?;
+    if previous["run_id"] != serde_json::json!(id)
+        || previous["reason"] != reason
+        || previous["replacement"] != serde_json::json!(replacement)
+    {
+        return Err("Run already has a different retirement record".into());
+    }
+    Ok(Some(previous))
+}
+
+pub fn retire(
+    directory: &Path,
+    id: Uuid,
+    reason: &str,
+    replacement: Option<Uuid>,
+) -> Result<serde_json::Value> {
+    let reason = validate_reason(reason)?;
     if store::load(directory)?.contract.run_id != id {
         return Err("cancellation must match the requested Run".into());
     }
@@ -42,7 +77,7 @@ pub fn cancel(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Val
         .try_into()?;
     let retirement = serde_json::json!({
         "run_id": id, "reason": reason, "timestamp": timestamp,
-        "actor": "operator", "replacement": null, "attempt": null, "stage": null,
+        "actor": "operator", "replacement": replacement, "attempt": null, "stage": null,
     });
     let pending = directory.join(format!(".retirement-{}.pending", Uuid::new_v4()));
     store::write_new(&pending, &serde_json::to_vec(&retirement)?)?;
@@ -54,14 +89,8 @@ pub fn cancel(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Val
             Ok(retirement)
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            let previous: serde_json::Value = serde_json::from_slice(&fs::read(marker)?)?;
-            if previous["run_id"] != serde_json::json!(id)
-                || previous["reason"] != reason
-                || !previous["replacement"].is_null()
-            {
-                return Err("Run already has a different retirement record".into());
-            }
-            Ok(previous)
+            existing(directory, id, reason, replacement)?
+                .ok_or_else(|| "retirement record disappeared".into())
         }
         Err(error) => Err(error.into()),
     }

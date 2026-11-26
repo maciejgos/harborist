@@ -161,6 +161,14 @@ evidence. Cancellation preserves existing artifacts and prevents further
 execution, candidate application, and GitHub publication. The operator
 reason stays in the saved retirement record.
 
+## Supersede a Run
+
+Use **Supersede Run** in the workspace to capture a replacement request and
+queue it under its own Run ID. Harborist saves the replacement before retiring
+the original Run. The original keeps its evidence and links to the replacement
+in its retirement record. A retry with the same request inputs reuses the
+replacement Run and its queue delivery.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -197,7 +205,7 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Existing Python Run formats, rework and recovery, supersession, subsequent GitHub publications and collaboration, integration management,
+Existing Python Run formats, rework and recovery, subsequent GitHub publications and collaboration, integration management,
 legacy YAML compatibility, worker cancellation, and Docker Sandboxes remain
 outside the Rust foreground implementation.
 

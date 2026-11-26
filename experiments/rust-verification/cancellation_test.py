@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from compare import ROOT, fixture
@@ -65,6 +66,37 @@ def exercise(root: Path) -> None:
                     assert client.request("GET", f"/runs/{second}")["run"]["lifecycle"] == "CANCELLED"
                 finally:
                     worker.terminate()
+            original = root / "original"
+            old_id = enroll(original)
+            new_id = str(uuid.uuid4())
+            route = f"/workspace/runs/{old_id}/supersede"
+            payload = {
+                "reason": "Corrected request",
+                "request_id": new_id,
+                "source": str(root / "missing.md"),
+                "repository": str(repo),
+                "ref": base,
+            }
+            try:
+                client.request("POST", route, payload)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("invalid replacement was accepted")
+            assert not (original / "retirement.json").exists()
+            (root / "missing.md").write_text("Replacement request")
+            result = client.request("POST", route, payload)
+            assert result["replacement"] == new_id
+            assert client.request("POST", route, payload) == result
+            assert client.request("GET", f"/runs/{old_id}")["state"] == "CANCELLED"
+            assert client.request("GET", f"/runs/{new_id}")["state"] == "QUEUED"
+            try:
+                client.request("POST", route, {**payload, "reason": "Different reason"})
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("supersession reason changed on retry")
+
         finally:
             service.terminate()
 

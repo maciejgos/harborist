@@ -157,6 +157,16 @@ pub fn save(control: &Path, body: &[u8]) -> Result<Value> {
 
 pub fn capture(control: &Path, body: &[u8]) -> Result<Value> {
     let request: CaptureRequest = serde_json::from_slice(body)?;
+    let captured = capture_saved(control, request, &control.join("workspace-requests"))?;
+    let record = queue::enqueue(control, captured)?;
+    Ok(json!({"run_id": record.run_id}))
+}
+
+fn capture_saved(
+    control: &Path,
+    request: CaptureRequest,
+    receipts: &Path,
+) -> Result<store::Captured> {
     if request.request_id.get_version_num() != 4 || request.source.chars().count() > 4096 {
         return Err("invalid capture request identity or source".into());
     }
@@ -174,9 +184,8 @@ pub fn capture(control: &Path, body: &[u8]) -> Result<Value> {
     let repo = normalize(&request.repository)?;
     let settings = request.settings.as_deref().map(normalize).transpose()?;
     let runs = control.join("runs");
-    let receipts = control.join("workspace-requests");
     fs::create_dir_all(&runs)?;
-    fs::create_dir_all(&receipts)?;
+    fs::create_dir_all(receipts)?;
     let directory = runs.join(request.request_id.to_string());
     let receipt = receipts.join(format!("{}.json", request.request_id));
     match fs::read(&receipt) {
@@ -189,7 +198,7 @@ pub fn capture(control: &Path, body: &[u8]) -> Result<Value> {
                 return Err("request ID already belongs to a saved Run".into());
             }
             store::write_new(&receipt, &serde_json::to_vec(&request)?)?;
-            File::open(&receipts)?.sync_all()?;
+            File::open(receipts)?.sync_all()?;
         }
         Err(error) => return Err(error.into()),
     }
@@ -210,8 +219,50 @@ pub fn capture(control: &Path, body: &[u8]) -> Result<Value> {
     if captured.contract.run_id != request.request_id {
         return Err("saved Run does not match capture request".into());
     }
-    let record = queue::enqueue(control, captured)?;
-    Ok(json!({"run_id": record.run_id}))
+    Ok(captured)
+}
+
+pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Result<Value> {
+    let mut payload: Value = serde_json::from_slice(body)?;
+    let reason = payload
+        .as_object_mut()
+        .and_then(|fields| fields.remove("reason"))
+        .and_then(|reason| reason.as_str().map(str::to_owned))
+        .ok_or("supersession requires a reason")?;
+    let reason = crate::retirement::validate_reason(&reason)?;
+    let request: CaptureRequest = serde_json::from_value(payload)?;
+    let replacement = request.request_id;
+    if replacement == original.run_id {
+        return Err("replacement must be a distinct Run".into());
+    }
+    let previous = crate::retirement::existing(
+        &original.directory,
+        original.run_id,
+        reason,
+        Some(replacement),
+    )?;
+    let receipts = control
+        .join("supersession-requests")
+        .join(original.run_id.to_string());
+    let captured = capture_saved(control, request, &receipts)?;
+    if previous.is_none()
+        && (captured.directory.join("attempt.json").try_exists()?
+            || crate::retirement::path(&captured.directory).try_exists()?
+            || control
+                .join("queue")
+                .join(format!("{replacement}.json"))
+                .try_exists()?)
+    {
+        return Err("replacement must be a fresh captured Run".into());
+    }
+    let record = crate::retirement::retire(
+        &original.directory,
+        original.run_id,
+        reason,
+        Some(replacement),
+    )?;
+    queue::enqueue(control, captured)?;
+    Ok(record)
 }
 
 #[derive(Deserialize)]
