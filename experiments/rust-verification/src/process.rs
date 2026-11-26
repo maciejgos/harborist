@@ -75,13 +75,23 @@ pub fn capture(
     allowance: Duration,
     limit: usize,
 ) -> io::Result<Capture> {
+    let mut shell = Command::new("/bin/sh");
+    shell
+        .args(["-c", command])
+        .current_dir(workspace)
+        .stdin(Stdio::null());
+    capture_command(&mut shell, allowance, limit)
+}
+
+pub fn capture_command(
+    command: &mut Command,
+    allowance: Duration,
+    limit: usize,
+) -> io::Result<Capture> {
     let deadline = Instant::now() + allowance;
     let mut group = ProcessGroup(
-        Command::new("/bin/sh")
-            .args(["-c", command])
-            .current_dir(workspace)
+        command
             .process_group(0)
-            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?,

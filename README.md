@@ -76,8 +76,8 @@ uv run pyright
 
 See [AGENTS.md](AGENTS.md) for repository working instructions.
 
-The [Rust verification experiment](experiments/rust-verification/README.md)
-compares trusted-local TEST with the Python implementation in Docker.
+The [Rust foreground workflow](experiments/rust-verification/README.md)
+compares local foreground execution and trusted TEST with Python in Docker.
 
 ## Documentation
 

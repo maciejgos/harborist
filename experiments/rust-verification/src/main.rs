@@ -1,3 +1,5 @@
+mod foreground;
+mod native;
 mod process;
 
 use harborist_verify::workflow::Sha;
@@ -81,7 +83,23 @@ struct Evidence {
 }
 
 fn run_checks(config: Config, workspace: &Path, logs: &Path) -> Result<Vec<CheckResult>> {
-    let deadline = Instant::now() + Duration::from_secs(15);
+    run_checks_with_budget(
+        config,
+        workspace,
+        logs,
+        Duration::from_secs(2),
+        Duration::from_secs(15),
+    )
+}
+
+fn run_checks_with_budget(
+    config: Config,
+    workspace: &Path,
+    logs: &Path,
+    per_check: Duration,
+    total: Duration,
+) -> Result<Vec<CheckResult>> {
+    let deadline = Instant::now() + total;
     let workspace = workspace.canonicalize()?;
     fs::create_dir(logs)?;
     let logs = logs.canonicalize()?;
@@ -105,7 +123,7 @@ fn run_checks(config: Config, workspace: &Path, logs: &Path) -> Result<Vec<Check
             let mut stderr = File::create_new(&result.stderr_path)?;
             let allowance = deadline
                 .saturating_duration_since(Instant::now())
-                .min(Duration::from_secs(2));
+                .min(per_check);
             if allowance.is_zero() {
                 result.timed_out = true;
                 result.error = Some("Shared TEST deadline exhausted before invocation".into());
@@ -145,6 +163,11 @@ fn commit(value: &OsStr) -> Result<Sha> {
 
 fn execute() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if let [command, args @ ..] = args.as_slice() {
+        if command == "run" {
+            return foreground::execute(args);
+        }
+    }
     let [repo, base, candidate, workspace, logs] = args.as_slice() else {
         return Err(
             "usage: harborist-verify REPO BASE_SHA CANDIDATE_SHA NEW_CHECKOUT NEW_LOG_DIR".into(),
