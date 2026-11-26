@@ -85,6 +85,41 @@ def exercise(root: Path) -> None:
     assert git(repo, "rev-parse", "legacy-delivery") == receipt["resulting_sha"]
     assert (directory / "run.json").read_bytes() == before
 
+    remote = root / "remote.git"
+    subprocess.check_call(["git", "init", "--bare", "-q", remote])
+    git(repo, "push", str(remote), f"{base}:refs/heads/main")
+    git(repo, "config", f"url.{remote}.insteadOf", "https://github.com/example/project.git")
+    (root / "gh").write_text("""#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+state = Path(os.environ["PR_STATE"])
+if "?" in args[3]:
+    print("[" + state.read_text() + "]" if state.exists() else "[]")
+else:
+    fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
+    branch = fields["head"]
+    sha = subprocess.check_output([
+        "git", "--git-dir", os.environ["TEST_REMOTE"], "rev-parse", "refs/heads/" + branch,
+    ], text=True).strip()
+    state.write_text(json.dumps({
+        "number": 1, "html_url": "https://github.com/example/project/pull/1", "state": "open",
+        "head": {"ref": branch, "sha": sha}, "base": {"ref": fields["base"], "sha": sha},
+    }))
+    print(state.read_text())
+""")
+    (root / "gh").chmod(0o755)
+    env.update({"PR_STATE": str(root / "pull.json"), "TEST_REMOTE": str(remote)})
+    publish = [binary, "publish", directory, receipt["resulting_sha"], "example/project", "main"]
+    url = subprocess.check_output(publish, env=env, text=True).strip()
+    assert url == "https://github.com/example/project/pull/1"
+    assert subprocess.check_output(publish, env=env, text=True).strip() == url
+    assert git(remote, "rev-parse", f"refs/heads/harborist/{run_id}") == receipt["resulting_sha"]
+    assert (directory / "run.json").read_bytes() == before
+
     rejected = subprocess.run(
         [binary, "import-python", directory, root / "rejected"], env=env,
         capture_output=True, text=True, check=False,
@@ -93,7 +128,7 @@ def exercise(root: Path) -> None:
     subprocess.check_call(
         [sys.executable, "-m", "harborist", "intake", f"file:{intent}", *args], env=env,
     )
-    original = next(path for path in runs.iterdir() if path != directory)
+    original = next(path for path in runs.iterdir() if path != directory and (path / "contract.json").is_file())
     contract_bytes = (original / "contract.json").read_bytes()
     settings.unlink()
     intent.unlink()

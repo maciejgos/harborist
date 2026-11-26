@@ -125,6 +125,10 @@ pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Va
 }
 
 fn published(directory: &Path, id: Uuid) -> Result<Option<Receipt>> {
+    published_in(directory, &directory.join("publication"), id)
+}
+
+fn published_in(directory: &Path, receipts: &Path, id: Uuid) -> Result<Option<Receipt>> {
     for number in crate::continuation::numbers(directory)?.into_iter().rev() {
         let attempt_directory = crate::continuation::attempt_path(directory, number);
         let Some(attempt): Option<harborist_verify::workflow::Attempt> =
@@ -135,9 +139,7 @@ fn published(directory: &Path, id: Uuid) -> Result<Option<Receipt>> {
         if attempt.run_id() != id {
             return Err("publication Attempt belongs to another Run".into());
         }
-        let path = directory
-            .join("publication")
-            .join(format!("published-{}.json", attempt.id()));
+        let path = receipts.join(format!("published-{}.json", attempt.id()));
         if let Some(receipt) = read_optional::<Receipt>(&path)? {
             if receipt.approval.attempt != attempt.id() {
                 return Err("publication receipt belongs to another Attempt".into());
@@ -196,12 +198,83 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         expected_attempt: None,
         expect_head,
     };
-    let pull = publish(store::load(Path::new(directory))?, request)?;
+    let root = Path::new(directory).canonicalize()?;
+    let raw = read_artifact(&root, "contract.json")?;
+    let contract: serde_json::Value = serde_json::from_str(&raw)?;
+    let pull = if contract.get("intent").is_some() && contract.get("version").is_none() {
+        publish_python(&root, request)?
+    } else {
+        publish(store::load(&root)?, request)?
+    };
     println!("{}", pull.html_url);
     Ok(())
 }
 
 fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
+    let _continuation = crate::continuation::lock(&run.directory)?;
+    let verified = apply::verified(&run)?;
+    publish_verified(
+        PublicationRun {
+            root: &run.directory,
+            receipts: run.directory.join("publication"),
+            repo: &run.contract.repository,
+            id: run.contract.run_id,
+            base: &run.contract.base_sha,
+            intent: &run.intent,
+            verified,
+        },
+        request,
+    )
+}
+
+fn publish_python(root: &Path, request: PublishRequest) -> Result<Pull> {
+    let lock = File::open(root)?;
+    // Use the Python Run's directory lock to preserve exclusive continuation.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    let (id, repo, verified) = crate::legacy::verified(root)?;
+    let parent = root.parent().ok_or("historical Run has no parent")?;
+    let previous_records = parent.join("publications").join(id.to_string());
+    if previous_records.try_exists()?
+        && fs::read_dir(previous_records)?.any(|item| {
+            item.is_err()
+                || item
+                    .is_ok_and(|item| item.file_name().to_string_lossy().starts_with("published-"))
+        })
+    {
+        return Err("this Run already has a Python publication receipt".into());
+    }
+    let raw = read_artifact(root, "contract.json")?;
+    let persisted: serde_json::Value = serde_json::from_str(&raw)?;
+    let base: Sha = serde_json::from_value(persisted["base_sha"].clone())?;
+    let intent = read_artifact(root, "intent.md")?;
+    let receipts = parent.join("rust-publications").join(id.to_string());
+    publish_verified(
+        PublicationRun {
+            root,
+            receipts,
+            repo: &repo,
+            id,
+            base: &base,
+            intent: &intent,
+            verified,
+        },
+        request,
+    )
+}
+
+struct PublicationRun<'a> {
+    root: &'a Path,
+    receipts: std::path::PathBuf,
+    repo: &'a Path,
+    id: Uuid,
+    base: &'a Sha,
+    intent: &'a str,
+    verified: apply::Verified,
+}
+
+fn publish_verified(run: PublicationRun<'_>, request: PublishRequest) -> Result<Pull> {
     let destination = request.destination.as_str();
     let base = request.base.as_str();
     if destination.len() > 256
@@ -211,16 +284,16 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     {
         return Err("expected a GitHub repository and base branch".into());
     }
-    let repo = &run.contract.repository;
+    let repo = run.repo;
     let base_ref = format!("refs/heads/{base}");
     git_text(repo, &["check-ref-format", &base_ref])?;
-    let id = run.contract.run_id;
+    let id = run.id;
     let branch = format!("harborist/{id}");
     let reference = format!("refs/heads/{branch}");
     if base == branch {
         return Err("PR base must differ from the Run branch".into());
     }
-    let directory = run.directory.join("publication");
+    let directory = run.receipts;
     fs::create_dir_all(&directory)?;
     let lock = OpenOptions::new()
         .create(true)
@@ -231,8 +304,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
-    let _continuation = crate::continuation::lock(&run.directory)?;
-    let verified = apply::verified(&run)?;
+    let verified = run.verified;
     let candidate = verified.candidate;
     if request.approve != candidate {
         return Err("approval must match the full VERIFIED candidate SHA".into());
@@ -243,7 +315,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     {
         return Err("approval belongs to a different Attempt".into());
     }
-    let prior = published(&run.directory, id)?;
+    let prior = published_in(run.root, &directory, id)?;
     if prior.as_ref().is_some_and(|receipt| {
         receipt.approval.destination != destination || receipt.approval.base != base
     }) {
@@ -352,7 +424,7 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     let body = format!(
         "body={marker}\n\n## Request\n\n{}\n\nBase: `{}`\n\nCandidate: `{}`\n\n## REVIEW\n\n{}",
         run.intent.chars().take(8000).collect::<String>(),
-        run.contract.base_sha,
+        run.base,
         approval.candidate,
         review.chars().take(8000).collect::<String>(),
     );

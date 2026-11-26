@@ -256,6 +256,11 @@ file digests, passing TEST capture, exact REVIEW inputs, and the original
 Run-owned Git ref. Rust stores the application receipt outside the Python
 Run directory so the original PACKAGE index stays valid.
 
+The Rust `publish` command also accepts a verified Python Run directory for
+its first GitHub publication. It validates the same historical evidence and
+writes publication records beside the Python Runs directory. If the Run
+already has a Python publication receipt, keep using that publication path.
+
 ## Run the comparison
 
 From the repository root with Docker running:
@@ -292,8 +297,9 @@ Run verification or application authority.
 
 The full application still uses the Python entry points. The Rust foreground
 command uses its own arguments, stage evidence and candidate ref namespace.
-Continuing started Python Runs, publishing from Python evidence, integration
-management, and Docker Sandboxes remain outside the Rust implementation.
+Continuing started Python Runs, updating publications originally recorded by
+Python, integration management, and Docker Sandboxes remain outside the Rust
+implementation.
 
 ## Rust workflow contracts
 
