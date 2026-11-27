@@ -222,9 +222,82 @@ fn checked_output(result: crate::process::Capture) -> Result<Vec<u8>> {
     Ok(result.stdout.bytes)
 }
 
+struct GuestCommand<'a> {
+    name: &'a str,
+    allowance: std::time::Duration,
+    limit: usize,
+    cancellation: Option<&'a std::path::Path>,
+}
+
+impl GuestCommand<'_> {
+    fn capture(
+        &self,
+        command: &[&str],
+        input: Option<&std::fs::File>,
+    ) -> Result<crate::process::Capture> {
+        use std::io::Read;
+        use std::time::Duration;
+        if let Some(marker) = self.cancellation {
+            crate::retirement::cancelled(marker)?;
+        }
+        if self.allowance.is_zero() {
+            return Err("Docker Sandbox execution deadline exhausted".into());
+        }
+        let timeout = format!("{:.3}s", self.allowance.as_secs_f64().max(0.001));
+        let mut args = vec![
+            "exec",
+            "-i",
+            "--workdir",
+            GUEST_REPOSITORY,
+            self.name,
+            "timeout",
+            "--kill-after=2s",
+            &timeout,
+        ];
+        args.extend_from_slice(command);
+        let host_timeout = self.allowance.saturating_add(Duration::from_secs(3));
+        let mut result = if let Some(host) = helper_host()? {
+            let mut bytes = Vec::new();
+            if let Some(file) = input {
+                file.take(64 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+            }
+            crate::sandbox_host::invoke(
+                &host,
+                &args,
+                host_timeout.as_secs().clamp(1, 3600),
+                self.limit,
+                &bytes,
+            )?
+        } else {
+            let mut child = local_command(&args);
+            if let Some(file) = input {
+                child.stdin(file.try_clone()?);
+            }
+            crate::process::capture_cancellable(
+                &mut child,
+                host_timeout,
+                self.limit,
+                self.cancellation,
+            )?
+        };
+        if let Some(marker) = self.cancellation {
+            crate::retirement::cancelled(marker)?;
+        }
+        result.timed_out |= result.returncode == 124;
+        Ok(result)
+    }
+}
+
 fn local_capture(args: &[&str], seconds: u64) -> Result<crate::process::Capture> {
+    Ok(crate::process::capture_command(
+        &mut local_command(args),
+        std::time::Duration::from_secs(seconds),
+        1024 * 1024,
+    )?)
+}
+
+fn local_command(args: &[&str]) -> std::process::Command {
     use std::process::{Command, Stdio};
-    use std::time::Duration;
     let mut command = Command::new("sbx");
     command.arg("--no-input").args(args).stdin(Stdio::null());
     for key in [
@@ -236,11 +309,7 @@ fn local_capture(args: &[&str], seconds: u64) -> Result<crate::process::Capture>
     ] {
         command.env_remove(key);
     }
-    Ok(crate::process::capture_command(
-        &mut command,
-        Duration::from_secs(seconds),
-        1024 * 1024,
-    )?)
+    command
 }
 
 fn baseline() -> Result<String> {
@@ -424,6 +493,29 @@ fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
     ])?;
     if std::str::from_utf8(&head)?.trim_end() != revision.as_str() {
         return Err("Docker Sandbox checkout does not match the selected revision".into());
+    }
+    let status = GuestCommand {
+        name,
+        allowance: std::time::Duration::from_secs(10),
+        limit: 65536,
+        cancellation: None,
+    }
+    .capture(
+        &[
+            "git",
+            "--no-replace-objects",
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ],
+        None,
+    )?;
+    if status.returncode != 0
+        || status.timed_out
+        || status.stdout.truncated
+        || !status.stdout.bytes.is_empty()
+    {
+        return Err("Docker Sandbox checkout is not a clean workspace".into());
     }
     Ok(())
 }

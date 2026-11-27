@@ -308,7 +308,7 @@ disposable sandbox with those resource and network settings and confirms
 its removal. If provisioning fails, it attempts to stop the sandbox and
 checks whether Docker retained it. Pass a repository to transfer a Git
 bundle of its committed HEAD and verify that the guest checks out the
-same commit.
+same commit with a clean workspace.
 
 ## Run the comparison
 

@@ -245,8 +245,10 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     log.write_text("")
     name = subprocess.check_output([*command, repo], env=env, text=True).strip()
     calls = [json.loads(line) for line in log.read_text().splitlines()]
-    assert [call[0] for call in calls[5:]] == ["cp", "exec", "exec", "exec", "rm", "ls"]
+    assert [call[0] for call in calls[5:]] == ["cp", "exec", "exec", "exec", "exec", "rm", "ls"]
     assert calls[7][-3:] == ["checkout", "--detach", head]
+    assert calls[9][:5] == ["exec", "-i", "--workdir", "/home/agent/workspace/repository", name]
+    assert calls[9][-3:] == ["status", "--porcelain", "--untracked-files=all"]
     assert calls[-2] == ["rm", "--force", name]
     log.write_text("")
     result = subprocess.run([*command, repo], env={**env, "GUEST_HEAD": "wrong"}, capture_output=True)
