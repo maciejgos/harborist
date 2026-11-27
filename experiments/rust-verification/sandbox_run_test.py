@@ -2,8 +2,11 @@
 
 import json
 import os
+import socket
 import subprocess
 import tempfile
+import time
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from compare import ROOT, fixture, git
@@ -15,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 flag, command, *args = sys.argv[1:]
@@ -31,7 +35,7 @@ elif command == "create":
     (guests / args[1]).mkdir()
 elif command == "ls":
     print(json.dumps([
-        {"name": path.name, "status": "stopped" if (path / "stopped").exists() else "running"}
+        {"name": path.name, "id": str(uuid.uuid5(uuid.NAMESPACE_OID, path.name)), "status": "stopped" if (path / "stopped").exists() else "running"}
         for path in guests.iterdir()
     ]))
 elif command == "stop":
@@ -50,8 +54,18 @@ elif command == "exec":
     cwd = args[:3] == ["-i", "--workdir", "/home/agent/workspace/repository"]
     if cwd:
         args = args[3:]
+    if args[:2] == ["-i", "--"]:
+        args = args[2:]
+    elif args[0] == "--":
+        args = args[1:]
     name, *args = args
     guest = guests / name
+    if args[0] == "dd":
+        destination = args[1].removeprefix("of=")
+        assert destination in ["/tmp/harborist-source.bundle", "/tmp/harborist-schema.json"]
+        with (guest / Path(destination).name).open("wb") as stream:
+            shutil.copyfileobj(sys.stdin.buffer, stream)
+        sys.exit(0)
     def guest_arg(value):
         if value == "/home/agent/workspace/repository" or value.startswith("/tmp/harborist-"):
             return str(guest / Path(value).name)
@@ -72,7 +86,33 @@ else:
 """
 
 
-def exercise(root: Path, check: str, expected: str, *, mutation: bool = False) -> None:
+@contextmanager
+def host_connection(root: Path, env: dict[str, str]):
+    helper = root / "helper"
+    helper.mkdir()
+    token = helper / "token"
+    token.write_text("offline-helper-fixture-token".ljust(32, "0"))
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    binary = ROOT / "target/release/harborist-verify"
+    with subprocess.Popen([binary, "sandbox-host", helper, str(port), "--sbx", root / "sbx"], env=env) as process:
+        try:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                        break
+                except OSError:
+                    assert process.poll() is None and time.monotonic() < deadline
+                    time.sleep(0.025)
+            yield {**env, "HARBORIST_SANDBOX_HOST": "127.0.0.1",
+                   "HARBORIST_SANDBOX_PORT": str(port), "HARBORIST_SANDBOX_TOKEN_FILE": str(token)}
+        finally:
+            process.terminate()
+
+
+def exercise(root: Path, check: str, expected: str, *, mutation: bool = False, hosted: bool = False) -> None:
     repo, base, _ = fixture(root, [check])
     canonical = Path("/opt/harborist/src/harborist")
     (repo / "harborist.settings.yaml").write_text(
@@ -103,9 +143,11 @@ def exercise(root: Path, check: str, expected: str, *, mutation: bool = False) -
         "FIXTURE_GUESTS": str(guests),
         "SBX_HISTORY": str(history),
     }
-    result = subprocess.run([
-        ROOT / "target/release/harborist-verify", "run", repo, base, intent, output,
-    ], env=env, capture_output=True, text=True, check=False)
+    connection = host_connection(root, env) if hosted else nullcontext(env)
+    with connection as runtime_env:
+        result = subprocess.run([
+            ROOT / "target/release/harborist-verify", "run", repo, base, intent, output,
+        ], env=runtime_env, capture_output=True, text=True, check=False)
     evidence = json.loads((output / "evidence.json").read_text())
     assert evidence["outcome"] == expected, (evidence, result.stderr)
     assert (result.returncode == 0) == (expected == "VERIFIED")
@@ -137,4 +179,7 @@ if __name__ == "__main__":
         exercise(Path(directory), 'test "$IN_FIXTURE_GUEST" = 1 && false', "TEST_FAILED")
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory), "touch changed-by-test", "TEST_FAILED", mutation=True)
+    with tempfile.TemporaryDirectory() as directory:
+        exercise(Path(directory), 'test "$IN_FIXTURE_GUEST" = 1 && test -f message.txt', "VERIFIED", hosted=True)
+    print("Rust authenticated host-helper workflow fixture passed.")
     print("Rust Docker Sandbox workflow fixture passed.")

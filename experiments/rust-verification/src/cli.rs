@@ -903,7 +903,9 @@ fn agent(args: &[OsString]) -> Result<i32> {
                 effort = Some(value()?.to_str().ok_or("invalid reasoning effort")?)
             }
             _ => {
-                return Err(format!("unexpected agent argument: {}", flag.to_string_lossy()).into());
+                return Err(
+                    format!("unexpected agent argument: {}", flag.to_string_lossy()).into(),
+                );
             }
         }
     }
