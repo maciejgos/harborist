@@ -17,7 +17,27 @@ struct Settings {
     playbook: Source,
     skills: Vec<Source>,
     agent_profile: Profile,
-    sandbox_policy: Value,
+    sandbox_policy: SandboxPolicy,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SandboxPolicy {
+    Mode(String),
+    Docker(crate::sandbox::DockerPolicy),
+}
+
+impl SandboxPolicy {
+    fn require_trusted_local(self) -> Result<()> {
+        match self {
+            Self::Mode(mode) if mode == "trusted-local" => Ok(()),
+            Self::Docker(policy) => {
+                policy.validate()?;
+                Err("Docker sandbox execution requires the Rust sandbox runtime".into())
+            }
+            _ => Err("invalid sandbox policy".into()),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -182,7 +202,7 @@ pub struct LegacyExecution {
     playbook: Asset,
     skills: Vec<Asset>,
     agent_profile: Profile,
-    sandbox_policy: serde_json::Value,
+    sandbox_policy: SandboxPolicy,
     budget: LegacyBudget,
 }
 
@@ -195,11 +215,7 @@ struct LegacyBudget {
 
 impl LegacyExecution {
     pub fn trusted_local(self) -> Result<(Execution, u64, u64)> {
-        if self.sandbox_policy != "trusted-local" {
-            return Err(
-                "importing a Docker Sandboxes Run requires the Rust sandbox runtime".into(),
-            );
-        }
+        self.sandbox_policy.require_trusted_local()?;
         let total = self.budget.total_seconds;
         let reserve = self.budget.verification_reserve_seconds;
         crate::store::validate_budget(total, reserve)?;
@@ -237,9 +253,7 @@ impl Execution {
         if source.version.as_u64() != Some(1) {
             return Err("unsupported execution settings version".into());
         }
-        if source.sandbox_policy.as_str() != Some("trusted-local") {
-            return Err("this Rust runtime supports the trusted-local sandbox policy".into());
-        }
+        source.sandbox_policy.require_trusted_local()?;
         let execution = Self {
             profile: source.agent_profile,
             playbook: Asset::capture(parent, source.playbook)?,

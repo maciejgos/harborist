@@ -10,6 +10,7 @@ mod publication;
 mod queue;
 mod record;
 mod retirement;
+mod sandbox;
 mod settings;
 mod store;
 mod workspace;
