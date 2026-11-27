@@ -183,13 +183,14 @@ fn read_status(command: &str, args: &[OsString]) -> Result<i32> {
     let route = id.map_or_else(|| "/runs".to_owned(), |id| format!("/runs/{id}"));
     loop {
         let record = control::read(&directory, &route)?;
-        let terminal = matches!(
-            record["state"].as_str(),
-            Some("FINISHED" | "FAILED" | "INTERRUPTED" | "CANCELLED")
-        ) || matches!(
-            record["run"]["lifecycle"].as_str(),
-            Some("COMPLETED" | "FAILED" | "CANCELLED")
-        );
+        let terminal = match record["state"].as_str() {
+            Some("FINISHED" | "FAILED" | "INTERRUPTED" | "CANCELLED") => true,
+            Some("QUEUED" | "RUNNING") => false,
+            _ => matches!(
+                record["run"]["lifecycle"].as_str(),
+                Some("COMPLETED" | "FAILED" | "CANCELLED")
+            ),
+        };
         if !wait || terminal {
             if json {
                 println!("{record}");
@@ -222,17 +223,124 @@ fn print_run(record: &serde_json::Value) {
     println!("{id} {state} {outcome}");
 }
 
+fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
+    use serde_json::json;
+
+    let [id, args @ ..] = args else {
+        return Err("expected a Run UUID".into());
+    };
+    if id == "--help" || id == "-h" {
+        if command == "cancel" {
+            println!("Usage: harborist cancel RUN_ID --reason TEXT [--control-dir PATH]");
+        } else {
+            println!(
+                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--control-dir PATH] [--json]"
+            );
+        }
+        return Ok(0);
+    }
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let mut directory = None;
+    let mut reason = None;
+    let mut feedback = String::new();
+    let mut additional = 0;
+    let mut observation = None;
+    let mut feedback_ids = Vec::new();
+    let mut expected = None;
+    let mut json_output = false;
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        let mut value = || args.next().ok_or("missing argument value");
+        match flag.to_str() {
+            Some("--control-dir") => directory = Some(PathBuf::from(value()?)),
+            Some("--json") => json_output = true,
+            Some("--reason") if command == "cancel" => {
+                reason = Some(value()?.to_str().ok_or("invalid cancellation reason")?);
+            }
+            Some("--feedback") if command != "cancel" => {
+                feedback = value()?.to_str().ok_or("invalid feedback")?.to_owned();
+            }
+            Some("--observation") if command == "rework" => {
+                observation = Some(PathBuf::from(value()?));
+            }
+            Some("--feedback-id") if command == "rework" => {
+                feedback_ids.push(value()?.to_str().ok_or("invalid feedback ID")?);
+            }
+            Some("--additional-seconds") if command != "cancel" => {
+                additional = seconds(value()?)?;
+            }
+            Some("--expected-attempt") if command != "cancel" => {
+                expected = Some(Uuid::parse_str(
+                    value()?.to_str().ok_or("invalid Attempt UUID")?,
+                )?);
+            }
+            _ => {
+                return Err(
+                    format!("unexpected {command} argument: {}", flag.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    let directory = match directory {
+        Some(path) => path,
+        None => state_path("control")?,
+    };
+    let (route, payload) = if command == "cancel" {
+        let reason = crate::retirement::validate_reason(reason.ok_or("cancel requires --reason")?)?;
+        (
+            format!("/workspace/runs/{id}/cancel"),
+            json!({"reason": reason}),
+        )
+    } else {
+        if observation.is_some() == feedback_ids.is_empty() {
+            return Err("--observation and --feedback-id must be supplied together".into());
+        }
+        let github_feedback =
+            observation.map(|path| json!({"observation": path, "ids": feedback_ids}));
+        let attempt = match expected {
+            Some(id) => id,
+            None => {
+                let current = control::read(&directory, &format!("/runs/{id}"))?;
+                Uuid::parse_str(
+                    current["attempt_id"]
+                        .as_str()
+                        .ok_or("Run has no current Attempt")?,
+                )?
+            }
+        };
+        (
+            format!("/workspace/runs/{id}/continue"),
+            json!({
+                "request_id": Uuid::new_v4(), "action": command, "expected_attempt_id": attempt,
+                "feedback": feedback, "additional_seconds": additional, "github_feedback": github_feedback
+            }),
+        )
+    };
+    let response = control::write(&directory, &route, &payload)?;
+    if json_output {
+        println!("{response}");
+    } else if command == "cancel" {
+        println!("Recorded cancellation for Run {id}");
+    } else {
+        println!("Queued {command} for Run {id}");
+    }
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
     };
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
-        println!("Usage: harborist <run|intake|runs|status> [OPTIONS]");
+        println!("Usage: harborist <run|intake|runs|status|cancel|rework|recover> [OPTIONS]");
         return Ok(0);
     }
     if matches!(command, "runs" | "status") {
         return read_status(command, args);
+    }
+    if matches!(command, "cancel" | "rework" | "recover") {
+        return change_run(command, args);
     }
     if !matches!(command, "run" | "intake") {
         return Err(format!("unsupported Harborist command: {command}").into());

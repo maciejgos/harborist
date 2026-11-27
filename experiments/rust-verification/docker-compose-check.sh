@@ -42,7 +42,7 @@ stage=$(printf '%s' "$request" | sed -n 's/.*"stage":"\([a-z]*\)".*/\1/p')
 case "$stage" in
     design) artifact='"AC-001: Write the requested file."' ;;
     plan) artifact='"Create message.txt."' ;;
-    build) printf 'hello from Compose\n' > message.txt; artifact=null ;;
+    build) if [ -f message.txt ]; then touch fixed; fi; printf 'hello from Compose\n' > message.txt; artifact=null ;;
     review)
         test "$(cat message.txt)" = 'hello from Compose'
         identity=$(printf '%s' "$request" | sed -n 's/.*"candidate":\({[^}]*}\).*/\1/p')
@@ -98,4 +98,22 @@ queued=$(compose exec -T service harborist run "$saved_id" --json)
 printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
 status=$(compose exec -T service harborist status "$saved_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
+compose exec -T service sh -eu <<'FIXTURE'
+cd /home/harborist/.harborist/repository
+printf '%s\n' '{"version":1,"checks":[{"id":"fix","command":"test -f fixed"}]}' > harborist.yaml
+git add harborist.yaml
+git commit -qm 'Require rework'
+FIXTURE
+queued=$(compose exec -T service harborist run file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --json)
+rework_id=$(printf '%s\n' "$queued" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$rework_id"
+failed=$(compose exec -T service harborist status "$rework_id" --wait --interval 0.05 --json)
+printf '%s\n' "$failed" | grep -Fq '"outcome":"TEST_FAILED"'
+compose exec -T service harborist rework "$rework_id" --feedback 'Add fixed' --json
+reworked=$(compose exec -T service harborist status "$rework_id" --wait --interval 0.05 --json)
+printf '%s\n' "$reworked" | grep -Fq '"outcome":"VERIFIED"'
+printf '%s\n' "$reworked" | grep -Fq '"attempt_number":1'
+cancelled=$(compose exec -T service harborist cancel "$rework_id" --reason 'Compose test complete' --json)
+printf '%s\n' "$cancelled" | grep -Fq '"reason":"Compose test complete"'
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'

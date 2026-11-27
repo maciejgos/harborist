@@ -552,7 +552,16 @@ pub fn service(args: &[OsString]) -> Result<()> {
 }
 
 pub fn read(control: &Path, route: &str) -> Result<Value> {
-    let (status, body) = proxy(control, route, None)?;
+    request(control, route, None)
+}
+
+pub fn write(control: &Path, route: &str, payload: &Value) -> Result<Value> {
+    let bytes = serde_json::to_vec(payload)?;
+    request(control, route, Some(&bytes))
+}
+
+fn request(control: &Path, route: &str, payload: Option<&[u8]>) -> Result<Value> {
+    let (status, body) = proxy(control, route, payload)?;
     let response: Value = serde_json::from_slice(&body)?;
     if status != 200 {
         return Err(response["error"]
