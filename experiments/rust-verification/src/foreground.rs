@@ -17,6 +17,9 @@ use std::{
 };
 
 pub fn execute(capture: Captured) -> Result<serde_json::Value> {
+    if let Some(execution) = &capture.contract.execution {
+        execution.require_executor()?;
+    }
     let attempt = store::admit(&capture)?;
     let directory = capture.directory.clone();
     execute_attempt(capture, directory, attempt, None)

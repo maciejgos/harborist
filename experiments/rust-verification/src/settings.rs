@@ -28,13 +28,10 @@ enum SandboxPolicy {
 }
 
 impl SandboxPolicy {
-    fn require_trusted_local(self) -> Result<()> {
+    fn docker(self) -> Result<Option<crate::sandbox::DockerPolicy>> {
         match self {
-            Self::Mode(mode) if mode == "trusted-local" => Ok(()),
-            Self::Docker(policy) => {
-                policy.validate()?;
-                Err("Docker sandbox execution requires the Rust sandbox runtime".into())
-            }
+            Self::Mode(mode) if mode == "trusted-local" => Ok(None),
+            Self::Docker(policy) => Ok(Some(policy.validate()?)),
             _ => Err("invalid sandbox policy".into()),
         }
     }
@@ -106,6 +103,8 @@ impl Profile {
 #[serde(deny_unknown_fields)]
 pub struct Execution {
     pub profile: Profile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    docker_policy: Option<crate::sandbox::DockerPolicy>,
     playbook: Asset,
     skills: Vec<Asset>,
 }
@@ -214,13 +213,14 @@ struct LegacyBudget {
 }
 
 impl LegacyExecution {
-    pub fn trusted_local(self) -> Result<(Execution, u64, u64)> {
-        self.sandbox_policy.require_trusted_local()?;
+    pub fn into_execution(self) -> Result<(Execution, u64, u64)> {
+        let docker_policy = self.sandbox_policy.docker()?;
         let total = self.budget.total_seconds;
         let reserve = self.budget.verification_reserve_seconds;
         crate::store::validate_budget(total, reserve)?;
         let execution = Execution {
             profile: self.agent_profile,
+            docker_policy,
             playbook: self.playbook,
             skills: self.skills,
         };
@@ -253,9 +253,14 @@ impl Execution {
         if source.version.as_u64() != Some(1) {
             return Err("unsupported execution settings version".into());
         }
-        source.sandbox_policy.require_trusted_local()?;
+        let docker_policy = source
+            .sandbox_policy
+            .docker()?
+            .map(crate::sandbox::DockerPolicy::freeze)
+            .transpose()?;
         let execution = Self {
             profile: source.agent_profile,
+            docker_policy,
             playbook: Asset::capture(parent, source.playbook)?,
             skills: source
                 .skills
@@ -267,7 +272,18 @@ impl Execution {
         Ok(Some(execution))
     }
 
+    pub fn require_executor(&self) -> Result<()> {
+        if let Some(policy) = &self.docker_policy {
+            policy.check_baseline()?;
+            return Err("Docker sandbox execution requires the Rust sandbox runtime".into());
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<()> {
+        if let Some(policy) = &self.docker_policy {
+            policy.validate_frozen()?;
+        }
         self.profile.validate()?;
         let playbook: Playbook = self.playbook.header()?;
         if playbook.id != "bounded-repository-change"

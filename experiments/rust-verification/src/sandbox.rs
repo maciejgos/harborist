@@ -14,13 +14,13 @@ static DESTINATION: LazyLock<Regex> = LazyLock::new(|| {
 });
 static DIGEST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\A[0-9a-f]{64}\z").unwrap());
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum Kind {
     DockerSandboxes,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct DockerPolicy {
     kind: Kind,
@@ -47,6 +47,26 @@ impl Default for DockerPolicy {
 }
 
 impl DockerPolicy {
+    pub fn freeze(mut self) -> Result<Self> {
+        self.baseline_sha256 = Some(local_baseline()?);
+        Ok(self)
+    }
+
+    pub fn validate_frozen(&self) -> Result<()> {
+        if self.baseline_sha256.is_none() || self.clone().validate()? != *self {
+            return Err("invalid frozen Docker sandbox policy".into());
+        }
+        Ok(())
+    }
+
+    pub fn check_baseline(&self) -> Result<()> {
+        let current = local_baseline()?;
+        if self.baseline_sha256.as_deref() != Some(current.as_str()) {
+            return Err("Docker Sandboxes global policy changed since capture".into());
+        }
+        Ok(())
+    }
+
     pub fn validate(mut self) -> Result<Self> {
         if !TEMPLATE.is_match(&self.template)
             || !(1..=16).contains(&self.cpus)
@@ -190,6 +210,9 @@ fn local_control(args: &[&str]) -> Result<Vec<u8>> {
 }
 
 fn local_baseline() -> Result<String> {
+    if std::env::var_os("HARBORIST_SANDBOX_HOST").is_some_and(|host| !host.is_empty()) {
+        return Err("Docker sandbox host helper transport is unavailable in Rust".into());
+    }
     static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bv0\.54\.[0-9]+\b").unwrap());
     if !VERSION.is_match(std::str::from_utf8(&local_control(&["version"])?)?) {
         return Err("this adapter requires Docker Sandboxes 0.54.x".into());

@@ -51,12 +51,23 @@ def exercise(root: Path) -> None:
     saved = root / "saved"
 
     settings.write_text(text.replace("trusted-local", "{kind: docker-sandboxes}"))
-    result = subprocess.run(
-        [binary, "intake", repo, base, intent, saved], env=env,
-        capture_output=True, text=True, check=False,
-    )
-    assert result.returncode != 0 and "sandbox" in result.stderr, result.stderr
-    assert not saved.exists()
+    sandbox_run = root / "sandbox-run"
+    policy = root / "intake-policy.json"
+    policy.write_text('{"rules":[{"scope":"global","decision":"deny"}]}')
+    sandbox_env = sandbox_fixture(root, policy)
+    contract = json.loads(subprocess.check_output(
+        [binary, "intake", repo, base, intent, sandbox_run], env=sandbox_env,
+    ))
+    expected = subprocess.check_output([binary, "sandbox-check"], env=sandbox_env, text=True).strip()
+    assert contract["execution"]["docker_policy"]["baseline_sha256"] == expected
+    command = [binary, "execute", sandbox_run]
+    result = subprocess.run(command, env=sandbox_env, capture_output=True, text=True, check=False)
+    assert result.returncode != 0 and "requires the Rust sandbox runtime" in result.stderr
+    policy.write_text('{"rules":[{"scope":"global","decision":"allow"}]}')
+    result = subprocess.run(command, env=sandbox_env, capture_output=True, text=True, check=False)
+    assert result.returncode != 0 and "changed since capture" in result.stderr
+    assert not (sandbox_run / "attempt.json").exists()
+    assert not (root / "invocations").exists()
     settings.write_text(text)
     contract = json.loads(subprocess.check_output([binary, "intake", repo, base, intent, saved], env=env))
     assert contract["execution"]["profile"]["model"] == "recorded-model"
@@ -70,6 +81,20 @@ def exercise(root: Path) -> None:
     development = json.loads((saved / "build/build-process.json").read_text())
     assert development["provenance"] == "agent-reported"
     assert development["run_id"] == contract["run_id"]
+
+
+def sandbox_fixture(root: Path, snapshot: Path) -> dict[str, str]:
+    sbx = root / "sbx"
+    sbx.write_text("""#!/bin/sh
+case "$*" in
+    '--no-input version') printf '%s\n' "$SBX_VERSION" ;;
+    '--no-input policy ls --json') cat "$SBX_POLICY" ;;
+    *) exit 1 ;;
+esac
+""")
+    sbx.chmod(0o755)
+    return {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+           "SBX_VERSION": "sbx v0.54.2", "SBX_POLICY": str(snapshot)}
 
 
 def sandbox_fingerprint(root: Path) -> None:
@@ -98,17 +123,7 @@ def sandbox_fingerprint(root: Path) -> None:
     assert compare() == expected
     rules[-1]["resources"] = ["different.org:443"]
     assert compare() != expected
-    sbx = root / "sbx"
-    sbx.write_text("""#!/bin/sh
-case "$*" in
-    '--no-input version') printf '%s\n' "$SBX_VERSION" ;;
-    '--no-input policy ls --json') cat "$SBX_POLICY" ;;
-    *) exit 1 ;;
-esac
-""")
-    sbx.chmod(0o755)
-    env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
-           "SBX_VERSION": "sbx v0.54.2", "SBX_POLICY": str(snapshot)}
+    env = sandbox_fixture(root, snapshot)
     current = compare()
     check = [binary, "sandbox-check"]
     assert subprocess.check_output(check, env=env, text=True).strip() == current

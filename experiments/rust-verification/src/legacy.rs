@@ -471,7 +471,7 @@ fn execution_capture(source: &Path, id: Uuid) -> Result<(crate::store::Captured,
     let contract: Contract = serde_json::from_str(&raw)?;
     let execution: crate::settings::LegacyExecution =
         serde_json::from_value(serde_json::from_str::<Value>(&raw)?["execution"].clone())?;
-    let (execution, total_seconds, verification_reserve_seconds) = execution.trusted_local()?;
+    let (execution, total_seconds, verification_reserve_seconds) = execution.into_execution()?;
     let context: SavedContext =
         serde_json::from_str(&read_artifact(source, "execution-context.json")?)?;
     if context.version != 1
@@ -840,6 +840,9 @@ impl HistoricalContinuation {
             crate::retirement::cancelled(marker)?;
         }
         rework.cancellation = cancellation;
+        if let Some(execution) = &capture.contract.execution {
+            execution.require_executor()?;
+        }
         crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
         capture.directory = destination;
         let _destination_lock = continuation::lock(&capture.directory)?;

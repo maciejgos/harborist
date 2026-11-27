@@ -383,6 +383,9 @@ pub(crate) fn execute_prepared(
     rework: Rework,
     request: &Request,
 ) -> Result<serde_json::Value> {
+    if let Some(execution) = &capture.contract.execution {
+        execution.require_executor()?;
+    }
     fs::create_dir_all(
         directory
             .parent()
