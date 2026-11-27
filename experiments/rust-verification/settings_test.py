@@ -98,6 +98,26 @@ def sandbox_fingerprint(root: Path) -> None:
     assert compare() == expected
     rules[-1]["resources"] = ["different.org:443"]
     assert compare() != expected
+    sbx = root / "sbx"
+    sbx.write_text("""#!/bin/sh
+case "$*" in
+    '--no-input version') printf '%s\n' "$SBX_VERSION" ;;
+    '--no-input policy ls --json') cat "$SBX_POLICY" ;;
+    *) exit 1 ;;
+esac
+""")
+    sbx.chmod(0o755)
+    env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+           "SBX_VERSION": "sbx v0.54.2", "SBX_POLICY": str(snapshot)}
+    current = compare()
+    check = [binary, "sandbox-check"]
+    assert subprocess.check_output(check, env=env, text=True).strip() == current
+    assert subprocess.check_output([*check, current], env=env, text=True).strip() == current
+    changed = subprocess.run([*check, expected], env=env, capture_output=True)
+    assert changed.returncode != 0 and b"changed since capture" in changed.stderr
+    env["SBX_VERSION"] = "sbx v0.55.0"
+    unsupported = subprocess.run(check, env=env, capture_output=True)
+    assert unsupported.returncode != 0 and b"requires Docker Sandboxes 0.54.x" in unsupported.stderr
     snapshot.write_text('{"rules":[]}')
     result = subprocess.run(command, capture_output=True, check=False)
     assert result.returncode != 0 and not result.stdout

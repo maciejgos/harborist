@@ -175,6 +175,47 @@ fn canonical_json(value: &serde_json::Value) -> Result<String> {
     }
 }
 
+fn local_control(args: &[&str]) -> Result<Vec<u8>> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    let mut command = Command::new("sbx");
+    command.arg("--no-input").args(args).stdin(Stdio::null());
+    let result =
+        crate::process::capture_command(&mut command, Duration::from_secs(10), 1024 * 1024)?;
+    if result.returncode != 0 || result.timed_out || result.stdout.truncated {
+        return Err("Docker Sandboxes control command failed or returned oversized output".into());
+    }
+    Ok(result.stdout.bytes)
+}
+
+fn local_baseline() -> Result<String> {
+    static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bv0\.54\.[0-9]+\b").unwrap());
+    if !VERSION.is_match(std::str::from_utf8(&local_control(&["version"])?)?) {
+        return Err("this adapter requires Docker Sandboxes 0.54.x".into());
+    }
+    policy_digest(&local_control(&["policy", "ls", "--json"])?)
+}
+
+pub fn check_local(args: &[std::ffi::OsString]) -> Result<()> {
+    let baseline = match args {
+        [] => None,
+        [expected] => Some(
+            expected
+                .to_str()
+                .filter(|digest| DIGEST.is_match(digest))
+                .ok_or("expected a SHA-256 baseline digest")?,
+        ),
+        _ => return Err("expected sandbox-check [BASELINE_SHA256]".into()),
+    };
+    let current = local_baseline()?;
+    if baseline.is_some_and(|expected| expected != current) {
+        return Err("Docker Sandboxes global policy changed since capture".into());
+    }
+    println!("{current}");
+    Ok(())
+}
+
 pub fn digest_file(args: &[std::ffi::OsString]) -> Result<()> {
     let [file] = args else {
         return Err("expected sandbox-policy-digest POLICY_JSON".into());
