@@ -325,10 +325,9 @@ before stopping it. Deployment still uses the Python helper.
 docker compose -f compose.rust.yaml up --build -d
 ```
 
-The Compose file starts a Rust worker, Unix-socket service, and browser
-monitor at `http://127.0.0.1:8765`. All three use the same non-root image.
-The service and worker share persistent state, and the monitor mounts only
-the control volume. This stack packages the Rust runtime. Repository mounts
+The Compose file starts a Rust service with a serial worker and a browser
+monitor at `http://127.0.0.1:8765`. Both containers use the same non-root image.
+The service mounts persistent state, and the monitor mounts only the control volume. This stack packages the Rust runtime. Repository mounts
 and a configured Codex or Sandbox runtime are needed to execute jobs.
 
 Run `./experiments/rust-verification/docker-compose-check.sh` to test
@@ -343,7 +342,9 @@ and the shared Harborist state:
 ```sh
 harborist intake file:/path/to/request.md --repo /path/to/repo --json
 harborist run RUN_ID --json
+harborist service serve
 harborist service status
+harborist service stop
 harborist web --port 8765
 harborist runs --json
 harborist status RUN_ID --wait --json

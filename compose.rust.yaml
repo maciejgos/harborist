@@ -7,6 +7,9 @@ x-runtime: &runtime
 services:
   service:
     <<: *runtime
+    entrypoint: [harborist]
+    command: [service, serve]
+    stop_grace_period: 60s
     build:
       context: .
       target: rust-runtime
@@ -18,16 +21,6 @@ services:
       interval: 2s
       timeout: 3s
       retries: 10
-  worker:
-    <<: *runtime
-    command: [worker, /home/harborist/.harborist/control]
-    depends_on:
-      service:
-        condition: service_healthy
-    stop_grace_period: 60s
-    volumes:
-      - state:/home/harborist/.harborist
-      - control:/home/harborist/.harborist/control
   web:
     <<: *runtime
     entrypoint: [harborist]

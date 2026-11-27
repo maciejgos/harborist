@@ -491,6 +491,32 @@ pub fn service(args: &[OsString]) -> Result<()> {
         [control, option, root] if option == "--runs-dir" => (control, Some(PathBuf::from(root))),
         _ => return Err("expected service CONTROL_DIR [--runs-dir DIRECTORY]".into()),
     };
+    serve(Path::new(control), legacy_root, false)
+}
+
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+extern "C" fn stop_signal(_: libc::c_int) {
+    STOPPING.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn serve_managed(control: &Path) -> Result<()> {
+    use std::sync::atomic::Ordering::Relaxed;
+    STOPPING.store(false, Relaxed);
+    let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+    action.sa_sigaction = stop_signal as *const () as usize;
+    unsafe {
+        libc::sigemptyset(&mut action.sa_mask);
+        if libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut()) != 0
+            || libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut()) != 0
+        {
+            return Err(io::Error::last_os_error().into());
+        }
+    }
+    serve(control, crate::legacy::default_root(), true)
+}
+
+fn serve(control: &Path, legacy_root: Option<PathBuf>, managed: bool) -> Result<()> {
     let legacy_root = legacy_root
         .map(|path| -> Result<PathBuf> {
             if path.try_exists()? {
@@ -500,7 +526,6 @@ pub fn service(args: &[OsString]) -> Result<()> {
             }
         })
         .transpose()?;
-    let control = Path::new(control);
     let queue_root = queue::queue_directory(control)?;
     let guard = File::options()
         .write(true)
@@ -527,28 +552,66 @@ pub fn service(args: &[OsString]) -> Result<()> {
     let listener = UnixListener::bind(&path)?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let server = Server::from_listener(listener, None).map_err(|error| error.to_string())?;
-    for mut request in server.incoming_requests() {
-        if request.method() == &Method::Post && is_write(request.url()) {
-            let route = request.url().to_owned();
-            match command(control, &route, &mut request) {
-                Ok(value) => respond_json(request, 200, value),
-                Err(error) => error_response(request, 400, error),
-            }
-            continue;
-        }
-        let route = Route::parse(request.url());
-        match (request.method(), route) {
-            (&Method::Get, Some(route)) => {
-                match serve_route(&queue_root, legacy_root.as_deref(), route) {
-                    Ok(value) => respond_json(request, 200, value),
-                    Err(error) => error_response(request, 404, error),
+    let outcome = std::thread::scope(|scope| -> Result<()> {
+        use std::sync::atomic::Ordering::Relaxed;
+        let worker = managed.then(|| {
+            scope.spawn(|| {
+                let result = queue::work(control, false, || STOPPING.load(Relaxed))
+                    .map_err(|error| error.to_string());
+                STOPPING.store(true, Relaxed);
+                result
+            })
+        });
+        let result = (|| -> Result<()> {
+            loop {
+                if managed && STOPPING.load(Relaxed) {
+                    break;
+                }
+                let Some(mut request) =
+                    server.recv_timeout(std::time::Duration::from_millis(100))?
+                else {
+                    continue;
+                };
+                if managed && request.method() == &Method::Post && request.url() == "/shutdown" {
+                    STOPPING.store(true, Relaxed);
+                    respond_json(request, 200, json!({"stopping": true}));
+                    continue;
+                }
+                if request.method() == &Method::Post && is_write(request.url()) {
+                    let route = request.url().to_owned();
+                    match command(control, &route, &mut request) {
+                        Ok(value) => respond_json(request, 200, value),
+                        Err(error) => error_response(request, 400, error),
+                    }
+                    continue;
+                }
+                let route = Route::parse(request.url());
+                match (request.method(), route) {
+                    (&Method::Get, Some(route)) => {
+                        match serve_route(&queue_root, legacy_root.as_deref(), route) {
+                            Ok(value) => respond_json(request, 200, value),
+                            Err(error) => error_response(request, 404, error),
+                        }
+                    }
+                    (&Method::Get, None) => error_response(request, 404, "Unknown control route"),
+                    _ => error_response(request, 405, "Read-only control service"),
                 }
             }
-            (&Method::Get, None) => error_response(request, 404, "Unknown control route"),
-            _ => error_response(request, 405, "Read-only control service"),
+            Ok(())
+        })();
+        if let Some(worker) = worker {
+            STOPPING.store(true, Relaxed);
+            worker.join().map_err(|_| "Harborist worker panicked")??;
         }
+        result
+    });
+    drop(server);
+    match fs::remove_file(&path) {
+        Ok(()) => (),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
     }
-    Ok(())
+    outcome
 }
 
 pub fn read(control: &Path, route: &str) -> Result<Value> {

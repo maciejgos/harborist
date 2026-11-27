@@ -315,7 +315,11 @@ pub fn worker(args: &[OsString]) -> Result<()> {
         [control, option] if option == "--once" => (control, true),
         _ => return Err("expected worker CONTROL_DIR [--once]".into()),
     };
-    let queue = queue_directory(Path::new(control))?;
+    work(Path::new(control), once, || false)
+}
+
+pub(crate) fn work(control: &Path, once: bool, stopping: impl Fn() -> bool) -> Result<()> {
+    let queue = queue_directory(control)?;
     let _guard = lock_worker(&queue)?;
     for mut record in records(&queue)? {
         if record.state == State::Running {
@@ -335,7 +339,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             persist(&queue, &record, true)?;
         }
     }
-    loop {
+    while !stopping() {
         let next = records(&queue)?
             .into_iter()
             .find(|record| record.state == State::Queued);
@@ -369,4 +373,5 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             return Ok(());
         }
     }
+    Ok(())
 }

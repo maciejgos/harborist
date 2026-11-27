@@ -608,12 +608,18 @@ fn web(args: &[OsString]) -> Result<i32> {
 
 fn service(args: &[OsString]) -> Result<i32> {
     let (command, args) = match args {
-        [command, args @ ..] if command == "status" => (command, args),
+        [command, args @ ..] if matches!(command.to_str(), Some("serve" | "status" | "stop")) => {
+            (command, args)
+        }
         [flag] if flag == "--help" || flag == "-h" => {
             println!("Usage: harborist service status [--control-dir PATH]");
             return Ok(0);
         }
-        _ => return Err("expected harborist service status [--control-dir PATH]".into()),
+        _ => {
+            return Err(
+                "expected harborist service <serve|status|stop> [--control-dir PATH]".into(),
+            );
+        }
     };
     let directory = match args {
         [] => state_path("control")?,
@@ -625,9 +631,20 @@ fn service(args: &[OsString]) -> Result<i32> {
             );
             return Ok(0);
         }
-        _ => return Err("expected harborist service status [--control-dir PATH]".into()),
+        _ => {
+            return Err(
+                "expected harborist service <serve|status|stop> [--control-dir PATH]".into(),
+            );
+        }
     };
-    println!("{}", control::read(&directory, "/health")?);
+    match command.to_str() {
+        Some("serve") => control::serve_managed(&directory)?,
+        Some("stop") => println!(
+            "{}",
+            control::write(&directory, "/shutdown", &serde_json::json!({}))?
+        ),
+        _ => println!("{}", control::read(&directory, "/health")?),
+    }
     Ok(0)
 }
 

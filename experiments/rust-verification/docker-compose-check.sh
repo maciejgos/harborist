@@ -17,7 +17,7 @@ trap 'exit 143' TERM
 
 cat >"$override" <<'YAML'
 services:
-  worker:
+  service:
     environment:
       PATH: /home/harborist/.harborist/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 YAML
@@ -86,7 +86,7 @@ report=$(curl --fail-with-body --silent --show-error "$origin/api/runs/$run_id/a
 printf '%s\n' "$report" | grep -q VERIFIED
 candidate=$(printf '%s\n' "$status" | sed -n 's/.*"candidate_sha":"\([0-9a-f]*\)".*/\1/p')
 test -n "$candidate"
-test "$(compose exec -T worker git -C /home/harborist/.harborist/repository show "$candidate:message.txt")" = "hello from Compose"
+test "$(compose exec -T service git -C /home/harborist/.harborist/repository show "$candidate:message.txt")" = "hello from Compose"
 compose exec -T service git -C /home/harborist/.harborist/repository branch fixture-delivery
 compose exec -T service git init -q /home/harborist/.harborist/other-repository
 if compose exec -T service harborist apply "$run_id" --branch fixture-delivery \
@@ -156,4 +156,28 @@ status=$(compose exec -T service harborist status "$replacement_id" --wait --int
 printf '%s\n' "$status" | grep -Fq '"runs_root":"'"$custom"'"'
 printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
 compose exec -T service test -f "$custom/$replacement_id/contract.json"
+compose exec -T service sh -eu <<'FIXTURE'
+cd /home/harborist/.harborist/repository
+printf '%s\n' '{"version":1,"checks":[{"id":"drain","command":"touch /home/harborist/.harborist/drain-started && sleep 3 && test -f message.txt"}]}' > harborist.yaml
+git add harborist.yaml
+git commit -qm 'Hold TEST open during service stop'
+FIXTURE
+queued=$(compose exec -T service harborist run file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --json)
+drain_id=$(printf '%s\n' "$queued" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$drain_id"
+compose exec -T service sh -ec '
+    for attempt in $(seq 1 50); do
+        test -f /home/harborist/.harborist/drain-started && exit 0
+        sleep 0.1
+    done
+    exit 1
+'
+stopping=$(compose exec -T service harborist service stop)
+printf '%s\n' "$stopping" | grep -Fq '"stopping":true'
+compose wait service || { compose logs service >&2; exit 1; }
+compose start --wait service
+drained=$(compose exec -T service harborist status "$drain_id" --json)
+printf '%s\n' "$drained" | grep -Fq '"state":"FINISHED"'
+printf '%s\n' "$drained" | grep -Fq '"outcome":"VERIFIED"'
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'
