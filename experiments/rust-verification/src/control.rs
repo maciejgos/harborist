@@ -456,6 +456,12 @@ fn socket_path(control: &Path) -> PathBuf {
     control.join("service.sock")
 }
 
+pub fn require_service(control: &Path) -> Result<()> {
+    UnixStream::connect(socket_path(control))
+        .map_err(|error| format!("local Harborist service unavailable: {error}"))?;
+    Ok(())
+}
+
 pub fn service(args: &[OsString]) -> Result<()> {
     let (control, legacy_root) = match args {
         [control] => (control, crate::legacy::default_root()),

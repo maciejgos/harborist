@@ -1,4 +1,5 @@
 mod apply;
+mod cli;
 mod continuation;
 mod control;
 mod foreground;
@@ -365,6 +366,22 @@ fn execute() -> Result<()> {
 }
 
 fn main() {
+    if std::env::args_os()
+        .next()
+        .as_deref()
+        .and_then(|path| Path::new(path).file_name())
+        == Some(OsStr::new("harborist"))
+    {
+        let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+        match cli::execute(&arguments) {
+            Ok(status) => std::process::exit(status),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     if let Err(error) = execute() {
         eprintln!("{error}");
         std::process::exit(1);

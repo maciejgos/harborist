@@ -336,6 +336,19 @@ intake, background execution, and evidence retrieval with a local Codex
 fixture. The check provisions a temporary Compose project and removes
 its containers and volumes afterward.
 
+The Rust image also exposes the command name `harborist` for intake and Run
+submission. Run these commands in a container with access to the repository
+and the shared Harborist state:
+
+```sh
+harborist intake file:/path/to/request.md --repo /path/to/repo --json
+harborist run RUN_ID --json
+harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
+```
+
+Background submission requires a running control service. Saved Runs default
+to `~/.harborist/runs`; use `--runs-dir` to specify a different root.
+
 ## Run the comparison
 
 From the repository root with Docker running:

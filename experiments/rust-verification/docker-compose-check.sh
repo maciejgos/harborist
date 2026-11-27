@@ -86,4 +86,18 @@ printf '%s\n' "$report" | grep -q VERIFIED
 candidate=$(printf '%s\n' "$status" | sed -n 's/.*"candidate_sha":"\([0-9a-f]*\)".*/\1/p')
 test -n "$candidate"
 test "$(compose exec -T worker git -C /home/harborist/.harborist/repository show "$candidate:message.txt")" = "hello from Compose"
+captured=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --json)
+saved_id=$(printf '%s\n' "$captured" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$saved_id"
+queued=$(compose exec -T service harborist run "$saved_id" --json)
+printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
+for attempt in $(seq 1 25); do
+    status=$(curl --fail-with-body --silent --show-error "$origin/api/runs/$saved_id")
+    if printf '%s' "$status" | grep -q '"state":"FINISHED"'; then
+        break
+    fi
+    sleep 1
+done
+printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'

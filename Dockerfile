@@ -22,6 +22,7 @@ RUN apk add --no-cache git ca-certificates \
 COPY --from=rust-build /checkout/experiments/rust-verification/target/release/harborist-verify /usr/local/bin/harborist-verify
 COPY src/harborist/playbooks /opt/harborist/src/harborist/playbooks
 COPY src/harborist/skills /opt/harborist/src/harborist/skills
+RUN ln -s harborist-verify /usr/local/bin/harborist
 WORKDIR /home/harborist
 USER 10001:10001
 ENTRYPOINT ["harborist-verify"]
