@@ -80,27 +80,22 @@ the worker and browser UI. The worker can reach the helper via Docker
 Desktop. Only the worker receives its deployment token. Docker and Codex
 credentials stay in the host's Docker Sandboxes credential store.
 
-The Rust migration branch provides a separate local deployment for
-validation. Set `HARBORIST_DEPLOY_RUNTIME=rust` for each launcher command.
-Cargo builds the native Sandbox host helper, or you can supply an absolute
-path to a prebuilt native binary with `HARBORIST_RUST_HELPER`. Choose separate
-ports when running both deployments.
+The installer defaults to the Rust runtime and native Sandbox host helper.
+Install Cargo to build the helper, or set `HARBORIST_RUST_HELPER` to the
+absolute path of a prebuilt native Harborist binary. The Rust deployment
+uses project `harborist-rust` and helper state under
+`~/.local/share/harborist-rust-deployment`.
 
-```sh
-export HARBORIST_DEPLOY_RUNTIME=rust HARBORIST_WEB_PORT=18765 HARBORIST_SANDBOX_PORT=19455
-./deploy/harborist start
-./deploy/harborist exec service status
-./deploy/harborist stop
-```
-
-The Rust deployment defaults to project `harborist-rust` and helper state
-under `~/.local/share/harborist-rust-deployment`.
+To operate an existing Python deployment, set
+`HARBORIST_DEPLOY_RUNTIME=python` for each launcher command. It uses its
+existing project and state directories. Choose separate ports when running
+both deployments.
 
 Keep target repositories in the worker's persistent data directory. For
 example, clone a public repository there with:
 
 ```sh
-docker compose --project-name harborist exec service git clone https://example.org/owner/project.git /home/harborist/.harborist/project
+docker compose -f compose.rust.yaml --project-name harborist-rust exec service git clone https://example.org/owner/project.git /home/harborist/.harborist/project
 ```
 
 Register the container path in the Workspaces screen and select its settings

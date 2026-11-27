@@ -8,8 +8,9 @@ mandatory TEST run in fresh VMs on the host.
 
 - Run the host commands in Bash. The current installer requires Apple silicon
   macOS with hardware virtualization and Docker Desktop running.
-- Install Git, [uv](https://docs.astral.sh/uv/), and standalone Docker Sandboxes 0.54.x.
-  Check the sandbox version with `sbx version`.
+- Install Git, Cargo, and standalone Docker Sandboxes 0.54.x. Check the sandbox
+  version with `sbx version`. You can also supply a prebuilt native Harborist
+  binary through `HARBORIST_RUST_HELPER`.
 - Sign in with `sbx login`, initialize the Docker Sandboxes network policy with
   `sbx policy init` if needed, and configure Codex authentication with
   `sbx secret set openai --oauth`. Run these

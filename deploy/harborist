@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-runtime="${HARBORIST_DEPLOY_RUNTIME:-python}"
+runtime="${HARBORIST_DEPLOY_RUNTIME:-rust}"
 case "$runtime" in
     rust)
         default_state="$HOME/.local/share/harborist-rust-deployment"
