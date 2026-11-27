@@ -289,6 +289,8 @@ harborist-verify submit-python-continuation CONTROL_DIR rework PYTHON_RUN_DIR NE
 Use a Run ID that is available in that worker's queue. The worker checks the
 predecessor again when it claims the job and creates the destination at that
 point. Keep the Python evidence available until the worker claims the job.
+The workspace Cancel action works while the continuation is queued, even
+before the worker creates the destination.
 
 ## Run the comparison
 

@@ -45,7 +45,16 @@ pub fn existing(
     reason: &str,
     replacement: Option<Uuid>,
 ) -> Result<Option<serde_json::Value>> {
-    let raw = match fs::read(path(directory)) {
+    existing_marker(&path(directory), id, reason, replacement)
+}
+
+fn existing_marker(
+    marker: &Path,
+    id: Uuid,
+    reason: &str,
+    replacement: Option<Uuid>,
+) -> Result<Option<serde_json::Value>> {
+    let raw = match fs::read(marker) {
         Ok(raw) => raw,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
@@ -70,7 +79,21 @@ pub fn retire(
     if store::load(directory)?.contract.run_id != id {
         return Err("cancellation must match the requested Run".into());
     }
-    let marker = path(directory);
+    record(&path(directory), id, reason, replacement)
+}
+
+pub fn cancel_marker(marker: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
+    let request: Request = serde_json::from_slice(body)?;
+    record(marker, id, validate_reason(&request.reason)?, None)
+}
+
+fn record(
+    marker: &Path,
+    id: Uuid,
+    reason: &str,
+    replacement: Option<Uuid>,
+) -> Result<serde_json::Value> {
+    let directory = marker.parent().ok_or("missing retirement marker parent")?;
     let timestamp: u64 = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_millis()
@@ -81,7 +104,7 @@ pub fn retire(
     });
     let pending = directory.join(format!(".retirement-{}.pending", Uuid::new_v4()));
     store::write_new(&pending, &serde_json::to_vec(&retirement)?)?;
-    let linked = fs::hard_link(&pending, &marker);
+    let linked = fs::hard_link(&pending, marker);
     fs::remove_file(pending)?;
     match linked {
         Ok(()) => {
@@ -89,7 +112,7 @@ pub fn retire(
             Ok(retirement)
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            existing(directory, id, reason, replacement)?
+            existing_marker(marker, id, reason, replacement)?
                 .ok_or_else(|| "retirement record disappeared".into())
         }
         Err(error) => Err(error.into()),

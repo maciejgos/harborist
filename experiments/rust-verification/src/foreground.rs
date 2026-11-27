@@ -27,6 +27,7 @@ pub struct Rework {
     pub specification: Option<String>,
     pub spent_seconds: u64,
     pub granted_seconds: u64,
+    pub cancellation: Option<std::path::PathBuf>,
 }
 
 pub fn execute_attempt(
@@ -35,7 +36,10 @@ pub fn execute_attempt(
     attempt: Attempt,
     rework: Option<Rework>,
 ) -> Result<serde_json::Value> {
-    let cancellation = crate::retirement::path(&capture.directory);
+    let cancellation = rework
+        .as_ref()
+        .and_then(|data| data.cancellation.clone())
+        .unwrap_or_else(|| crate::retirement::path(&capture.directory));
     let spent = rework.as_ref().map_or(0, |data| data.spent_seconds);
     let granted = rework.as_ref().map_or(0, |data| data.granted_seconds);
     let total = capture

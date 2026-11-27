@@ -784,7 +784,7 @@ fn interrupted_spec(
 pub fn continue_run(args: &[std::ffi::OsString]) -> Result<()> {
     let (original, destination, request) = continuation_arguments(args)?;
     continuation::print_result(
-        prepare_continuation(&original, &destination, &request)?.execute(&request)?,
+        prepare_continuation(&original, &destination, &request)?.execute(&request, None)?,
     )
 }
 
@@ -822,7 +822,11 @@ impl HistoricalContinuation {
         self.capture.contract.run_id
     }
 
-    pub fn execute(self, request: &continuation::Request) -> Result<Value> {
+    pub fn execute(
+        self,
+        request: &continuation::Request,
+        cancellation: Option<PathBuf>,
+    ) -> Result<Value> {
         let Self {
             _lock,
             mut capture,
@@ -830,8 +834,12 @@ impl HistoricalContinuation {
             destination,
             number,
             start,
-            rework,
+            mut rework,
         } = self;
+        if let Some(marker) = &cancellation {
+            crate::retirement::cancelled(marker)?;
+        }
+        rework.cancellation = cancellation;
         crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
         capture.directory = destination;
         let _destination_lock = continuation::lock(&capture.directory)?;
@@ -1048,6 +1056,7 @@ pub fn prepare_continuation(
             specification: spec,
             spent_seconds,
             granted_seconds,
+            cancellation: None,
         },
     })
 }

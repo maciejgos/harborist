@@ -248,6 +248,30 @@ else:
     assert json.loads(delivery.read_bytes())["state"] == "finished"
     assert evidence_path.read_bytes() == original_evidence
 
+    cancel_control = root / "historical-cancel-control"
+    cancelled_destination = root / "cancelled-historical"
+    subprocess.check_call([
+        binary, "submit-python-continuation", cancel_control, "rework", historical,
+        cancelled_destination, failed["attempt"]["attempt_id"], "Address the failed check",
+    ], env=env)
+    with subprocess.Popen([binary, "service", cancel_control], env=env) as service:
+        try:
+            deadline = time.monotonic() + 5
+            while not (cancel_control / "service.sock").exists():
+                assert service.poll() is None and time.monotonic() < deadline
+                time.sleep(0.02)
+            client = ControlClient(cancel_control)
+            route = f"/workspace/runs/{failed['run']['run_id']}/cancel"
+            request = {"reason": "Operator cancelled the historical rework"}
+            cancellation = client.request("POST", route, request)
+            assert client.request("POST", route, request) == cancellation
+            subprocess.check_call([binary, "worker", cancel_control, "--once"], env=env)
+            assert client.request("GET", f"/runs/{failed['run']['run_id']}")["state"] == "CANCELLED"
+            assert not cancelled_destination.exists()
+            assert evidence_path.read_bytes() == original_evidence
+        finally:
+            service.terminate()
+
     evidence_path.unlink()
     interrupted_destination = root / "continued-interruption"
     interrupted_command = [

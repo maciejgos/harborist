@@ -361,6 +361,7 @@ fn prepare(capture: &store::Captured, request: &Request) -> Result<Prepared> {
             specification: spec,
             spent_seconds: spent,
             granted_seconds: granted,
+            cancellation: None,
         },
     })
 }

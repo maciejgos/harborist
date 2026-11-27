@@ -408,7 +408,7 @@ fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> 
             return workspace::supersede(control, &delivery, &body);
         }
         if action == "cancel" {
-            return crate::retirement::cancel(&delivery.directory, id, &body);
+            return queue::cancel(control, &delivery, &body);
         }
         if matches!(delivery.state, State::Queued | State::Running) {
             return Err("publication requires a terminal Run".into());

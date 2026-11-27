@@ -137,11 +137,36 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
     Ok(saved)
 }
 
+fn historical_marker(queue: &Path, id: Uuid) -> PathBuf {
+    queue.join(format!("{id}.retirement"))
+}
+
+pub fn cancel(control: &Path, delivery: &Delivery, body: &[u8]) -> Result<serde_json::Value> {
+    if delivery.python_source.is_some() {
+        crate::retirement::cancel_marker(
+            &historical_marker(&queue_directory(control)?, delivery.run_id),
+            delivery.run_id,
+            body,
+        )
+    } else {
+        crate::retirement::cancel(&delivery.directory, delivery.run_id, body)
+    }
+}
+
+fn marker(queue: &Path, delivery: &Delivery) -> PathBuf {
+    if delivery.python_source.is_some() {
+        historical_marker(queue, delivery.run_id)
+    } else {
+        crate::retirement::path(&delivery.directory)
+    }
+}
+
 pub fn continue_run(control: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
     let request: continuation::Request = serde_json::from_slice(body)?;
     let queue = queue_directory(control)?;
     let path = queue.join(format!("{id}.json"));
     let observed = read(&path)?;
+    crate::retirement::cancelled(&marker(&queue, &observed))?;
     if let Some(previous) = &observed.continuation {
         if previous.request_id == request.request_id {
             if previous != &request {
@@ -153,6 +178,7 @@ pub fn continue_run(control: &Path, id: Uuid, body: &[u8]) -> Result<serde_json:
     let directory = observed.directory;
     let _lock = continuation::lock(&directory)?;
     let mut record = read(&path)?;
+    crate::retirement::cancelled(&marker(&queue, &record))?;
     if record.directory != directory {
         return Err("Run directory changed during continuation admission".into());
     }
@@ -248,7 +274,7 @@ fn lock_worker(queue: &Path) -> Result<File> {
     Ok(file)
 }
 
-fn execute(record: &Delivery) -> Result<serde_json::Value> {
+fn execute(queue: &Path, record: &Delivery) -> Result<serde_json::Value> {
     if let Some(source) = &record.python_source {
         let request = record
             .continuation
@@ -258,7 +284,7 @@ fn execute(record: &Delivery) -> Result<serde_json::Value> {
         if prepared.run_id() != record.run_id {
             return Err("historical Run ID does not match delivery".into());
         }
-        return prepared.execute(request);
+        return prepared.execute(request, Some(marker(queue, record)));
     }
     let capture = store::load(&record.directory)?;
     if capture.contract.run_id != record.run_id {
@@ -281,7 +307,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
     let _guard = lock_worker(&queue)?;
     for mut record in records(&queue)? {
         if record.state == State::Running {
-            record.state = if crate::retirement::path(&record.directory).exists() {
+            record.state = if marker(&queue, &record).exists() {
                 State::Cancelled
             } else {
                 State::Interrupted
@@ -302,7 +328,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             .into_iter()
             .find(|record| record.state == State::Queued);
         if let Some(mut record) = next {
-            let marker = crate::retirement::path(&record.directory);
+            let marker = marker(&queue, &record);
             if marker.try_exists()? {
                 record.state = State::Cancelled;
                 persist(&queue, &record, true)?;
@@ -314,7 +340,7 @@ pub fn worker(args: &[OsString]) -> Result<()> {
             record.state = State::Running;
             persist(&queue, &record, true)?;
 
-            let execution = execute(&record);
+            let execution = execute(&queue, &record);
             match execution {
                 _ if marker.try_exists()? => record.state = State::Cancelled,
                 Ok(_) => record.state = State::Finished,
