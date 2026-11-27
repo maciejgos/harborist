@@ -14,6 +14,7 @@ struct RunOptions {
     source: Option<OsString>,
     repository: Option<PathBuf>,
     settings: Option<PathBuf>,
+    workspace: Option<PathBuf>,
     runs: Option<PathBuf>,
     control: Option<PathBuf>,
     reference: Option<String>,
@@ -38,6 +39,7 @@ impl RunOptions {
                 Some("--json") => options.json = true,
                 Some("--repo") => options.repository = Some(value(&mut args)?.into()),
                 Some("--settings") => options.settings = Some(value(&mut args)?.into()),
+                Some("--workspace") => options.workspace = Some(value(&mut args)?.into()),
                 Some("--runs-dir") => options.runs = Some(value(&mut args)?.into()),
                 Some("--control-dir") => options.control = Some(value(&mut args)?.into()),
                 Some("--ref") => {
@@ -1046,11 +1048,14 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Usage: harborist {command} SOURCE_OR_RUN_ID [--repo PATH] [--ref REF] [--settings PATH] [--runs-dir PATH] [--control-dir PATH] [--timeout SECONDS] [--verification-reserve SECONDS] [--foreground] [--json]"
+            "Usage: harborist {command} SOURCE_OR_RUN_ID [--repo PATH] [--ref REF] [--settings PATH] [--runs-dir PATH] [--control-dir PATH] [--timeout SECONDS] [--verification-reserve SECONDS] [--workspace PATH] [--foreground] [--json]"
         );
         return Ok(0);
     }
     let options = RunOptions::parse(args)?;
+    if command == "intake" && options.workspace.is_some() {
+        return Err("--workspace is only supported by run".into());
+    }
     let root = match &options.runs {
         Some(path) => path.clone(),
         None => state_path("runs")?,
@@ -1071,7 +1076,8 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
             None => state_path("control")?,
         };
         control::require_service(&directory)?;
-        let delivery = queue::enqueue(&directory, capture)?;
+        let delivery =
+            queue::enqueue_with_workspace(&directory, capture, options.workspace.as_deref())?;
         if options.json {
             println!("{}", serde_json::to_string(&delivery)?);
         } else {
@@ -1081,7 +1087,7 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     }
     Ok(print_outcome(
         id,
-        crate::foreground::execute(capture)?,
+        crate::foreground::execute_with_workspace(capture, options.workspace.as_deref())?,
         options.json,
     ))
 }

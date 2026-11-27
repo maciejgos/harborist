@@ -421,7 +421,7 @@ pub(crate) fn execute_prepared(
             .ok_or("missing Attempt directory parent")?,
     )?
     .sync_all()?;
-    foreground::execute_attempt(capture, directory, attempt, Some(rework))
+    foreground::execute_attempt(capture, directory, attempt, Some(rework), None)
 }
 
 pub fn execute(action: &str, args: &[OsString]) -> Result<()> {

@@ -38,6 +38,8 @@ pub struct Delivery {
     pub continuation: Option<continuation::Request>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     python_source: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace: Option<PathBuf>,
 }
 
 pub(crate) fn saved(run_id: Uuid, directory: PathBuf) -> Delivery {
@@ -49,6 +51,7 @@ pub(crate) fn saved(run_id: Uuid, directory: PathBuf) -> Delivery {
         error: None,
         continuation: None,
         python_source: None,
+        workspace: None,
     }
 }
 
@@ -113,6 +116,7 @@ pub fn submit_python_continuation(args: &[OsString]) -> Result<()> {
         error: None,
         continuation: Some(request),
         python_source: Some(source),
+        workspace: None,
     };
     persist(&queue, &record, false)?;
     println!("{}", serde_json::to_string(&record)?);
@@ -120,6 +124,17 @@ pub fn submit_python_continuation(args: &[OsString]) -> Result<()> {
 }
 
 pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
+    enqueue_with_workspace(control, run, None)
+}
+
+pub fn enqueue_with_workspace(
+    control: &Path,
+    run: store::Captured,
+    workspace: Option<&Path>,
+) -> Result<Delivery> {
+    let workspace = workspace
+        .map(|path| foreground::workspace_path(&run, path))
+        .transpose()?;
     let queue = queue_directory(control)?;
     let path = queue.join(format!("{}.json", run.contract.run_id));
     let record = Delivery {
@@ -130,6 +145,7 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
         error: None,
         continuation: None,
         python_source: None,
+        workspace,
     };
     let saved = match persist(&queue, &record, false) {
         Ok(()) => record,
@@ -139,7 +155,7 @@ pub fn enqueue(control: &Path, run: store::Captured) -> Result<Delivery> {
                 .is_some_and(|error| error.kind() == io::ErrorKind::AlreadyExists) =>
         {
             let saved = read(&path)?;
-            if saved.directory != record.directory {
+            if saved.directory != record.directory || saved.workspace != record.workspace {
                 return Err("Run ID already belongs to a different directory".into());
             }
             saved
@@ -305,7 +321,7 @@ fn execute(queue: &Path, record: &Delivery) -> Result<serde_json::Value> {
     if let Some(request) = &record.continuation {
         continuation::run(capture, request)
     } else {
-        foreground::execute(capture)
+        foreground::execute_with_workspace(capture, record.workspace.as_deref())
     }
 }
 

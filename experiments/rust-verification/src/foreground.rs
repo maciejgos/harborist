@@ -17,12 +17,37 @@ use std::{
 };
 
 pub fn execute(capture: Captured) -> Result<serde_json::Value> {
+    execute_with_workspace(capture, None)
+}
+
+pub fn workspace_path(capture: &Captured, requested: &Path) -> Result<PathBuf> {
+    let path = store::new_directory(requested, &capture.contract.repository)?;
+    let runs = capture.directory.parent().ok_or("missing Runs root")?;
+    if capture.contract.repository.starts_with(&path)
+        || runs.starts_with(&path)
+        || (path.starts_with(runs) && path != capture.directory.join("workspace"))
+        || path.symlink_metadata().is_ok()
+    {
+        return Err(
+            "workspace must be fresh and isolated from the checkout and Runs storage".into(),
+        );
+    }
+    Ok(path)
+}
+
+pub fn execute_with_workspace(
+    capture: Captured,
+    requested: Option<&Path>,
+) -> Result<serde_json::Value> {
+    let workspace = requested
+        .map(|path| workspace_path(&capture, path))
+        .transpose()?;
     if let Some(execution) = &capture.contract.execution {
         execution.check_runtime()?;
     }
     let attempt = store::admit(&capture)?;
     let directory = capture.directory.clone();
-    execute_attempt(capture, directory, attempt, None)
+    execute_attempt(capture, directory, attempt, None, workspace)
 }
 
 pub struct Rework {
@@ -38,6 +63,7 @@ pub fn execute_attempt(
     directory: PathBuf,
     attempt: Attempt,
     rework: Option<Rework>,
+    workspace: Option<PathBuf>,
 ) -> Result<serde_json::Value> {
     let cancellation = rework
         .as_ref()
@@ -84,6 +110,7 @@ pub fn execute_attempt(
         total_seconds: total,
         verification_reserve_seconds: contract.verification_reserve_seconds,
         agent: &agent,
+        build_workspace: workspace.as_deref(),
         docker_policy: contract
             .execution
             .as_ref()
@@ -190,6 +217,7 @@ struct Run<'a> {
     total_seconds: u64,
     verification_reserve_seconds: u64,
     agent: &'a dyn NativeAgent,
+    build_workspace: Option<&'a Path>,
     docker_policy: Option<&'a crate::sandbox::DockerPolicy>,
 }
 
@@ -265,10 +293,11 @@ impl Run<'_> {
 
     fn run(&mut self, intent: &str, config: Config) -> Result<&'static str> {
         self.accept(Stage::Intake, Outcome::Succeeded, None)?;
-        let build_workspace = self.dir.join("build-workspace");
+        let default_workspace = self.dir.join("build-workspace");
+        let build_workspace = self.build_workspace.unwrap_or(&default_workspace);
         let base = self.base.as_str();
         let repo = self.repo;
-        let (spec, candidate) = match with_worktree(repo, &build_workspace, base, |workspace| {
+        let (spec, candidate) = match with_worktree(repo, build_workspace, base, |workspace| {
             self.design_plan_build(workspace, intent)
         })? {
             BuildDecision::Stopped(outcome) => return Ok(outcome),

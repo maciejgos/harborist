@@ -43,7 +43,7 @@ stage=$(printf '%s' "$request" | sed -n 's/.*"stage":"\([a-z]*\)".*/\1/p')
 case "$stage" in
     design) artifact='"AC-001: Write the requested file."' ;;
     plan) artifact='"Create message.txt."' ;;
-    build) if [ -f message.txt ]; then touch fixed; fi; printf 'hello from Compose\n' > message.txt; artifact=null ;;
+    build) pwd > /home/harborist/.harborist/build-location; if [ -f message.txt ]; then touch fixed; fi; printf 'hello from Compose\n' > message.txt; artifact=null ;;
     review)
         test "$(cat message.txt)" = 'hello from Compose'
         identity=$(printf '%s' "$request" | sed -n 's/.*"candidate":\({[^}]*}\).*/\1/p')
@@ -105,10 +105,13 @@ created=$(compose exec -T service harborist status "$saved_id" --json)
 printf '%s\n' "$created" | grep -Fq '"lifecycle":"CREATED"'
 listing=$(compose exec -T service harborist runs --json)
 printf '%s\n' "$listing" | grep -Fq '"run_id":"'"$saved_id"'"'
-queued=$(compose exec -T service harborist run "$saved_id" --json)
+selected_workspace=/home/harborist/.harborist/custom-worktree
+queued=$(compose exec -T service harborist run "$saved_id" --workspace "$selected_workspace" --json)
 printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
 status=$(compose exec -T service harborist status "$saved_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
+test "$(compose exec -T service cat /home/harborist/.harborist/build-location)" = "$selected_workspace"
+compose exec -T service test ! -e "$selected_workspace"
 compose exec -T service sh -eu <<'FIXTURE'
 cd /home/harborist/.harborist/repository
 printf '%s\n' '{"version":1,"checks":[{"id":"fix","command":"test -f fixed"}]}' > harborist.yaml

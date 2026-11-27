@@ -364,7 +364,7 @@ harborist tickets list OWNER/REPO
 harborist tickets queue OWNER/REPO#NUMBER --workspace WORKSPACE_ID
 harborist supersede RUN_ID file:/path/to/replacement.md --reason "Request changed"
 harborist supersede RUN_ID --replacement REPLACEMENT_RUN_ID --reason "Use saved replacement"
-harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
+harborist run file:/path/to/request.md --repo /path/to/repo --foreground --workspace /path/to/fresh-worktree --json
 ```
 
 Background submission requires a running control service. Saved Runs default
