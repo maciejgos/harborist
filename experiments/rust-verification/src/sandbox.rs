@@ -195,18 +195,27 @@ fn canonical_json(value: &serde_json::Value) -> Result<String> {
     }
 }
 
+fn helper_host() -> Result<Option<String>> {
+    match std::env::var("HARBORIST_SANDBOX_HOST") {
+        Ok(host) if !host.is_empty() => Ok(Some(host)),
+        Ok(_) | Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn control(args: &[&str]) -> Result<Vec<u8>> {
     control_with_timeout(args, 10)
 }
 
 fn control_with_timeout(args: &[&str], seconds: u64) -> Result<Vec<u8>> {
-    let result = match std::env::var("HARBORIST_SANDBOX_HOST") {
-        Ok(host) if !host.is_empty() => {
-            crate::sandbox_host::invoke(&host, args, seconds, 1024 * 1024, &[])?
-        }
-        Ok(_) | Err(std::env::VarError::NotPresent) => local_capture(args, seconds)?,
-        Err(error) => return Err(error.into()),
+    let result = match helper_host()? {
+        Some(host) => crate::sandbox_host::invoke(&host, args, seconds, 1024 * 1024, &[])?,
+        None => local_capture(args, seconds)?,
     };
+    checked_output(result)
+}
+
+fn checked_output(result: crate::process::Capture) -> Result<Vec<u8>> {
     if result.returncode != 0 || result.timed_out || result.stdout.truncated {
         return Err("Docker Sandboxes control command failed or returned oversized output".into());
     }
@@ -309,9 +318,121 @@ fn finish(name: &str, exported: bool) -> Result<()> {
     Ok(())
 }
 
+const GUEST_BUNDLE: &str = "/tmp/harborist-source.bundle";
+const GUEST_REPOSITORY: &str = "/home/agent/workspace/repository";
+
+struct TransferDirectory(std::path::PathBuf);
+
+impl TransferDirectory {
+    fn create() -> Result<Self> {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let directory =
+            std::env::temp_dir().join(format!("harborist-bundle-{}", uuid::Uuid::new_v4()));
+        std::fs::DirBuilder::new().mode(0o700).create(&directory)?;
+        Ok(Self(directory))
+    }
+}
+
+impl Drop for TransferDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
+    use harborist_verify::workflow::Sha;
+    use std::io::Read;
+
+    let revision: Sha =
+        crate::git_text(repository, &["rev-parse", "--verify", "HEAD^{commit}"])?.parse()?;
+    let transfer = TransferDirectory::create()?;
+    let path = transfer.0.join("source.bundle");
+    crate::git(
+        repository,
+        &[
+            "bundle".as_ref(),
+            "create".as_ref(),
+            path.as_os_str(),
+            "HEAD".as_ref(),
+        ],
+    )?;
+    // Confirm the exported ref still points at the revision selected before bundling.
+    let bundle = crate::git(
+        repository,
+        &["bundle".as_ref(), "list-heads".as_ref(), path.as_os_str()],
+    )?;
+    if std::str::from_utf8(&bundle)?.trim_end() != format!("{} HEAD", revision.as_str()) {
+        return Err("Docker Sandbox bundle does not match the selected revision".into());
+    }
+    if let Some(host) = helper_host()? {
+        const LIMIT: u64 = 64 * 1024 * 1024;
+        let mut input = Vec::new();
+        std::fs::File::open(&path)?
+            .take(LIMIT + 1)
+            .read_to_end(&mut input)?;
+        if input.len() as u64 > LIMIT {
+            return Err("Docker Sandbox source bundle exceeds the transfer limit".into());
+        }
+        checked_output(crate::sandbox_host::invoke(
+            &host,
+            &["upload", name, GUEST_BUNDLE],
+            30,
+            1024 * 1024,
+            &input,
+        )?)?;
+    } else {
+        let source = path
+            .to_str()
+            .ok_or("Docker Sandbox bundle path must be UTF-8")?;
+        control_with_timeout(&["cp", source, &format!("{name}:{GUEST_BUNDLE}")], 30)?;
+    }
+    control(&[
+        "exec",
+        name,
+        "git",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "clone",
+        "--no-checkout",
+        GUEST_BUNDLE,
+        GUEST_REPOSITORY,
+    ])?;
+    control(&[
+        "exec",
+        name,
+        "git",
+        "--no-replace-objects",
+        "-C",
+        GUEST_REPOSITORY,
+        "-c",
+        "core.hooksPath=/dev/null",
+        "checkout",
+        "--detach",
+        revision.as_str(),
+    ])?;
+    let head = control(&[
+        "exec",
+        name,
+        "git",
+        "--no-replace-objects",
+        "-C",
+        GUEST_REPOSITORY,
+        "rev-parse",
+        "--verify",
+        "HEAD",
+    ])?;
+    if std::str::from_utf8(&head)?.trim_end() != revision.as_str() {
+        return Err("Docker Sandbox checkout does not match the selected revision".into());
+    }
+    Ok(())
+}
+
 pub fn probe(args: &[std::ffi::OsString]) -> Result<()> {
-    let [file] = args else {
-        return Err("expected sandbox-probe FROZEN_POLICY_JSON".into());
+    let (file, repository) = match args {
+        [file] => (file, None),
+        [file, repository] => (file, Some(std::path::Path::new(repository))),
+        _ => return Err("expected sandbox-probe FROZEN_POLICY_JSON [REPOSITORY]".into()),
     };
     let policy: DockerPolicy = serde_json::from_slice(&std::fs::read(file)?)?;
     policy.validate_frozen()?;
@@ -320,7 +441,8 @@ pub fn probe(args: &[std::ffi::OsString]) -> Result<()> {
         "harborist-test-{}",
         &uuid::Uuid::new_v4().simple().to_string()[..16]
     );
-    let result = provision(&policy, &name);
+    let result = provision(&policy, &name)
+        .and_then(|_| repository.map_or(Ok(()), |repository| populate(&name, repository)));
     finish(&name, result.is_ok())
         .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
     result?;

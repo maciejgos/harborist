@@ -8,7 +8,7 @@ import tempfile
 from threading import Thread
 from pathlib import Path
 
-from compare import ROOT, fixture
+from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
 
 
@@ -184,6 +184,7 @@ def sandbox_provision(root: Path) -> None:
     sbx.write_text("""#!/usr/bin/env python3
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 flag, *args = sys.argv[1:]
@@ -197,6 +198,12 @@ elif args == ["policy", "ls", "--json"]:
     print(os.environ["SBX_POLICY"])
 elif args == ["ls", "--json"]:
     print("[]")
+elif args[0] == "cp":
+    heads = subprocess.check_output(["git", "bundle", "list-heads", args[1]], text=True)
+    assert heads.strip() == os.environ["SBX_HEAD"] + " HEAD"
+    assert args[2].endswith(":/tmp/harborist-source.bundle")
+elif args[0] == "exec" and args[-2:] == ["--verify", "HEAD"]:
+    print(os.environ.get("GUEST_HEAD", os.environ["SBX_HEAD"]))
 elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     sys.exit(1)
 """)
@@ -229,6 +236,21 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     log.write_text("")
     result = subprocess.run(command, env={**env, "FAIL_PROVISION": "1"}, capture_output=True)
     assert result.returncode != 0
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
+
+    repo = root / "repo"
+    head = git(repo, "rev-parse", "HEAD")
+    env["SBX_HEAD"] = head
+    log.write_text("")
+    name = subprocess.check_output([*command, repo], env=env, text=True).strip()
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [call[0] for call in calls[5:]] == ["cp", "exec", "exec", "exec", "rm", "ls"]
+    assert calls[7][-3:] == ["checkout", "--detach", head]
+    assert calls[-2] == ["rm", "--force", name]
+    log.write_text("")
+    result = subprocess.run([*command, repo], env={**env, "GUEST_HEAD": "wrong"}, capture_output=True)
+    assert result.returncode != 0 and b"checkout does not match" in result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
 
