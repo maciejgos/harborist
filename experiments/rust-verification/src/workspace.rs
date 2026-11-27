@@ -154,16 +154,16 @@ pub fn save(control: &Path, body: &[u8]) -> Result<Value> {
 
 pub fn capture(control: &Path, body: &[u8]) -> Result<Value> {
     let request: CaptureRequest = serde_json::from_slice(body)?;
-    let captured = capture_saved(control, request, &control.join("workspace-requests"))?;
+    let captured = capture_saved(
+        &control.join("runs"),
+        request,
+        &control.join("workspace-requests"),
+    )?;
     let record = queue::enqueue(control, captured)?;
     Ok(json!({"run_id": record.run_id}))
 }
 
-fn capture_saved(
-    control: &Path,
-    request: CaptureRequest,
-    receipts: &Path,
-) -> Result<store::Captured> {
+fn capture_saved(runs: &Path, request: CaptureRequest, receipts: &Path) -> Result<store::Captured> {
     if request.request_id.get_version_num() != 4 || request.source.chars().count() > 4096 {
         return Err("invalid capture request identity or source".into());
     }
@@ -180,8 +180,7 @@ fn capture_saved(
         };
     let repo = normalize(&request.repository)?;
     let settings = request.settings.as_deref().map(normalize).transpose()?;
-    let runs = control.join("runs");
-    fs::create_dir_all(&runs)?;
+    fs::create_dir_all(runs)?;
     fs::create_dir_all(receipts)?;
     let directory = runs.join(request.request_id.to_string());
     let receipt = receipts.join(format!("{}.json", request.request_id));
@@ -248,11 +247,11 @@ pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Res
         reason,
         Some(replacement),
     )?;
+    let root = original
+        .directory
+        .parent()
+        .ok_or("missing original Runs root")?;
     let captured = if saved {
-        let root = original
-            .directory
-            .parent()
-            .ok_or("missing original Runs root")?;
         let captured = store::load(&root.join(replacement.to_string()))?;
         if captured.directory.parent() != Some(root) || captured.contract.run_id != replacement {
             return Err("saved replacement differs from its Runs root or identifier".into());
@@ -262,10 +261,11 @@ pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Res
         let receipts = control
             .join("supersession-requests")
             .join(original.run_id.to_string());
-        capture_saved(control, serde_json::from_value(payload)?, &receipts)?
+        capture_saved(root, serde_json::from_value(payload)?, &receipts)?
     };
     if previous.is_none()
         && (captured.directory.join("attempt.json").try_exists()?
+            || crate::continuation::latest(&captured.directory)? != 0
             || crate::retirement::path(&captured.directory).try_exists()?
             || control
                 .join("queue")

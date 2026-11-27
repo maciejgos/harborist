@@ -140,4 +140,19 @@ replacement_id=$(printf '%s\n' "$retired" | sed -n 's/.*"replacement":"\([0-9a-f
 test -n "$replacement_id"
 status=$(compose exec -T service harborist status "$replacement_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
+custom=/home/harborist/.harborist/custom-runs
+queued=$(compose exec -T service harborist run file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --ref 'HEAD^' --runs-dir "$custom" --json)
+custom_id=$(printf '%s\n' "$queued" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$custom_id"
+status=$(compose exec -T service harborist status "$custom_id" --wait --interval 0.05 --json)
+printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
+retired=$(compose exec -T service harborist supersede "$custom_id" file:/home/harborist/.harborist/issue.md \
+    --ref 'HEAD^' --runs-dir "$custom" --reason 'Keep the custom Run root')
+replacement_id=$(printf '%s\n' "$retired" | sed -n 's/.*"replacement":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$replacement_id"
+status=$(compose exec -T service harborist status "$replacement_id" --wait --interval 0.05 --json)
+printf '%s\n' "$status" | grep -Fq '"runs_root":"'"$custom"'"'
+printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
+compose exec -T service test -f "$custom/$replacement_id/contract.json"
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'
