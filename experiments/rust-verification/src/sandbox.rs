@@ -196,11 +196,15 @@ fn canonical_json(value: &serde_json::Value) -> Result<String> {
 }
 
 fn control(args: &[&str]) -> Result<Vec<u8>> {
+    control_with_timeout(args, 10)
+}
+
+fn control_with_timeout(args: &[&str], seconds: u64) -> Result<Vec<u8>> {
     let result = match std::env::var("HARBORIST_SANDBOX_HOST") {
         Ok(host) if !host.is_empty() => {
-            crate::sandbox_host::invoke(&host, args, 10, 1024 * 1024, &[])?
+            crate::sandbox_host::invoke(&host, args, seconds, 1024 * 1024, &[])?
         }
-        Ok(_) | Err(std::env::VarError::NotPresent) => local_capture(args)?,
+        Ok(_) | Err(std::env::VarError::NotPresent) => local_capture(args, seconds)?,
         Err(error) => return Err(error.into()),
     };
     if result.returncode != 0 || result.timed_out || result.stdout.truncated {
@@ -209,14 +213,23 @@ fn control(args: &[&str]) -> Result<Vec<u8>> {
     Ok(result.stdout.bytes)
 }
 
-fn local_capture(args: &[&str]) -> Result<crate::process::Capture> {
+fn local_capture(args: &[&str], seconds: u64) -> Result<crate::process::Capture> {
     use std::process::{Command, Stdio};
     use std::time::Duration;
     let mut command = Command::new("sbx");
     command.arg("--no-input").args(args).stdin(Stdio::null());
+    for key in [
+        "SSH_AUTH_SOCK",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ] {
+        command.env_remove(key);
+    }
     Ok(crate::process::capture_command(
         &mut command,
-        Duration::from_secs(10),
+        Duration::from_secs(seconds),
         1024 * 1024,
     )?)
 }
@@ -245,6 +258,73 @@ pub fn check(args: &[std::ffi::OsString]) -> Result<()> {
         return Err("Docker Sandboxes global policy changed since capture".into());
     }
     println!("{current}");
+    Ok(())
+}
+
+fn provision(policy: &DockerPolicy, name: &str) -> Result<()> {
+    let cpus = policy.cpus.to_string();
+    let memory = format!("{}m", policy.memory_mib);
+    control(&[
+        "create",
+        "--name",
+        name,
+        "--cpus",
+        &cpus,
+        "--memory",
+        &memory,
+        "--skills",
+        "off",
+        "--static-mcp",
+        "none",
+        &policy.template,
+    ])?;
+    for (decision, rules) in [("allow", &policy.allow), ("deny", &policy.deny)] {
+        for resource in rules {
+            control(&["policy", decision, "network", "--sandbox", name, resource])?;
+        }
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SandboxStatus {
+    name: String,
+    status: String,
+}
+
+fn finish(name: &str, exported: bool) -> Result<()> {
+    if exported {
+        control_with_timeout(&["rm", "--force", name], 30)?;
+    } else {
+        // A failed create may have left no sandbox. Inspect to determine its state.
+        let _ = control_with_timeout(&["stop", name], 30);
+    }
+    let listed: Vec<SandboxStatus> = serde_json::from_slice(&control(&["ls", "--json"])?)?;
+    if listed
+        .iter()
+        .any(|entry| entry.name == name && (exported || entry.status != "stopped"))
+    {
+        return Err("Docker Sandbox termination or removal is still pending".into());
+    }
+    Ok(())
+}
+
+pub fn probe(args: &[std::ffi::OsString]) -> Result<()> {
+    let [file] = args else {
+        return Err("expected sandbox-probe FROZEN_POLICY_JSON".into());
+    };
+    let policy: DockerPolicy = serde_json::from_slice(&std::fs::read(file)?)?;
+    policy.validate_frozen()?;
+    policy.check_baseline()?;
+    let name = format!(
+        "harborist-test-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..16]
+    );
+    let result = provision(&policy, &name);
+    finish(&name, result.is_ok())
+        .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
+    result?;
+    println!("{name}");
     Ok(())
 }
 

@@ -256,6 +256,7 @@ fn execute() -> Result<()> {
             Some("run") => return run_foreground(store::capture(args)?),
             Some("submit-python-continuation") => return queue::submit_python_continuation(args),
             Some("continue-python") => return legacy::continue_run(args),
+            Some("sandbox-probe") => return sandbox::probe(args),
             Some("sandbox-check") => return sandbox::check(args),
             Some("sandbox-policy-digest") => return sandbox::digest_file(args),
             Some("import-python") => return legacy::import(args),

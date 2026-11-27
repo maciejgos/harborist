@@ -302,6 +302,12 @@ the optional argument to check for policy changes. Intake records the current
 baseline in Docker-backed contracts. Rust execution rejects policy drift and
 requires an isolated executor for these contracts.
 
+`harborist-verify sandbox-probe FROZEN_POLICY_JSON` takes the
+`execution.docker_policy` object from a saved contract. It creates a
+disposable sandbox with those resource and network settings and confirms
+its removal. If provisioning fails, it attempts to stop the sandbox and
+checks whether Docker retained it.
+
 ## Run the comparison
 
 From the repository root with Docker running:

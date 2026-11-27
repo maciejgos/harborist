@@ -176,9 +176,67 @@ def sandbox_host(root: Path) -> None:
             worker.join()
 
 
+def sandbox_provision(root: Path) -> None:
+    from harborist.sandbox.docker import policy_digest
+
+    binary = ROOT / "target/release/harborist-verify"
+    sbx = root / "sbx"
+    sbx.write_text("""#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+flag, *args = sys.argv[1:]
+assert flag == "--no-input"
+assert "OPENAI_API_KEY" not in os.environ
+with Path(os.environ["SBX_LOG"]).open("a") as stream:
+    print(json.dumps(args), file=stream)
+if args == ["version"]:
+    print("sbx v0.54.1")
+elif args == ["policy", "ls", "--json"]:
+    print(os.environ["SBX_POLICY"])
+elif args == ["ls", "--json"]:
+    print("[]")
+elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
+    sys.exit(1)
+""")
+    sbx.chmod(0o755)
+    log = root / "sbx.log"
+    raw = '{"rules":[{"scope":"global","decision":"deny"}]}'
+    policy = root / "frozen-sandbox-policy.json"
+    policy.write_text(json.dumps({
+        "kind": "docker-sandboxes", "cpus": 4, "memory_mib": 3072,
+        "allow": ["allowed.example"], "deny": ["blocked.example"],
+        "baseline_sha256": policy_digest(raw.encode()),
+    }))
+    env = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+           "SBX_POLICY": raw, "SBX_LOG": str(log), "OPENAI_API_KEY": "fixture"}
+    command = [binary, "sandbox-probe", policy]
+    name = subprocess.check_output(command, env=env, text=True).strip()
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls[:2] == [["version"], ["policy", "ls", "--json"]]
+    assert calls[2][:-1] == [
+        "create", "--name", name, "--cpus", "4", "--memory", "3072m",
+        "--skills", "off", "--static-mcp", "none",
+    ]
+    assert "@sha256:" in calls[2][-1]
+    assert calls[3:] == [
+        ["policy", "allow", "network", "--sandbox", name, "allowed.example"],
+        ["policy", "deny", "network", "--sandbox", name, "blocked.example"],
+        ["rm", "--force", name],
+        ["ls", "--json"],
+    ]
+    log.write_text("")
+    result = subprocess.run(command, env={**env, "FAIL_PROVISION": "1"}, capture_output=True)
+    assert result.returncode != 0
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory))
         sandbox_fingerprint(Path(directory))
         sandbox_host(Path(directory))
+        sandbox_provision(Path(directory))
     print("Rust frozen execution settings checks passed.")
