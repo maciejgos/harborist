@@ -174,6 +174,54 @@ def sandbox_host(root: Path) -> None:
             worker.join()
 
 
+def rust_sandbox_host(root: Path) -> None:
+    import socket
+    import time
+    from http.client import HTTPConnection
+
+    from harborist.sandbox.docker import policy_digest
+    from harborist.sandbox.host_transport import Request, request_host
+
+    helper_dir = root / "rust-helper"
+    helper_dir.mkdir()
+    token = b"x" * 32
+    (helper_dir / "token").write_bytes(token)
+    snapshot = root / "helper-policy.json"
+    raw = b'{"rules":[{"scope":"global","decision":"deny"}]}'
+    snapshot.write_bytes(raw)
+    env = sandbox_fixture(root, snapshot)
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    binary = ROOT / "target/release/harborist-verify"
+    with subprocess.Popen([binary, "sandbox-host", helper_dir, str(port)], env=env) as helper:
+        try:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                        break
+                except OSError:
+                    assert helper.poll() is None and time.monotonic() < deadline
+                    time.sleep(0.025)
+            response = request_host("127.0.0.1", port, token, Request(args=("version",), timeout=5, limit=4096))
+            assert response.stdout.strip() == b"sbx v0.54.2"
+            client_env = {
+                **env, "HARBORIST_SANDBOX_HOST": "127.0.0.1",
+                "HARBORIST_SANDBOX_PORT": str(port),
+                "HARBORIST_SANDBOX_TOKEN_FILE": str(helper_dir / "token"),
+            }
+            assert subprocess.check_output([binary, "sandbox-check"], env=client_env, text=True).strip() == policy_digest(raw)
+            with_connection = HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                with_connection.request("POST", "/v1/sandbox", b'{}')
+                assert with_connection.getresponse().status == 403
+            finally:
+                with_connection.close()
+        finally:
+            helper.terminate()
+
+
 def sandbox_provision(root: Path) -> None:
     from harborist.sandbox.docker import policy_digest
 
@@ -270,5 +318,6 @@ if __name__ == "__main__":
         exercise(Path(directory))
         sandbox_fingerprint(Path(directory))
         sandbox_host(Path(directory))
+        rust_sandbox_host(Path(directory))
         sandbox_provision(Path(directory))
     print("Rust frozen execution settings checks passed.")

@@ -313,6 +313,11 @@ bundle of its committed HEAD and verify that the guest checks out the
 same commit with a clean workspace. The probe also checks that the guest
 would export an empty patch under the read-only stage rules.
 
+The experimental Rust host helper starts with
+`harborist-verify sandbox-host DIRECTORY PORT`. It binds to loopback and
+reads the bearer token from `DIRECTORY/token`. The deployment still uses
+the Python helper for disconnect-triggered cleanup.
+
 ## Run the comparison
 
 From the repository root with Docker running:
