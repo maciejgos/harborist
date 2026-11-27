@@ -7,6 +7,26 @@ COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project --no-python-downloads --no-build --no-cache
 
+FROM rust:1.100.0-alpine AS rust-build
+WORKDIR /checkout
+COPY experiments/rust-verification/Cargo.toml experiments/rust-verification/Cargo.lock experiments/rust-verification/
+COPY experiments/rust-verification/src experiments/rust-verification/src
+COPY src/harborist/web/assets src/harborist/web/assets
+RUN cargo build --manifest-path experiments/rust-verification/Cargo.toml --release --locked
+
+FROM alpine:3.23 AS rust-runtime
+RUN apk add --no-cache git ca-certificates \
+    && addgroup -g 10001 harborist \
+    && adduser -u 10001 -G harborist -D harborist \
+    && install -d -m 0700 -o harborist -g harborist /home/harborist/.harborist /home/harborist/.harborist/control
+COPY --from=rust-build /checkout/experiments/rust-verification/target/release/harborist-verify /usr/local/bin/harborist-verify
+COPY src/harborist/playbooks /opt/harborist/src/harborist/playbooks
+COPY src/harborist/skills /opt/harborist/src/harborist/skills
+WORKDIR /home/harborist
+USER 10001:10001
+ENTRYPOINT ["harborist-verify"]
+CMD ["service", "/home/harborist/.harborist/control"]
+
 FROM python AS runtime
 RUN apk upgrade --no-cache \
     && apk add --no-cache git \

@@ -562,8 +562,10 @@ fn proxy(control: &Path, route: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u
 }
 
 pub fn web(args: &[OsString]) -> Result<()> {
-    let [control, port] = args else {
-        return Err("expected web CONTROL_DIR PORT".into());
+    let (control, port, listener) = match args {
+        [control, port] => (control, port, "127.0.0.1"),
+        [control, port, flag] if flag == "--container-listener" => (control, port, "0.0.0.0"),
+        _ => return Err("expected web CONTROL_DIR PORT [--container-listener]".into()),
     };
     let control = Path::new(control);
     let port: u16 = port.to_str().ok_or("expected a port")?.parse()?;
@@ -571,7 +573,7 @@ pub fn web(args: &[OsString]) -> Result<()> {
         return Err("expected a nonzero loopback port".into());
     }
     let allowed = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
-    let server = Server::http(("127.0.0.1", port)).map_err(|error| error.to_string())?;
+    let server = Server::http((listener, port)).map_err(|error| error.to_string())?;
     for mut request in server.incoming_requests() {
         let Some(host) =
             header(&request, "Host").filter(|host| allowed.iter().any(|value| value == host))

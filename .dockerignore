@@ -7,3 +7,9 @@
 !src/harborist/**
 **/__pycache__/
 **/*.pyc
+!experiments/
+!experiments/rust-verification/
+!experiments/rust-verification/Cargo.toml
+!experiments/rust-verification/Cargo.lock
+!experiments/rust-verification/src/
+!experiments/rust-verification/src/**

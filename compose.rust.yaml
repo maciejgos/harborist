@@ -1,0 +1,44 @@
+x-runtime: &runtime
+  image: "${HARBORIST_RUST_IMAGE:-harborist-rust:local}"
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+services:
+  service:
+    <<: *runtime
+    build:
+      context: .
+      target: rust-runtime
+    volumes:
+      - state:/home/harborist/.harborist
+      - control:/home/harborist/.harborist/control
+    healthcheck:
+      test: [CMD, test, -S, /home/harborist/.harborist/control/service.sock]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+  worker:
+    <<: *runtime
+    command: [worker, /home/harborist/.harborist/control]
+    depends_on:
+      service:
+        condition: service_healthy
+    stop_grace_period: 60s
+    volumes:
+      - state:/home/harborist/.harborist
+      - control:/home/harborist/.harborist/control
+  web:
+    <<: *runtime
+    command: [web, /home/harborist/.harborist/control, "${HARBORIST_WEB_PORT:-8765}", --container-listener]
+    depends_on:
+      service:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${HARBORIST_WEB_PORT:-8765}:${HARBORIST_WEB_PORT:-8765}"
+    volumes:
+      - control:/home/harborist/.harborist/control:ro
+
+volumes:
+  state:
+  control:

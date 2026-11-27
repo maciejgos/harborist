@@ -319,6 +319,18 @@ reads the bearer token from `DIRECTORY/token`. When a worker connection
 closes during guest execution, the helper checks the live sandbox UUID
 before stopping it. Deployment still uses the Python helper.
 
+## Start the Rust Docker stack
+
+```sh
+docker compose -f compose.rust.yaml up --build -d
+```
+
+The Compose file starts a Rust worker, Unix-socket service, and browser
+monitor at `http://127.0.0.1:8765`. All three use the same non-root image.
+The service and worker share persistent state, and the monitor mounts only
+the control volume. This stack packages the Rust runtime. Repository mounts
+and a configured Codex or Sandbox runtime are needed to execute jobs.
+
 ## Run the comparison
 
 From the repository root with Docker running:
