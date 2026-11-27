@@ -296,7 +296,8 @@ The migration diagnostic `harborist-verify sandbox-policy-digest POLICY_JSON`
 prints the frozen fingerprint for a saved Docker network policy response.
 The fingerprint covers effective global rules and stays stable when rule
 order or display IDs change. Use `harborist-verify sandbox-check` to read
-the current fingerprint from local `sbx` 0.54.x. Supply a saved digest as
+the current fingerprint from `sbx` 0.54.x. With the deployed host helper
+configured, the command reads the policy through that helper. Supply a saved digest as
 the optional argument to check for policy changes. Intake records the current
 baseline in Docker-backed contracts. Rust execution rejects policy drift and
 requires an isolated executor for these contracts.

@@ -48,7 +48,7 @@ impl Default for DockerPolicy {
 
 impl DockerPolicy {
     pub fn freeze(mut self) -> Result<Self> {
-        self.baseline_sha256 = Some(local_baseline()?);
+        self.baseline_sha256 = Some(baseline()?);
         Ok(self)
     }
 
@@ -60,7 +60,7 @@ impl DockerPolicy {
     }
 
     pub fn check_baseline(&self) -> Result<()> {
-        let current = local_baseline()?;
+        let current = baseline()?;
         if self.baseline_sha256.as_deref() != Some(current.as_str()) {
             return Err("Docker Sandboxes global policy changed since capture".into());
         }
@@ -195,33 +195,42 @@ fn canonical_json(value: &serde_json::Value) -> Result<String> {
     }
 }
 
-fn local_control(args: &[&str]) -> Result<Vec<u8>> {
-    use std::process::{Command, Stdio};
-    use std::time::Duration;
-
-    let mut command = Command::new("sbx");
-    command.arg("--no-input").args(args).stdin(Stdio::null());
-    let result =
-        crate::process::capture_command(&mut command, Duration::from_secs(10), 1024 * 1024)?;
+fn control(args: &[&str]) -> Result<Vec<u8>> {
+    let result = match std::env::var("HARBORIST_SANDBOX_HOST") {
+        Ok(host) if !host.is_empty() => {
+            crate::sandbox_host::invoke(&host, args, 10, 1024 * 1024, &[])?
+        }
+        Ok(_) | Err(std::env::VarError::NotPresent) => local_capture(args)?,
+        Err(error) => return Err(error.into()),
+    };
     if result.returncode != 0 || result.timed_out || result.stdout.truncated {
         return Err("Docker Sandboxes control command failed or returned oversized output".into());
     }
     Ok(result.stdout.bytes)
 }
 
-fn local_baseline() -> Result<String> {
-    if std::env::var_os("HARBORIST_SANDBOX_HOST").is_some_and(|host| !host.is_empty()) {
-        return Err("Docker sandbox host helper transport is unavailable in Rust".into());
-    }
-    static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bv0\.54\.[0-9]+\b").unwrap());
-    if !VERSION.is_match(std::str::from_utf8(&local_control(&["version"])?)?) {
-        return Err("this adapter requires Docker Sandboxes 0.54.x".into());
-    }
-    policy_digest(&local_control(&["policy", "ls", "--json"])?)
+fn local_capture(args: &[&str]) -> Result<crate::process::Capture> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    let mut command = Command::new("sbx");
+    command.arg("--no-input").args(args).stdin(Stdio::null());
+    Ok(crate::process::capture_command(
+        &mut command,
+        Duration::from_secs(10),
+        1024 * 1024,
+    )?)
 }
 
-pub fn check_local(args: &[std::ffi::OsString]) -> Result<()> {
-    let baseline = match args {
+fn baseline() -> Result<String> {
+    static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bv0\.54\.[0-9]+\b").unwrap());
+    if !VERSION.is_match(std::str::from_utf8(&control(&["version"])?)?) {
+        return Err("this adapter requires Docker Sandboxes 0.54.x".into());
+    }
+    policy_digest(&control(&["policy", "ls", "--json"])?)
+}
+
+pub fn check(args: &[std::ffi::OsString]) -> Result<()> {
+    let expected_baseline = match args {
         [] => None,
         [expected] => Some(
             expected
@@ -231,8 +240,8 @@ pub fn check_local(args: &[std::ffi::OsString]) -> Result<()> {
         ),
         _ => return Err("expected sandbox-check [BASELINE_SHA256]".into()),
     };
-    let current = local_baseline()?;
-    if baseline.is_some_and(|expected| expected != current) {
+    let current = baseline()?;
+    if expected_baseline.is_some_and(|expected| expected != current) {
         return Err("Docker Sandboxes global policy changed since capture".into());
     }
     println!("{current}");

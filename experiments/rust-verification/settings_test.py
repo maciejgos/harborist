@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from threading import Thread
 from pathlib import Path
 
 from compare import ROOT, fixture
@@ -138,8 +139,46 @@ def sandbox_fingerprint(root: Path) -> None:
     assert result.returncode != 0 and not result.stdout
 
 
+def sandbox_host(root: Path) -> None:
+    from harborist.execution.process import ProcessCapture
+    from harborist.sandbox.docker import policy_digest
+    from harborist.sandbox.host_transport import create_server
+
+    raw = b'{"rules":[{"scope":"global","decision":"deny"}]}'
+
+    class Fixture:
+        def execute(self, args, *, timeout, limit, input_bytes):
+            assert timeout == 10 and limit == 1024 * 1024 and input_bytes == b""
+            output = {
+                ("version",): b"sbx v0.54.2",
+                ("policy", "ls", "--json"): raw,
+            }[args]
+            return ProcessCapture(0, False, output, b"", False, False)
+
+    token = root / "sbx-token"
+    token.write_text("fixture-token")
+    with create_server(Fixture(), b"fixture-token", port=0) as server:
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            binary = ROOT / "target/release/harborist-verify"
+            env = {**os.environ, "HARBORIST_SANDBOX_HOST": "127.0.0.1",
+                   "HARBORIST_SANDBOX_PORT": str(server.server_port),
+                   "HARBORIST_SANDBOX_TOKEN_FILE": str(token)}
+            command = [binary, "sandbox-check"]
+            assert subprocess.check_output(command, env=env, text=True).strip() == policy_digest(raw)
+            token.write_text("wrong-token")
+            result = subprocess.run(command, env=env, capture_output=True, check=False)
+            assert result.returncode != 0 and b"rejected the operation" in result.stderr
+            assert not result.stdout
+        finally:
+            server.shutdown()
+            worker.join()
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory))
         sandbox_fingerprint(Path(directory))
+        sandbox_host(Path(directory))
     print("Rust frozen execution settings checks passed.")
