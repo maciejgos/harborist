@@ -299,8 +299,10 @@ order or display IDs change. Use `harborist-verify sandbox-check` to read
 the current fingerprint from `sbx` 0.54.x. With the deployed host helper
 configured, the command reads the policy through that helper. Supply a saved digest as
 the optional argument to check for policy changes. Intake records the current
-baseline in Docker-backed contracts. Rust execution rejects policy drift and
-requires an isolated executor for these contracts.
+baseline in Docker-backed contracts. Rust execution rejects policy drift.
+DESIGN, PLAN, BUILD, TEST, and REVIEW each use a fresh sandbox.
+BUILD exports a bounded patch, and TEST and REVIEW receive the exact
+committed candidate in their own workspaces.
 
 `harborist-verify sandbox-probe FROZEN_POLICY_JSON [REPOSITORY]` takes the
 `execution.docker_policy` object from a saved contract. It creates a

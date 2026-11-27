@@ -272,10 +272,9 @@ impl Execution {
         Ok(Some(execution))
     }
 
-    pub fn require_executor(&self) -> Result<()> {
+    pub fn check_runtime(&self) -> Result<()> {
         if let Some(policy) = &self.docker_policy {
             policy.check_baseline()?;
-            return Err("Docker sandbox execution requires the Rust sandbox runtime".into());
         }
         Ok(())
     }

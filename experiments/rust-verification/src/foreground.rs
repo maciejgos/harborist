@@ -18,7 +18,7 @@ use std::{
 
 pub fn execute(capture: Captured) -> Result<serde_json::Value> {
     if let Some(execution) = &capture.contract.execution {
-        execution.require_executor()?;
+        execution.check_runtime()?;
     }
     let attempt = store::admit(&capture)?;
     let directory = capture.directory.clone();
@@ -84,6 +84,10 @@ pub fn execute_attempt(
         total_seconds: total,
         verification_reserve_seconds: contract.verification_reserve_seconds,
         agent: &agent,
+        docker_policy: contract
+            .execution
+            .as_ref()
+            .and_then(|execution| execution.docker_policy.as_ref()),
     };
 
     let result = run.run(&intent, config);
@@ -186,6 +190,7 @@ struct Run<'a> {
     total_seconds: u64,
     verification_reserve_seconds: u64,
     agent: &'a dyn NativeAgent,
+    docker_policy: Option<&'a crate::sandbox::DockerPolicy>,
 }
 
 impl Run<'_> {
@@ -277,6 +282,27 @@ impl Run<'_> {
             |workspace| {
                 require_clean(workspace, candidate.as_str())?;
                 let left = self.allowance(Stage::Test)?;
+                if let Some(policy) = self.docker_policy {
+                    let checks =
+                        crate::sandbox::with_guest(policy, "test", workspace, false, |name| {
+                            let left = self.allowance(Stage::Test)?;
+                            crate::collect_checks(
+                                config,
+                                &self.dir.join("test"),
+                                left,
+                                left,
+                                |command, allowance| {
+                                    crate::sandbox::run_check(
+                                        name,
+                                        command,
+                                        allowance,
+                                        self.cancellation,
+                                    )
+                                },
+                            )
+                        })?;
+                    return Ok((checks, None));
+                }
                 let checks = run_checks_with_budget(
                     config,
                     workspace,

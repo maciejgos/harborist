@@ -841,7 +841,7 @@ impl HistoricalContinuation {
         }
         rework.cancellation = cancellation;
         if let Some(execution) = &capture.contract.execution {
-            execution.require_executor()?;
+            execution.check_runtime()?;
         }
         crate::store::save(&destination, &capture.contract, &capture.intent, &frozen)?;
         capture.directory = destination;

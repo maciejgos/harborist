@@ -62,8 +62,6 @@ def exercise(root: Path) -> None:
     expected = subprocess.check_output([binary, "sandbox-check"], env=sandbox_env, text=True).strip()
     assert contract["execution"]["docker_policy"]["baseline_sha256"] == expected
     command = [binary, "execute", sandbox_run]
-    result = subprocess.run(command, env=sandbox_env, capture_output=True, text=True, check=False)
-    assert result.returncode != 0 and "requires the Rust sandbox runtime" in result.stderr
     policy.write_text('{"rules":[{"scope":"global","decision":"allow"}]}')
     result = subprocess.run(command, env=sandbox_env, capture_output=True, text=True, check=False)
     assert result.returncode != 0 and "changed since capture" in result.stderr

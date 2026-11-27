@@ -499,6 +499,25 @@ pub fn with_guest<T>(
     result
 }
 
+pub fn run_check(
+    name: &str,
+    command: &str,
+    allowance: std::time::Duration,
+    cancellation: &std::path::Path,
+) -> std::io::Result<crate::process::Capture> {
+    GuestCommand {
+        name,
+        allowance,
+        limit: 65536,
+        cancellation: Some(cancellation),
+    }
+    .capture(&["/bin/sh", "-c", command], None)
+    .map_err(|error| match error.downcast::<std::io::Error>() {
+        Ok(error) => *error,
+        Err(error) => std::io::Error::other(error.to_string()),
+    })
+}
+
 pub fn run_codex(
     name: &str,
     args: &[&str],

@@ -115,8 +115,20 @@ fn run_checks_with_budget(
     total: Duration,
     cancellation: Option<&Path>,
 ) -> Result<Vec<CheckResult>> {
-    let deadline = Instant::now() + total;
     let workspace = workspace.canonicalize()?;
+    collect_checks(config, logs, per_check, total, |command, allowance| {
+        process::capture(command, &workspace, allowance, 65536, cancellation)
+    })
+}
+
+fn collect_checks(
+    config: Config,
+    logs: &Path,
+    per_check: Duration,
+    total: Duration,
+    mut execute: impl FnMut(&str, Duration) -> io::Result<process::Capture>,
+) -> Result<Vec<CheckResult>> {
+    let deadline = Instant::now() + total;
     fs::create_dir(logs)?;
     let logs = logs.canonicalize()?;
     config
@@ -144,8 +156,7 @@ fn run_checks_with_budget(
                 result.timed_out = true;
                 result.error = Some("Shared TEST deadline exhausted before invocation".into());
             } else {
-                match process::capture(&result.command, &workspace, allowance, 65536, cancellation)
-                {
+                match execute(&result.command, allowance) {
                     Ok(capture) => {
                         stdout.write_all(&capture.stdout.bytes)?;
                         stderr.write_all(&capture.stderr.bytes)?;
