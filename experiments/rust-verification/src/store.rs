@@ -200,6 +200,18 @@ pub fn save(directory: &Path, contract: &Contract, intent: &str, frozen: &[u8]) 
 }
 
 pub fn load(path: &Path) -> Result<Captured> {
+    let capture = load_frozen(path)?;
+    let contract = &capture.contract;
+    let directory = &capture.directory;
+    let repo = repository(&contract.repository)?;
+    if repo != contract.repository || directory.starts_with(&repo) {
+        return Err("Run checkout or directory does not match the saved context".into());
+    }
+    validate_base(&repo, &contract.base_sha)?;
+    Ok(capture)
+}
+
+pub fn load_frozen(path: &Path) -> Result<Captured> {
     let directory = path.canonicalize()?;
     let contract: Contract = serde_json::from_slice(&fs::read(directory.join("contract.json"))?)?;
     if contract.version != VERSION {
@@ -209,11 +221,6 @@ pub fn load(path: &Path) -> Result<Captured> {
         contract.total_seconds,
         contract.verification_reserve_seconds,
     )?;
-    let repo = repository(&contract.repository)?;
-    if repo != contract.repository || directory.starts_with(&repo) {
-        return Err("Run checkout or directory does not match the saved context".into());
-    }
-    validate_base(&repo, &contract.base_sha)?;
     let intent = fs::read_to_string(directory.join("intent.md"))?;
     let frozen = fs::read(directory.join("harborist.yaml"))?;
     if digest(intent.as_bytes()) != contract.intent_sha256

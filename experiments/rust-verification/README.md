@@ -349,6 +349,8 @@ harborist service stop
 harborist web --port 8765
 harborist runs --json
 harborist status RUN_ID --wait --json
+harborist inspect RUN_ID
+harborist methodology RUN_ID --stage build
 harborist rework RUN_ID --feedback "Address the failed check"
 harborist recover RUN_ID --additional-seconds 600
 harborist cancel RUN_ID --reason "Stopped by operator"

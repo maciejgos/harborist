@@ -73,6 +73,28 @@ def exercise(root: Path) -> None:
     settings.unlink()
     playbook.unlink()
     skill.unlink()
+    public = root / "harborist"
+    public.symlink_to(binary)
+    capture_path = root / contract["run_id"]
+    saved.rename(capture_path)
+    before = (capture_path / "contract.json").read_bytes()
+    relocated = root / "temporarily-unavailable"
+    repo.rename(relocated)
+    try:
+        args = [contract["run_id"], "--runs-dir", root]
+        inspected = json.loads(subprocess.check_output([public, "inspect", *args], env=env))
+        assert inspected == contract
+        methodology = json.loads(subprocess.check_output([public, "methodology", *args], env=env))
+        assert methodology["playbook"]["definition"]["stages"][0]["stage"] == "intake"
+        guidance = json.loads(subprocess.check_output([public, "methodology", *args, "--stage", "build"], env=env))
+        assert guidance["playbook"] and guidance["skills"]
+        rejected = subprocess.run([public, "methodology", *args, "--stage", "test"], env=env, capture_output=True)
+        assert rejected.returncode != 0
+        assert (capture_path / "contract.json").read_bytes() == before
+    finally:
+        relocated.rename(repo)
+        capture_path.rename(saved)
+
     result = subprocess.run([binary, "execute", saved], env=env,
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr

@@ -706,6 +706,65 @@ fn service(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn inspect(command: &str, args: &[OsString]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "Usage: harborist {command} RUN_ID [--runs-dir PATH]{}",
+            if command == "methodology" {
+                " [--stage STAGE]"
+            } else {
+                ""
+            }
+        );
+        return Ok(0);
+    }
+    let [id, args @ ..] = args else {
+        return Err("expected a Run UUID".into());
+    };
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let mut root = None;
+    let mut stage = None;
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        let value = args.next().ok_or("missing inspection option value")?;
+        match flag.to_str() {
+            Some("--runs-dir") => root = Some(Path::new(value)),
+            Some("--stage") if command == "methodology" => {
+                let name = value.to_str().ok_or("invalid methodology stage")?;
+                let parsed: harborist_verify::workflow::Stage =
+                    serde_json::from_value(serde_json::json!(name))?;
+                if !matches!(name, "design" | "plan" | "build" | "review") {
+                    return Err("guidance requires a native-agent stage".into());
+                }
+                stage = Some(parsed);
+            }
+            _ => {
+                return Err(
+                    format!("unexpected {command} argument: {}", flag.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    let captured = store::load_frozen(&saved_directory(id, root)?)?;
+    if captured.contract.run_id != id {
+        return Err("saved Run does not match the requested identifier".into());
+    }
+    if command == "inspect" {
+        println!("{}", serde_json::to_string(&captured.contract)?);
+    } else {
+        let execution = captured
+            .contract
+            .execution
+            .ok_or("saved Run has no frozen methodology")?;
+        let preview = match stage {
+            Some(stage) => execution.guidance(stage)?,
+            None => execution.methodology()?,
+        };
+        println!("{preview}");
+    }
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -713,9 +772,12 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web|inspect|methodology> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if matches!(command, "inspect" | "methodology") {
+        return inspect(command, args);
     }
     if command == "service" {
         return service(args);

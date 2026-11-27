@@ -159,7 +159,7 @@ impl Asset {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Playbook {
     id: String,
@@ -167,7 +167,7 @@ struct Playbook {
     stages: Vec<Step>,
 }
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Step {
     stage: Stage,
@@ -178,7 +178,7 @@ struct Step {
     budgeted: bool,
 }
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 enum Executor {
     Harborist,
@@ -186,7 +186,7 @@ enum Executor {
     TrustedTest,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Skill {
     id: String,
@@ -332,6 +332,19 @@ impl Execution {
             }
         }
         Ok(())
+    }
+
+    pub fn methodology(&self) -> Result<serde_json::Value> {
+        let playbook: Playbook = self.playbook.header()?;
+        let mut skills = Vec::new();
+        for asset in &self.skills {
+            let skill: Skill = asset.header()?;
+            skills.push(serde_json::json!({"identity": asset, "metadata": skill}));
+        }
+        Ok(serde_json::json!({
+            "playbook": {"identity": self.playbook, "definition": playbook},
+            "skills": skills,
+        }))
     }
 
     pub fn guidance(&self, stage: Stage) -> Result<serde_json::Value> {
