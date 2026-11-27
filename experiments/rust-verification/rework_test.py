@@ -43,8 +43,11 @@ if stage == "build":''',
     first = json.loads(first_bytes)
     assert first["outcome"] == "TEST_FAILED"
     previous = first["attempt"]["attempt_id"]
+    public = root / "harborist"
+    public.symlink_to(binary)
+    (root / first["run_id"]).symlink_to(directory, target_is_directory=True)
     result = subprocess.run(
-        [binary, "rework", directory, previous, "Address the failing check"],
+        [public, "rework", first["run_id"], "--foreground", "--runs-dir", root, "--repo", repo, "--json", "--feedback", "Address the failing check"],
         env={**env, "REWORK": "1"}, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
@@ -143,8 +146,11 @@ def recover(root: Path) -> None:
     assert run.returncode != 0
     raw = (directory / "evidence.json").read_bytes()
     failed = json.loads(raw)
+    public = root / "harborist"
+    public.symlink_to(binary)
+    (root / failed["run_id"]).symlink_to(directory, target_is_directory=True)
     result = subprocess.run(
-        [binary, "recover", directory, failed["attempt"]["attempt_id"], "Retry PLAN"],
+        [public, "recover", failed["run_id"], "--foreground", "--runs-dir", root, "--repo", repo, "--json"],
         env={**env, "RECOVER": "1"}, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr

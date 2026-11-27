@@ -229,6 +229,15 @@ fn worker_loss(
     })
 }
 
+pub(crate) fn current_attempt(root: &Path, id: Uuid) -> Result<Uuid> {
+    let directory = attempt_path(root, latest(root)?);
+    let attempt: Attempt = serde_json::from_str(&read_artifact(&directory, "attempt.json")?)?;
+    if attempt.run_id() != id {
+        return Err("latest Attempt does not belong to this Run".into());
+    }
+    Ok(attempt.id())
+}
+
 pub fn validate(capture: &store::Captured, request: &Request) -> Result<()> {
     prepare(capture, request).map(|_| ())
 }

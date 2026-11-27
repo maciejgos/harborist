@@ -234,13 +234,16 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
             println!("Usage: harborist cancel RUN_ID --reason TEXT [--control-dir PATH]");
         } else {
             println!(
-                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--control-dir PATH] [--json]"
+                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--foreground] [--control-dir PATH] [--json]"
             );
         }
         return Ok(0);
     }
     let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
     let mut directory = None;
+    let mut foreground = false;
+    let mut runs = None;
+    let mut repository = None;
     let mut reason = None;
     let mut feedback = String::new();
     let mut additional = 0;
@@ -253,6 +256,9 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         let mut value = || args.next().ok_or("missing argument value");
         match flag.to_str() {
             Some("--control-dir") => directory = Some(PathBuf::from(value()?)),
+            Some("--foreground") if command != "cancel" => foreground = true,
+            Some("--runs-dir") if command != "cancel" => runs = Some(Path::new(value()?)),
+            Some("--repo") if command != "cancel" => repository = Some(Path::new(value()?)),
             Some("--json") => json_output = true,
             Some("--reason") if command == "cancel" => {
                 reason = Some(value()?.to_str().ok_or("invalid cancellation reason")?);
@@ -297,24 +303,65 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         }
         let github_feedback =
             observation.map(|path| json!({"observation": path, "ids": feedback_ids}));
-        let attempt = match expected {
-            Some(id) => id,
-            None => {
-                let current = control::read(&directory, &format!("/runs/{id}"))?;
-                Uuid::parse_str(
+        let capture = if foreground {
+            let capture = store::load(&saved_directory(id, runs)?)?;
+            if capture.contract.run_id != id {
+                return Err("saved Run does not match the requested identifier".into());
+            }
+            if let Some(repo) = repository {
+                if store::repository(repo)? != capture.contract.repository {
+                    return Err("saved Run does not match the requested repository".into());
+                }
+            }
+            Some(capture)
+        } else {
+            None
+        };
+        let attempt = if let Some(capture) = &capture {
+            match expected {
+                Some(id) => id,
+                None => crate::continuation::current_attempt(&capture.directory, id)?,
+            }
+        } else if expected.is_none() || runs.is_some() || repository.is_some() {
+            let current = control::read(&directory, &format!("/runs/{id}"))?;
+            if let Some(root) = runs {
+                if current["submission"]["runs_root"].as_str().map(Path::new)
+                    != Some(root.canonicalize()?.as_path())
+                {
+                    return Err("saved Run does not match the requested Runs root".into());
+                }
+            }
+            if let Some(repo) = repository {
+                if current["repository"].as_str().map(Path::new)
+                    != Some(store::repository(repo)?.as_path())
+                {
+                    return Err("saved Run does not match the requested repository".into());
+                }
+            }
+            match expected {
+                Some(id) => id,
+                None => Uuid::parse_str(
                     current["attempt_id"]
                         .as_str()
                         .ok_or("Run has no current Attempt")?,
-                )?
+                )?,
             }
+        } else {
+            expected.ok_or("missing expected Attempt")?
         };
-        (
-            format!("/workspace/runs/{id}/continue"),
-            json!({
-                "request_id": Uuid::new_v4(), "action": command, "expected_attempt_id": attempt,
-                "feedback": feedback, "additional_seconds": additional, "github_feedback": github_feedback
-            }),
-        )
+        let payload = json!({
+            "request_id": Uuid::new_v4(), "action": command, "expected_attempt_id": attempt,
+            "feedback": feedback, "additional_seconds": additional, "github_feedback": github_feedback
+        });
+        if let Some(capture) = capture {
+            let request = serde_json::from_value(payload)?;
+            return Ok(print_outcome(
+                id,
+                crate::continuation::run(capture, &request)?,
+                json_output,
+            ));
+        }
+        (format!("/workspace/runs/{id}/continue"), payload)
     };
     let response = control::write(&directory, &route, &payload)?;
     if json_output {
@@ -1032,8 +1079,15 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
         }
         return Ok(0);
     }
-    let result = crate::foreground::execute(capture)?;
-    if options.json {
+    Ok(print_outcome(
+        id,
+        crate::foreground::execute(capture)?,
+        options.json,
+    ))
+}
+
+fn print_outcome(id: Uuid, result: serde_json::Value, json: bool) -> i32 {
+    if json {
         println!("{result}");
     } else {
         println!(
@@ -1041,10 +1095,10 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
             result["outcome"].as_str().unwrap_or("FAILED")
         );
     }
-    Ok(match result["outcome"].as_str() {
+    match result["outcome"].as_str() {
         Some("VERIFIED") => 0,
         Some("CANCELLED") => 130,
         Some("FAILED") | None => 1,
         _ => 2,
-    })
+    }
 }
