@@ -356,7 +356,27 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         return Err("expected apply RUN_DIR BRANCH".into());
     };
     let branch = branch.to_str().ok_or("expected a UTF-8 branch name")?;
-    let root = Path::new(directory).canonicalize()?;
+    apply_saved(Path::new(directory), branch, None, None)
+}
+
+pub fn apply_saved(
+    directory: &Path,
+    branch: &str,
+    expected_id: Option<Uuid>,
+    repository: Option<&Path>,
+) -> Result<()> {
+    let repository = repository.map(store::repository).transpose()?;
+    let validate_context = |id: Uuid, repo: &Path| -> Result<()> {
+        if expected_id.is_some_and(|expected| id != expected)
+            || repository
+                .as_deref()
+                .is_some_and(|expected| repo != expected)
+        {
+            return Err("saved Run does not match the requested application context".into());
+        }
+        Ok(())
+    };
+    let root = directory.canonicalize()?;
     let contract: Value = serde_json::from_str(&read_artifact(&root, "contract.json")?)?;
     if contract.get("intent").is_some() && contract.get("version").is_none() {
         let lock = File::open(&root)?;
@@ -365,6 +385,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
             return Err(io::Error::last_os_error().into());
         }
         let (id, repo, verified) = crate::legacy::verified(&root)?;
+        validate_context(id, &repo)?;
         let receipts = root
             .parent()
             .ok_or("historical Run has no parent")?
@@ -374,6 +395,7 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         return apply_candidate(id, &repo, branch, verified, receipts);
     }
     let captured = store::load(&root)?;
+    validate_context(captured.contract.run_id, &captured.contract.repository)?;
     let _continuation = crate::continuation::lock(&captured.directory)?;
     let verified = verified(&captured)?;
     let receipts = verified.directory.join("applications");

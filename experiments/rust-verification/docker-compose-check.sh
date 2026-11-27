@@ -86,6 +86,16 @@ printf '%s\n' "$report" | grep -q VERIFIED
 candidate=$(printf '%s\n' "$status" | sed -n 's/.*"candidate_sha":"\([0-9a-f]*\)".*/\1/p')
 test -n "$candidate"
 test "$(compose exec -T worker git -C /home/harborist/.harborist/repository show "$candidate:message.txt")" = "hello from Compose"
+compose exec -T service git -C /home/harborist/.harborist/repository branch fixture-delivery
+compose exec -T service git init -q /home/harborist/.harborist/other-repository
+if compose exec -T service harborist apply "$run_id" --branch fixture-delivery \
+    --repo /home/harborist/.harborist/other-repository; then
+    printf 'Application unexpectedly accepted a different repository.\n' >&2
+    exit 1
+fi
+applied=$(compose exec -T service harborist apply "$run_id" --branch fixture-delivery)
+printf '%s\n' "$applied" | grep -Fq '"resulting_sha":"'"$candidate"'"'
+test "$(compose exec -T service git -C /home/harborist/.harborist/repository rev-parse fixture-delivery)" = "$candidate"
 captured=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \
     --repo /home/harborist/.harborist/repository --json)
 saved_id=$(printf '%s\n' "$captured" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')

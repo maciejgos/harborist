@@ -327,14 +327,60 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn apply(args: &[OsString]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("Usage: harborist apply RUN_ID --branch BRANCH [--repo PATH] [--runs-dir PATH]");
+        return Ok(0);
+    }
+    let [id, options @ ..] = args else {
+        return Err("apply requires a Run UUID".into());
+    };
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let mut branch = None;
+    let mut repository = None;
+    let mut runs = None;
+    let mut options = options.iter();
+    while let Some(flag) = options.next() {
+        let value = options.next().ok_or("missing application option value")?;
+        match flag.to_str() {
+            Some("--branch") => branch = Some(value.to_str().ok_or("invalid branch name")?),
+            Some("--repo") => repository = Some(Path::new(value)),
+            Some("--runs-dir") => runs = Some(Path::new(value)),
+            _ => {
+                return Err(format!("unexpected apply argument: {}", flag.to_string_lossy()).into());
+            }
+        }
+    }
+    let branch = branch.ok_or("apply requires --branch")?;
+    let directory = match runs {
+        Some(root) => root.join(id.to_string()),
+        None => {
+            let saved = state_path("runs")?.join(id.to_string());
+            if saved.try_exists()? {
+                saved
+            } else {
+                let file = state_path("control")?
+                    .join("queue")
+                    .join(format!("{id}.json"));
+                queue::read(&file)?.directory
+            }
+        }
+    };
+    crate::apply::apply_saved(&directory, branch, Some(id), repository)?;
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
     };
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
-        println!("Usage: harborist <run|intake|runs|status|cancel|rework|recover> [OPTIONS]");
+        println!("Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply> [OPTIONS]");
         return Ok(0);
+    }
+    if command == "apply" {
+        return apply(args);
     }
     if matches!(command, "runs" | "status") {
         return read_status(command, args);
