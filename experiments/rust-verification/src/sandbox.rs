@@ -265,12 +265,13 @@ impl GuestCommand<'_> {
             if let Some(file) = input {
                 file.take(64 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
             }
-            crate::sandbox_host::invoke(
+            crate::sandbox_host::invoke_cancellable(
                 &host,
                 &args,
                 host_timeout.as_secs().clamp(1, 3600),
                 self.limit,
                 &bytes,
+                self.cancellation,
             )?
         } else {
             let mut child = local_command(&args);
