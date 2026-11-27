@@ -219,6 +219,12 @@ fn capture_saved(
     Ok(captured)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedReplacement {
+    replacement: Uuid,
+}
+
 pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Result<Value> {
     let mut payload: Value = serde_json::from_slice(body)?;
     let reason = payload
@@ -227,8 +233,12 @@ pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Res
         .and_then(|reason| reason.as_str().map(str::to_owned))
         .ok_or("supersession requires a reason")?;
     let reason = crate::retirement::validate_reason(&reason)?;
-    let request: CaptureRequest = serde_json::from_value(payload)?;
-    let replacement = request.request_id;
+    let saved = payload.get("replacement").is_some();
+    let replacement = if saved {
+        serde_json::from_value::<SavedReplacement>(payload.clone())?.replacement
+    } else {
+        serde_json::from_value::<CaptureRequest>(payload.clone())?.request_id
+    };
     if replacement == original.run_id {
         return Err("replacement must be a distinct Run".into());
     }
@@ -238,10 +248,22 @@ pub fn supersede(control: &Path, original: &queue::Delivery, body: &[u8]) -> Res
         reason,
         Some(replacement),
     )?;
-    let receipts = control
-        .join("supersession-requests")
-        .join(original.run_id.to_string());
-    let captured = capture_saved(control, request, &receipts)?;
+    let captured = if saved {
+        let root = original
+            .directory
+            .parent()
+            .ok_or("missing original Runs root")?;
+        let captured = store::load(&root.join(replacement.to_string()))?;
+        if captured.directory.parent() != Some(root) || captured.contract.run_id != replacement {
+            return Err("saved replacement differs from its Runs root or identifier".into());
+        }
+        captured
+    } else {
+        let receipts = control
+            .join("supersession-requests")
+            .join(original.run_id.to_string());
+        capture_saved(control, serde_json::from_value(payload)?, &receipts)?
+    };
     if previous.is_none()
         && (captured.directory.join("attempt.json").try_exists()?
             || crate::retirement::path(&captured.directory).try_exists()?

@@ -351,6 +351,8 @@ harborist cancel RUN_ID --reason "Stopped by operator"
 harborist apply RUN_ID --branch existing-local-branch
 harborist publish RUN_ID --approve CANDIDATE_SHA --destination OWNER/REPO --base main
 harborist github-status RUN_ID
+harborist supersede RUN_ID file:/path/to/replacement.md --reason "Request changed"
+harborist supersede RUN_ID --replacement REPLACEMENT_RUN_ID --reason "Use saved replacement"
 harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
 ```
 

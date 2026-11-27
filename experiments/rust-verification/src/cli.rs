@@ -443,6 +443,138 @@ fn github_status(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn supersede(args: &[OsString]) -> Result<i32> {
+    use serde_json::json;
+
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "Usage: harborist supersede RUN_ID [SOURCE | --replacement RUN_ID] --reason TEXT [OPTIONS]"
+        );
+        return Ok(0);
+    }
+    let [id, args @ ..] = args else {
+        return Err("supersede requires the original Run UUID".into());
+    };
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let mut reason = None;
+    let mut replacement = None;
+    let mut capture = Vec::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--reason") => {
+                reason = Some(
+                    args.next()
+                        .and_then(|value| value.to_str())
+                        .ok_or("invalid reason")?,
+                )
+            }
+            Some("--replacement") => {
+                replacement = Some(Uuid::parse_str(
+                    args.next()
+                        .and_then(|value| value.to_str())
+                        .ok_or("invalid replacement UUID")?,
+                )?)
+            }
+            Some(
+                "--control-dir"
+                | "--runs-dir"
+                | "--repo"
+                | "--settings"
+                | "--ref"
+                | "--timeout"
+                | "--verification-reserve",
+            ) => {
+                capture.push(arg.clone());
+                capture.push(
+                    args.next()
+                        .ok_or("missing supersession option value")?
+                        .clone(),
+                );
+            }
+            _ => capture.push(arg.clone()),
+        }
+    }
+    let options = RunOptions::parse(&capture)?;
+    if options.foreground || options.json {
+        return Err("unsupported supersession mode".into());
+    }
+    let reason = crate::retirement::validate_reason(reason.ok_or("supersede requires --reason")?)?;
+    let directory = match options.control {
+        Some(path) => path,
+        None => state_path("control")?,
+    };
+    let current = control::read(&directory, &format!("/runs/{id}"))?;
+    let repository = PathBuf::from(
+        current["repository"]
+            .as_str()
+            .ok_or("original Run has no saved repository")?,
+    );
+    if let Some(path) = options.repository {
+        if store::repository(&path)? != repository {
+            return Err("original Run does not match the requested repository".into());
+        }
+    }
+    if let Some(root) = options.runs {
+        if current["submission"]["runs_root"].as_str().map(Path::new)
+            != Some(root.canonicalize()?.as_path())
+        {
+            return Err("original Run does not match the requested Runs root".into());
+        }
+    }
+    let payload = match (options.source, replacement) {
+        (None, Some(replacement))
+            if options.settings.is_none()
+                && options.reference.is_none()
+                && options.total.is_none()
+                && options.reserve.is_none() =>
+        {
+            json!({"reason": reason, "replacement": replacement})
+        }
+        (Some(source), None) => {
+            let source = source.to_str().ok_or("invalid replacement source")?;
+            let source = if source.starts_with("github:") || source.starts_with("https://") {
+                source.to_owned()
+            } else {
+                let path = Path::new(source.strip_prefix("file:").unwrap_or(source));
+                if path.starts_with("~") {
+                    path.to_owned()
+                } else {
+                    path.canonicalize()?
+                }
+                .to_str()
+                .ok_or("invalid replacement file path")?
+                .to_owned()
+            };
+            let settings = options
+                .settings
+                .map(|path| path.canonicalize())
+                .transpose()?;
+            json!({
+                "request_id": Uuid::new_v4(), "reason": reason, "source": source,
+                "repository": repository, "settings": settings,
+                "ref": options.reference.unwrap_or_else(|| "HEAD".into()),
+                "timeout": options.total.unwrap_or(store::TOTAL_SECONDS),
+                "verification_reserve": options.reserve.unwrap_or(store::VERIFICATION_RESERVE_SECONDS),
+            })
+        }
+        _ => {
+            return Err(
+                "supply exactly one source or a saved replacement without capture options".into(),
+            );
+        }
+    };
+    println!(
+        "{}",
+        control::write(
+            &directory,
+            &format!("/workspace/runs/{id}/supersede"),
+            &payload
+        )?
+    );
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -450,9 +582,12 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if command == "supersede" {
+        return supersede(args);
     }
     if command == "github-status" {
         return github_status(args);

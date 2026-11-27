@@ -126,4 +126,18 @@ printf '%s\n' "$reworked" | grep -Fq '"outcome":"VERIFIED"'
 printf '%s\n' "$reworked" | grep -Fq '"attempt_number":1'
 cancelled=$(compose exec -T service harborist cancel "$rework_id" --reason 'Compose test complete' --json)
 printf '%s\n' "$cancelled" | grep -Fq '"reason":"Compose test complete"'
+replacement=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --ref 'HEAD^' --json)
+replacement_id=$(printf '%s\n' "$replacement" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$replacement_id"
+retired=$(compose exec -T service harborist supersede "$saved_id" --replacement "$replacement_id" --reason 'Use the saved replacement')
+printf '%s\n' "$retired" | grep -Fq '"replacement":"'"$replacement_id"'"'
+test "$(compose exec -T service harborist supersede "$saved_id" --replacement "$replacement_id" --reason 'Use the saved replacement')" = "$retired"
+status=$(compose exec -T service harborist status "$replacement_id" --wait --interval 0.05 --json)
+printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
+retired=$(compose exec -T service harborist supersede "$run_id" file:/home/harborist/.harborist/issue.md --ref 'HEAD^' --reason 'Use a freshly captured replacement')
+replacement_id=$(printf '%s\n' "$retired" | sed -n 's/.*"replacement":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$replacement_id"
+status=$(compose exec -T service harborist status "$replacement_id" --wait --interval 0.05 --json)
+printf '%s\n' "$status" | grep -Fq '"outcome":"VERIFIED"'
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'
