@@ -331,6 +331,11 @@ The service and worker share persistent state, and the monitor mounts only
 the control volume. This stack packages the Rust runtime. Repository mounts
 and a configured Codex or Sandbox runtime are needed to execute jobs.
 
+Run `./experiments/rust-verification/docker-compose-check.sh` to test
+intake, background execution, and evidence retrieval with a local Codex
+fixture. The check provisions a temporary Compose project and removes
+its containers and volumes afterward.
+
 ## Run the comparison
 
 From the repository root with Docker running:
