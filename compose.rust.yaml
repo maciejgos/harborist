@@ -14,7 +14,7 @@ services:
       - state:/home/harborist/.harborist
       - control:/home/harborist/.harborist/control
     healthcheck:
-      test: [CMD, test, -S, /home/harborist/.harborist/control/service.sock]
+      test: [CMD, harborist, service, status]
       interval: 2s
       timeout: 3s
       retries: 10
@@ -30,7 +30,8 @@ services:
       - control:/home/harborist/.harborist/control
   web:
     <<: *runtime
-    command: [web, /home/harborist/.harborist/control, "${HARBORIST_WEB_PORT:-8765}", --container-listener]
+    entrypoint: [harborist]
+    command: [web, --port, "${HARBORIST_WEB_PORT:-8765}", --container-listener]
     depends_on:
       service:
         condition: service_healthy

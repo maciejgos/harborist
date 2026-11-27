@@ -23,6 +23,7 @@ services:
 YAML
 compose build service
 compose up --no-build -d --wait --wait-timeout 25
+compose exec -T service harborist service status | grep -Fq '"stopping":false'
 compose exec -T service sh -eu <<'FIXTURE'
 cd /home/harborist/.harborist
 mkdir tools

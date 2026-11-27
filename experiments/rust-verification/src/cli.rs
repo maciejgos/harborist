@@ -575,6 +575,62 @@ fn supersede(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn web(args: &[OsString]) -> Result<i32> {
+    let mut directory = None;
+    let mut port = OsString::from("8765");
+    let mut container_listener = false;
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        let mut value = || args.next().cloned().ok_or("missing web option value");
+        match flag.to_str() {
+            Some("--help" | "-h") => {
+                println!("Usage: harborist web [--control-dir PATH] [--port PORT]");
+                return Ok(0);
+            }
+            Some("--control-dir") => directory = Some(PathBuf::from(value()?)),
+            Some("--port") => port = value()?,
+            Some("--container-listener") => container_listener = true,
+            _ => return Err(format!("unexpected web argument: {}", flag.to_string_lossy()).into()),
+        }
+    }
+    let directory = match directory {
+        Some(path) => path,
+        None => state_path("control")?,
+    };
+    control::require_service(&directory)?;
+    let mut arguments = vec![directory.into_os_string(), port];
+    if container_listener {
+        arguments.push("--container-listener".into());
+    }
+    control::web(&arguments)?;
+    Ok(0)
+}
+
+fn service(args: &[OsString]) -> Result<i32> {
+    let (command, args) = match args {
+        [command, args @ ..] if command == "status" => (command, args),
+        [flag] if flag == "--help" || flag == "-h" => {
+            println!("Usage: harborist service status [--control-dir PATH]");
+            return Ok(0);
+        }
+        _ => return Err("expected harborist service status [--control-dir PATH]".into()),
+    };
+    let directory = match args {
+        [] => state_path("control")?,
+        [flag, directory] if flag == "--control-dir" => PathBuf::from(directory),
+        [flag] if flag == "--help" || flag == "-h" => {
+            println!(
+                "Usage: harborist service {} [--control-dir PATH]",
+                command.to_string_lossy()
+            );
+            return Ok(0);
+        }
+        _ => return Err("expected harborist service status [--control-dir PATH]".into()),
+    };
+    println!("{}", control::read(&directory, "/health")?);
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -582,9 +638,15 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if command == "service" {
+        return service(args);
+    }
+    if command == "web" {
+        return web(args);
     }
     if command == "supersede" {
         return supersede(args);

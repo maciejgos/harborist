@@ -625,6 +625,7 @@ pub fn web(args: &[OsString]) -> Result<()> {
     }
     let allowed = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
     let server = Server::http((listener, port)).map_err(|error| error.to_string())?;
+    eprintln!("Harborist workspace at http://127.0.0.1:{port}");
     for mut request in server.incoming_requests() {
         let Some(host) =
             header(&request, "Host").filter(|host| allowed.iter().any(|value| value == host))

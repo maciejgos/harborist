@@ -343,6 +343,8 @@ and the shared Harborist state:
 ```sh
 harborist intake file:/path/to/request.md --repo /path/to/repo --json
 harborist run RUN_ID --json
+harborist service status
+harborist web --port 8765
 harborist runs --json
 harborist status RUN_ID --wait --json
 harborist rework RUN_ID --feedback "Address the failed check"
