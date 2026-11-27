@@ -6,13 +6,14 @@ use serde::{Deserialize, Serialize};
 use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
-    io::Read,
+    io::{self, BufRead, BufReader, Read, Write},
+    net::{TcpListener, TcpStream},
     os::{fd::AsRawFd, unix::fs::PermissionsExt},
     path::Path,
     process::{Command, Stdio},
+    sync::Arc,
     time::Duration,
 };
-use tiny_http::{Method, Request, Response, Server};
 
 const MAX_INPUT: usize = 64 * 1024 * 1024;
 const MAX_BODY: usize = 4 * MAX_INPUT.div_ceil(3) + 128 * 1024;
@@ -37,17 +38,8 @@ struct Output {
     stderr_truncated: bool,
 }
 
-fn authorized(request: &Request, expected: &[u8]) -> bool {
-    let mut headers = request
-        .headers()
-        .iter()
-        .filter(|header| header.field.equiv("Authorization"));
-    let Some(header) = headers.next() else {
-        return false;
-    };
-    let supplied = header.value.as_bytes();
-    headers.next().is_none()
-        && supplied.len() == expected.len()
+fn authorized(supplied: &[u8], expected: &[u8]) -> bool {
+    supplied.len() == expected.len()
         && supplied
             .iter()
             .zip(expected)
@@ -55,32 +47,72 @@ fn authorized(request: &Request, expected: &[u8]) -> bool {
             == 0
 }
 
+fn disconnected(reader: &BufReader<TcpStream>) -> bool {
+    let mut descriptor = libc::pollfd {
+        fd: reader.get_ref().as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // Once the whole request arrives, any new data or EOF ends the request.
+    !reader.buffer().is_empty() || unsafe { libc::poll(&mut descriptor, 1, 0) } != 0
+}
+
+fn request_body(reader: &mut BufReader<TcpStream>, expected: &[u8]) -> Result<Option<Vec<u8>>> {
+    let mut headers = (&mut *reader).take(8192);
+    let mut line = String::new();
+    headers.read_line(&mut line)?;
+    if !matches!(
+        line.as_str(),
+        "POST /v1/sandbox HTTP/1.0\r\n" | "POST /v1/sandbox HTTP/1.1\r\n"
+    ) {
+        return Ok(None);
+    }
+    let mut length = None;
+    let mut authorization = None;
+    loop {
+        line.clear();
+        if headers.read_line(&mut line)? == 0 {
+            return Err("incomplete host helper request headers".into());
+        }
+        if line == "\r\n" {
+            break;
+        }
+        let (name, value) = line.split_once(':').ok_or("invalid host helper header")?;
+        if name.eq_ignore_ascii_case("Content-Length") {
+            if length.replace(value.trim().parse::<usize>()?).is_some() {
+                return Err("duplicate host helper request length".into());
+            }
+        } else if name.eq_ignore_ascii_case("Authorization") {
+            if authorization
+                .replace(authorized(value.trim().as_bytes(), expected))
+                .is_some()
+            {
+                return Ok(None);
+            }
+        } else if name.eq_ignore_ascii_case("Transfer-Encoding") {
+            return Err("unsupported host helper request framing".into());
+        }
+    }
+    if authorization != Some(true) {
+        return Ok(None);
+    }
+    let length = length
+        .filter(|length| (1..=MAX_BODY).contains(length))
+        .ok_or("invalid host helper request length")?;
+    let mut body = vec![0; length];
+    drop(headers);
+    reader.read_exact(&mut body)?;
+    Ok(Some(body))
+}
+
 fn dispatch(
-    request: &mut Request,
+    bytes: &[u8],
     runtime: &Runtime,
     executable: &Path,
     directory: &Path,
+    disconnected: impl Fn() -> bool,
 ) -> Result<Vec<u8>> {
-    let length = request
-        .body_length()
-        .filter(|length| (1..=MAX_BODY).contains(length))
-        .ok_or("invalid host helper request length")?;
-    if request
-        .headers()
-        .iter()
-        .any(|header| header.field.equiv("Transfer-Encoding"))
-    {
-        return Err("unsupported host helper request framing".into());
-    }
-    let mut bytes = Vec::new();
-    request
-        .as_reader()
-        .take(length as u64 + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() != length {
-        return Err("incomplete host helper request".into());
-    }
-    let operation: Operation = serde_json::from_slice(&bytes)?;
+    let operation: Operation = serde_json::from_slice(bytes)?;
     if !(operation.timeout > 0.0 && operation.timeout <= 3600.0) {
         return Err("invalid host helper timeout".into());
     }
@@ -91,7 +123,19 @@ fn dispatch(
         operation.timeout.ceil() as u64,
         operation.limit,
         &input,
-        |args, seconds, limit, input| run(executable, directory, args, seconds, limit, input),
+        |args, seconds, limit, input, cancellable| {
+            run(executable, directory, args, seconds, limit, input, || {
+                if cancellable && disconnected() {
+                    Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "sandbox worker disconnected",
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+        },
+        &disconnected,
     )?;
     Ok(serde_json::to_vec(&Output {
         returncode: result.returncode,
@@ -110,6 +154,7 @@ fn run(
     timeout: u64,
     limit: usize,
     input: &[u8],
+    check: impl Fn() -> io::Result<()>,
 ) -> Result<Capture> {
     let mut command = Command::new(executable);
     command
@@ -136,10 +181,11 @@ fn run(
         crate::store::write_new(&path, input)?;
         command.stdin(File::open(path)?);
     }
-    Ok(crate::process::capture_command(
+    Ok(crate::process::capture_until(
         &mut command,
         Duration::from_secs(timeout),
         limit,
+        check,
     )?)
 }
 
@@ -172,21 +218,59 @@ pub fn serve(args: &[OsString]) -> Result<()> {
         return Err("invalid sandbox host token".into());
     }
     let authorization = format!("Bearer {token}");
-    let runtime = Runtime::new(&directory);
-    let server = Server::http(("127.0.0.1", port)).map_err(|error| error.to_string())?;
-    for mut request in server.incoming_requests() {
-        let (status, body) = if request.method() != &Method::Post
-            || request.url() != "/v1/sandbox"
-            || !authorized(&request, authorization.as_bytes())
-        {
-            (403, Vec::new())
-        } else {
-            match dispatch(&mut request, &runtime, executable, &directory) {
-                Ok(body) => (200, body),
-                Err(_) => (400, Vec::new()),
-            }
-        };
-        let _ = request.respond(Response::from_data(body).with_status_code(status));
+    let runtime = Arc::new(Runtime::new(&directory));
+    let authorization = Arc::new(authorization);
+    let server = TcpListener::bind(("127.0.0.1", port))?;
+    for socket in server.incoming() {
+        let socket = socket?;
+        let (runtime, authorization, directory, executable) = (
+            Arc::clone(&runtime),
+            Arc::clone(&authorization),
+            directory.clone(),
+            executable.to_owned(),
+        );
+        std::thread::Builder::new().spawn(move || {
+            let _ = handle(
+                socket,
+                &runtime,
+                authorization.as_bytes(),
+                &executable,
+                &directory,
+            );
+        })?;
     }
+    Ok(())
+}
+
+fn handle(
+    stream: TcpStream,
+    runtime: &Runtime,
+    authorization: &[u8],
+    executable: &Path,
+    directory: &Path,
+) -> Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+    let mut reader = BufReader::new(stream);
+    let result = request_body(&mut reader, authorization).and_then(|body| {
+        body.map(|body| {
+            dispatch(&body, runtime, executable, directory, || {
+                disconnected(&reader)
+            })
+        })
+        .transpose()
+    });
+    let (status, body) = match result {
+        Ok(Some(body)) => ("200 OK", body),
+        Ok(None) => ("403 Forbidden", Vec::new()),
+        Err(_) => ("400 Bad Request", Vec::new()),
+    };
+    let mut stream = reader.into_inner();
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )?;
+    stream.write_all(&body)?;
     Ok(())
 }

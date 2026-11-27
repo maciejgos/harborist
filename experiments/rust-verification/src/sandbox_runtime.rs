@@ -65,7 +65,8 @@ impl Runtime {
         timeout: u64,
         limit: usize,
         input: &[u8],
-        run: impl Fn(&[&str], u64, usize, &[u8]) -> Result<Capture>,
+        run: impl Fn(&[&str], u64, usize, &[u8], bool) -> Result<Capture>,
+        disconnected: impl Fn() -> bool,
     ) -> Result<Capture> {
         if !(1..=3600).contains(&timeout)
             || !(1..=16 * 1024 * 1024).contains(&limit)
@@ -77,15 +78,15 @@ impl Runtime {
             return Err("invalid host sandbox operation bounds or input".into());
         }
         if matches!(args, ["version"] | ["policy", "ls", "--json"]) {
-            return run(args, timeout, limit, &[]);
+            return run(args, timeout, limit, &[], true);
         }
         let lock = self
             .ownership_lock
             .lock()
             .map_err(|_| "sandbox ownership lock poisoned")?;
         let mut ownership = self.ownership()?;
-        let inventory = inventory(&run)?;
-        let mut owned: HashSet<_> = inventory
+        let observed = inventory(&run)?;
+        let mut owned: HashSet<_> = observed
             .values()
             .filter_map(|entry| {
                 (ownership.get(&entry.name) == Some(&Some(entry.id))).then_some(entry.name.as_str())
@@ -96,7 +97,7 @@ impl Runtime {
                 return Err("a sandbox creation could not be reconciled".into());
             }
             let mut output = serde_json::to_vec(
-                &inventory
+                &observed
                     .values()
                     .filter(|entry| owned.contains(entry.name.as_str()))
                     .collect::<Vec<_>>(),
@@ -119,12 +120,12 @@ impl Runtime {
         let command = host_command(args, &owned)?;
         let command: Vec<_> = command.iter().map(String::as_str).collect();
         if let ["create", "--name", name, ..] = command.as_slice() {
-            if inventory.contains_key(*name) {
+            if observed.contains_key(*name) {
                 return Err("sandbox name is already in use".into());
             }
             ownership.insert((*name).to_owned(), None);
             self.save(&ownership)?;
-            let result = run(&command, timeout, limit, &[]);
+            let result = run(&command, timeout, limit, &[], false);
             match inventory_now(&run, name)? {
                 Some(id) => {
                     ownership.insert((*name).to_owned(), Some(id));
@@ -134,24 +135,60 @@ impl Runtime {
                 }
             }
             self.save(&ownership)?;
+            if disconnected() {
+                if let Some(Some(id)) = ownership.get(*name) {
+                    stop_owned(&run, name, *id)?;
+                }
+            }
             return result;
         }
         drop(lock);
-        run(&command, timeout, limit, input)
+        let result = run(&command, timeout, limit, input, true);
+        if command[0] == "exec" && disconnected() {
+            let name = command[command
+                .iter()
+                .position(|arg| *arg == "--")
+                .ok_or("missing guest command separator")?
+                + 1];
+            let _lock = self
+                .ownership_lock
+                .lock()
+                .map_err(|_| "sandbox ownership lock poisoned")?;
+            stop_owned(&run, name, observed[name].id)?;
+        }
+        result
     }
 }
 
+fn stop_owned(
+    run: &impl Fn(&[&str], u64, usize, &[u8], bool) -> Result<Capture>,
+    name: &str,
+    id: Uuid,
+) -> Result<()> {
+    let current = inventory(run)?;
+    if current
+        .get(name)
+        .is_some_and(|guest| guest.id == id && guest.status != "stopped")
+    {
+        let result = run(&["stop", name], 20, 65536, &[], false)?;
+        if result.returncode != 0 || result.timed_out {
+            return Err("host helper could not stop the disconnected sandbox".into());
+        }
+    }
+    Ok(())
+}
+
 fn inventory_now(
-    run: &impl Fn(&[&str], u64, usize, &[u8]) -> Result<Capture>,
+    run: &impl Fn(&[&str], u64, usize, &[u8], bool) -> Result<Capture>,
     name: &str,
 ) -> Result<Option<Uuid>> {
     Ok(inventory(run)?.get(name).map(|entry| entry.id))
 }
 
 fn inventory(
-    run: &impl Fn(&[&str], u64, usize, &[u8]) -> Result<Capture>,
+    run: &impl Fn(&[&str], u64, usize, &[u8], bool) -> Result<Capture>,
 ) -> Result<BTreeMap<String, Identity>> {
-    let result = run(&["ls", "--json"], 5, 1024 * 1024, &[])?;
+    let result = run(&["ls", "--json"], 5, 1024 * 1024, &[], false)?;
     if result.returncode != 0 || result.timed_out || result.stdout.truncated {
         return Err("cannot establish live sandbox identity".into());
     }
@@ -178,7 +215,7 @@ mod tests {
         let identity = Uuid::new_v4();
         let live = Cell::new(None);
         let calls = RefCell::new(Vec::new());
-        let run = |args: &[&str], _: u64, _: usize, _: &[u8]| {
+        let run = |args: &[&str], _: u64, _: usize, _: &[u8], _: bool| {
             let bytes = match args {
                 ["ls", "--json"] => serde_json::to_vec(
                     &live
@@ -231,20 +268,21 @@ mod tests {
                 65536,
                 &[],
                 run,
+                || false,
             )
             .unwrap();
         let restarted = Runtime::new(&directory.0);
         restarted
-            .execute(&["stop", name], 10, 65536, &[], run)
+            .execute(&["stop", name], 10, 65536, &[], run, || false)
             .unwrap();
         live.set(Some(Uuid::new_v4()));
         assert!(
             restarted
-                .execute(&["stop", name], 10, 65536, &[], run)
+                .execute(&["stop", name], 10, 65536, &[], run, || false)
                 .is_err()
         );
         let listing = restarted
-            .execute(&["ls", "--json"], 10, 65536, &[], run)
+            .execute(&["ls", "--json"], 10, 65536, &[], run, || false)
             .unwrap();
         assert_eq!(listing.stdout.bytes, b"[]");
         assert_eq!(*calls.borrow(), [format!("stop {name}")]);

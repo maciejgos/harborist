@@ -190,6 +190,19 @@ def rust_sandbox_host(root: Path) -> None:
     raw = b'{"rules":[{"scope":"global","decision":"deny"}]}'
     snapshot.write_bytes(raw)
     env = sandbox_fixture(root, snapshot)
+    name = "harborist-test-1234567890abcdef"
+    identity = "59fe0bd4-ea57-45c7-a3f7-de5819c68762"
+    (helper_dir / "ownership.json").write_text(json.dumps({name: identity}))
+    sbx = root / "sbx"
+    script = sbx.read_text().replace(
+        '    *) exit 1 ;;',
+        f"""    '--no-input ls --json') printf '%s\n' '[{{"name":"{name}","id":"{identity}","status":"running"}}]' ;;
+    '--no-input exec -- {name} sleep') touch started; sleep 30 ;;
+    '--no-input stop {name}') touch stopped ;;
+    *) exit 1 ;;""",
+    )
+    sbx.write_text(script)
+
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
@@ -218,6 +231,22 @@ def rust_sandbox_host(root: Path) -> None:
                 assert with_connection.getresponse().status == 403
             finally:
                 with_connection.close()
+            body = Request(args=("exec", name, "sleep"), timeout=30, limit=4096).model_dump_json().encode()
+            with socket.create_connection(("127.0.0.1", port), timeout=2) as worker:
+                header = (
+                    f"POST /v1/sandbox HTTP/1.1\r\nAuthorization: Bearer {token.decode()}\r\n"
+                    f"Content-Length: {len(body)}\r\n\r\n"
+                )
+                worker.sendall(header.encode() + body)
+                deadline = time.monotonic() + 5
+                while not (helper_dir / "started").exists():
+                    assert time.monotonic() < deadline
+                    time.sleep(0.025)
+            deadline = time.monotonic() + 5
+            while not (helper_dir / "stopped").exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.025)
+
         finally:
             helper.terminate()
 

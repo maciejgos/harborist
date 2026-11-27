@@ -98,9 +98,18 @@ pub fn capture_cancellable(
     limit: usize,
     cancellation: Option<&Path>,
 ) -> io::Result<Capture> {
-    if let Some(marker) = cancellation {
-        crate::retirement::cancelled(marker)?;
-    }
+    capture_until(command, allowance, limit, || {
+        cancellation.map_or(Ok(()), crate::retirement::cancelled)
+    })
+}
+
+pub fn capture_until(
+    command: &mut Command,
+    allowance: Duration,
+    limit: usize,
+    check: impl Fn() -> io::Result<()>,
+) -> io::Result<Capture> {
+    check()?;
     let deadline = Instant::now() + allowance;
     #[cfg(target_os = "linux")]
     {
@@ -136,9 +145,7 @@ pub fn capture_cancellable(
     let mut timed_out = false;
 
     loop {
-        if let Some(marker) = cancellation {
-            crate::retirement::cancelled(marker)?;
-        }
+        check()?;
         let remaining = deadline.saturating_duration_since(Instant::now());
         let mut status = group.0.try_wait()?;
         if status.is_none() && remaining.is_zero() {

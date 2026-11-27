@@ -315,8 +315,9 @@ would export an empty patch under the read-only stage rules.
 
 The experimental Rust host helper starts with
 `harborist-verify sandbox-host DIRECTORY PORT`. It binds to loopback and
-reads the bearer token from `DIRECTORY/token`. The deployment still uses
-the Python helper for disconnect-triggered cleanup.
+reads the bearer token from `DIRECTORY/token`. When a worker connection
+closes during guest execution, the helper checks the live sandbox UUID
+before stopping it. Deployment still uses the Python helper.
 
 ## Run the comparison
 
