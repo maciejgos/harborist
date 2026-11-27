@@ -3,6 +3,7 @@ use harborist_verify::workflow::{Candidate, Stage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    ffi::OsStr,
     fs::{self, File},
     io::Read,
     path::Path,
@@ -185,40 +186,99 @@ impl NativeAgent for Codex<'_> {
             "candidate": candidate,
         });
         fs::write(&input_path, serde_json::to_vec(&prompt)?)?;
-        let mut command = Command::new("codex");
-        command.arg("exec");
+        let policy = self
+            .0
+            .and_then(|execution| execution.docker_policy.as_ref());
+        let mut arguments = vec!["exec"];
         if let Some(execution) = self.0 {
-            command
-                .arg("--model")
-                .arg(&execution.profile.model)
-                .args(&execution.profile.arguments);
+            arguments.extend(["--model", &execution.profile.model]);
+            arguments.extend(execution.profile.arguments.iter().map(String::as_str));
         }
-        command
-            .args([
-                "--ignore-user-config",
-                "--ephemeral",
-                "--config",
-                "approval_policy=\"never\"",
-                "--cd",
-            ])
-            .arg(workspace)
-            .args([
-                "--sandbox",
-                if build {
-                    "workspace-write"
-                } else {
-                    "read-only"
-                },
-                "--output-schema",
-            ])
-            .arg(schema_path)
-            .arg("--output-last-message")
-            .arg(&output_path)
-            .args(["--color", "never", "-"])
-            .current_dir(workspace)
-            .stdin(File::open(input_path)?);
-        let result =
-            process::capture_cancellable(&mut command, allowance, 65536, Some(cancellation))?;
+        if policy.is_none() {
+            arguments.push("--ignore-user-config");
+        }
+        let (cwd, schema, output) = if policy.is_some() {
+            (
+                OsStr::new(crate::sandbox::GUEST_REPOSITORY),
+                OsStr::new(crate::sandbox::GUEST_SCHEMA),
+                OsStr::new(crate::sandbox::GUEST_FINAL),
+            )
+        } else {
+            (
+                workspace.as_os_str(),
+                schema_path.as_os_str(),
+                output_path.as_os_str(),
+            )
+        };
+        let mut arguments: Vec<&OsStr> = arguments.into_iter().map(OsStr::new).collect();
+        arguments.extend([
+            OsStr::new("--ephemeral"),
+            OsStr::new("--config"),
+            OsStr::new("approval_policy=\"never\""),
+            OsStr::new("--cd"),
+            cwd,
+            OsStr::new("--sandbox"),
+            OsStr::new(if build {
+                "workspace-write"
+            } else {
+                "read-only"
+            }),
+            OsStr::new("--output-schema"),
+            schema,
+            OsStr::new("--output-last-message"),
+            output,
+            OsStr::new("--color"),
+            OsStr::new("never"),
+            OsStr::new("-"),
+        ]);
+        let (result, guest_output) = if let Some(policy) = policy {
+            let input = File::open(&input_path)?;
+            let started = std::time::Instant::now();
+            let (result, output) = crate::sandbox::with_guest(policy, name, workspace, |guest| {
+                let mut command = vec!["codex"];
+                for argument in &arguments {
+                    command.push(
+                        argument
+                            .to_str()
+                            .ok_or("guest Codex arguments must be UTF-8")?,
+                    );
+                }
+                let (capture, output) = crate::sandbox::run_codex(
+                    guest,
+                    &command,
+                    &schema_path,
+                    &input,
+                    allowance.saturating_sub(started.elapsed()),
+                    cancellation,
+                )?;
+                if capture.returncode != 0 || capture.timed_out {
+                    return Err(AgentFailure {
+                        reason: if capture.timed_out {
+                            "TIME_BUDGET_EXCEEDED"
+                        } else {
+                            "EXECUTION_FAILED"
+                        },
+                        message: format!(
+                            "Sandboxed Codex {name} failed (exit {})",
+                            capture.returncode
+                        ),
+                    }
+                    .into());
+                }
+                Ok((capture, output))
+            })?;
+            (result, Some(output))
+        } else {
+            let mut command = Command::new("codex");
+            command
+                .args(arguments)
+                .current_dir(workspace)
+                .stdin(File::open(input_path)?);
+            (
+                process::capture_cancellable(&mut command, allowance, 65536, Some(cancellation))?,
+                None,
+            )
+        };
         fs::write(directory.join("stdout.log"), &result.stdout.bytes)?;
         fs::write(directory.join("stderr.log"), &result.stderr.bytes)?;
         if result.timed_out || result.returncode != 0 {
@@ -236,10 +296,16 @@ impl NativeAgent for Codex<'_> {
             .into());
         }
         const MAX: u64 = 4 * 1024 * 1024;
-        let mut response = Vec::new();
-        File::open(output_path)?
-            .take(MAX + 1)
-            .read_to_end(&mut response)?;
+        let response = if let Some(output) = guest_output {
+            fs::write(&output_path, &output)?;
+            output
+        } else {
+            let mut response = Vec::new();
+            File::open(output_path)?
+                .take(MAX + 1)
+                .read_to_end(&mut response)?;
+            response
+        };
         if response.len() as u64 > MAX {
             return Err(invalid("Codex final output exceeded size limit".to_owned()).into());
         }

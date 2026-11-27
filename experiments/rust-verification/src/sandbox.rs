@@ -388,7 +388,9 @@ fn finish(name: &str, exported: bool) -> Result<()> {
 }
 
 const GUEST_BUNDLE: &str = "/tmp/harborist-source.bundle";
-const GUEST_REPOSITORY: &str = "/home/agent/workspace/repository";
+pub const GUEST_SCHEMA: &str = "/tmp/harborist-schema.json";
+pub const GUEST_FINAL: &str = "/tmp/harborist-final.json";
+pub const GUEST_REPOSITORY: &str = "/home/agent/workspace/repository";
 
 struct TransferDirectory(std::path::PathBuf);
 
@@ -409,9 +411,112 @@ impl Drop for TransferDirectory {
     }
 }
 
+fn upload(name: &str, path: &std::path::Path, destination: &str) -> Result<()> {
+    use std::io::Read;
+    if let Some(host) = helper_host()? {
+        const LIMIT: u64 = 64 * 1024 * 1024;
+        let mut input = Vec::new();
+        std::fs::File::open(path)?
+            .take(LIMIT + 1)
+            .read_to_end(&mut input)?;
+        if input.len() as u64 > LIMIT {
+            return Err("Docker Sandbox input exceeds the transfer limit".into());
+        }
+        checked_output(crate::sandbox_host::invoke(
+            &host,
+            &["upload", name, destination],
+            30,
+            1024 * 1024,
+            &input,
+        )?)?;
+    } else {
+        let source = path
+            .to_str()
+            .ok_or("Docker Sandbox input path must be UTF-8")?;
+        control_with_timeout(&["cp", source, &format!("{name}:{destination}")], 30)?;
+    }
+    Ok(())
+}
+
+fn download(name: &str, source: &str, limit: usize) -> Result<Vec<u8>> {
+    use std::io::Read;
+    if let Some(host) = helper_host()? {
+        return checked_output(crate::sandbox_host::invoke(
+            &host,
+            &["download", name, source],
+            30,
+            limit,
+            &[],
+        )?);
+    }
+    let transfer = TransferDirectory::create()?;
+    let destination = transfer.0.join("artifact");
+    control_with_timeout(
+        &[
+            "cp",
+            &format!("{name}:{source}"),
+            destination
+                .to_str()
+                .ok_or("Docker Sandbox output path must be UTF-8")?,
+        ],
+        30,
+    )?;
+    let mut bytes = Vec::new();
+    crate::record::open_artifact(&transfer.0, "artifact")?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > limit {
+        return Err("Docker Sandbox output exceeds the transfer limit".into());
+    }
+    Ok(bytes)
+}
+
+pub fn with_guest<T>(
+    policy: &DockerPolicy,
+    label: &str,
+    workspace: &std::path::Path,
+    operation: impl FnOnce(&str) -> Result<T>,
+) -> Result<T> {
+    policy.check_baseline()?;
+    let name = format!(
+        "harborist-{label}-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..16]
+    );
+    let result = provision(policy, &name)
+        .and_then(|_| populate(&name, workspace))
+        .and_then(|_| operation(&name));
+    finish(&name, result.is_ok())
+        .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
+    result
+}
+
+pub fn run_codex(
+    name: &str,
+    args: &[&str],
+    schema: &std::path::Path,
+    input: &std::fs::File,
+    allowance: std::time::Duration,
+    cancellation: &std::path::Path,
+) -> Result<(crate::process::Capture, Vec<u8>)> {
+    let started = std::time::Instant::now();
+    upload(name, schema, GUEST_SCHEMA)?;
+    let capture = GuestCommand {
+        name,
+        allowance: allowance.saturating_sub(started.elapsed()),
+        limit: 65536,
+        cancellation: Some(cancellation),
+    }
+    .capture(args, Some(input))?;
+    let response = if capture.returncode == 0 && !capture.timed_out {
+        download(name, GUEST_FINAL, 4 * 1024 * 1024)?
+    } else {
+        Vec::new()
+    };
+    Ok((capture, response))
+}
+
 fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
     use harborist_verify::workflow::Sha;
-    use std::io::Read;
 
     let revision: Sha =
         crate::git_text(repository, &["rev-parse", "--verify", "HEAD^{commit}"])?.parse()?;
@@ -434,28 +539,7 @@ fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
     if std::str::from_utf8(&bundle)?.trim_end() != format!("{} HEAD", revision.as_str()) {
         return Err("Docker Sandbox bundle does not match the selected revision".into());
     }
-    if let Some(host) = helper_host()? {
-        const LIMIT: u64 = 64 * 1024 * 1024;
-        let mut input = Vec::new();
-        std::fs::File::open(&path)?
-            .take(LIMIT + 1)
-            .read_to_end(&mut input)?;
-        if input.len() as u64 > LIMIT {
-            return Err("Docker Sandbox source bundle exceeds the transfer limit".into());
-        }
-        checked_output(crate::sandbox_host::invoke(
-            &host,
-            &["upload", name, GUEST_BUNDLE],
-            30,
-            1024 * 1024,
-            &input,
-        )?)?;
-    } else {
-        let source = path
-            .to_str()
-            .ok_or("Docker Sandbox bundle path must be UTF-8")?;
-        control_with_timeout(&["cp", source, &format!("{name}:{GUEST_BUNDLE}")], 30)?;
-    }
+    upload(name, &path, GUEST_BUNDLE)?;
     control(&[
         "exec",
         name,

@@ -104,7 +104,7 @@ impl Profile {
 pub struct Execution {
     pub profile: Profile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    docker_policy: Option<crate::sandbox::DockerPolicy>,
+    pub docker_policy: Option<crate::sandbox::DockerPolicy>,
     playbook: Asset,
     skills: Vec<Asset>,
 }
