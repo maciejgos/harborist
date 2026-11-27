@@ -365,6 +365,8 @@ harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
 Background submission requires a running control service. Saved Runs default
 to `~/.harborist/runs`; use `--runs-dir` to specify a different root.
 Supersession stores the replacement in the original Run’s root.
+Inspection and methodology previews also accept Python captures with
+compatible frozen execution settings.
 
 ## Run the comparison
 

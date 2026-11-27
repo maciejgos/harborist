@@ -259,6 +259,33 @@ pub fn view(root: &Path, id: Uuid, number: Option<u32>) -> Result<Value> {
     Ok(result)
 }
 
+fn validate_frozen_contract(directory: &Path, id: Uuid, raw: &Value) -> Result<Contract> {
+    let contract: Contract = serde_json::from_value(raw.clone())?;
+    let intent = &contract.intent;
+    if contract.run_id != id
+        || intent.artifact.run_id != id
+        || contract.verification["base_sha"] != json!(contract.base_sha)
+        || intent.artifact.size_bytes != intent.markdown.len()
+        || intent.artifact.sha256 != digest(intent.markdown.as_bytes())
+        || read_artifact(directory, "intent.md")? != intent.markdown
+    {
+        return Err("historical contract or intent does not match this Run".into());
+    }
+    Ok(contract)
+}
+
+pub fn inspect_contract(
+    directory: &Path,
+    id: Uuid,
+    raw: &Value,
+) -> Result<crate::settings::Execution> {
+    validate_frozen_contract(directory, id, raw)?;
+    let execution: crate::settings::LegacyExecution =
+        serde_json::from_value(raw["execution"].clone())?;
+    let (execution, _, _) = execution.into_execution()?;
+    Ok(execution)
+}
+
 fn populate(
     root: &Path,
     directory: &Path,
@@ -271,17 +298,8 @@ fn populate(
     if serde_json::from_str::<Value>(&original)? != serde_json::from_str::<Value>(&raw)? {
         return Err("historical Attempt changed the frozen contract".into());
     }
-    let contract: Contract = serde_json::from_str(&raw)?;
+    let contract = validate_frozen_contract(directory, id, &serde_json::from_str(&raw)?)?;
     let intent = &contract.intent;
-    if contract.run_id != id
-        || intent.artifact.run_id != id
-        || contract.verification["base_sha"] != json!(contract.base_sha)
-        || intent.artifact.size_bytes != intent.markdown.len()
-        || intent.artifact.sha256 != digest(intent.markdown.as_bytes())
-        || read_artifact(directory, "intent.md")? != intent.markdown
-    {
-        return Err("historical contract or intent does not match this Run".into());
-    }
     result["title"] = json!(
         intent
             .markdown

@@ -745,17 +745,24 @@ fn inspect(command: &str, args: &[OsString]) -> Result<i32> {
             }
         }
     }
-    let captured = store::load_frozen(&saved_directory(id, root)?)?;
-    if captured.contract.run_id != id {
-        return Err("saved Run does not match the requested identifier".into());
-    }
-    if command == "inspect" {
-        println!("{}", serde_json::to_string(&captured.contract)?);
+    let directory = saved_directory(id, root)?;
+    let raw: serde_json::Value =
+        serde_json::from_str(&crate::record::read_artifact(&directory, "contract.json")?)?;
+    let (contract, execution) = if raw.get("intent").is_some() && raw.get("version").is_none() {
+        let execution = crate::legacy::inspect_contract(&directory, id, &raw)?;
+        (raw, Some(execution))
     } else {
-        let execution = captured
-            .contract
-            .execution
-            .ok_or("saved Run has no frozen methodology")?;
+        let captured = store::load_frozen(&directory)?;
+        if captured.contract.run_id != id {
+            return Err("saved Run does not match the requested identifier".into());
+        }
+        let contract = serde_json::to_value(&captured.contract)?;
+        (contract, captured.contract.execution)
+    };
+    if command == "inspect" {
+        println!("{contract}");
+    } else {
+        let execution = execution.ok_or("saved Run has no frozen methodology")?;
         let preview = match stage {
             Some(stage) => execution.guidance(stage)?,
             None => execution.methodology()?,

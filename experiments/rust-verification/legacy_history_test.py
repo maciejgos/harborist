@@ -47,6 +47,17 @@ def exercise(root: Path) -> None:
     before = (directory / "run.json").read_bytes()
     journal = (directory / "events.jsonl").read_bytes()
     binary = ROOT / "target/release/harborist-verify"
+    public = root / "harborist"
+    public.symlink_to(binary)
+    inspection = ["inspect", run_id, "--runs-dir", str(runs)]
+    python_contract = json.loads(subprocess.check_output(
+        [sys.executable, "-m", "harborist", *inspection], env=env,
+    ))
+    assert json.loads(subprocess.check_output([public, *inspection], env=env)) == python_contract
+    guidance = json.loads(subprocess.check_output(
+        [public, "methodology", run_id, "--runs-dir", runs, "--stage", "design"], env=env,
+    ))
+    assert guidance["playbook"] and guidance["skills"]
     with subprocess.Popen([binary, "service", control, "--runs-dir", runs], env=env) as service:
         try:
             deadline = time.monotonic() + 5
