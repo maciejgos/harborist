@@ -292,6 +292,11 @@ point. Keep the Python evidence available until the worker claims the job.
 The workspace Cancel action works while the continuation is queued, even
 before the worker creates the destination.
 
+The migration diagnostic `harborist-verify sandbox-policy-digest POLICY_JSON`
+prints the frozen fingerprint for a saved Docker network policy response.
+The fingerprint covers effective global rules and stays stable when rule
+order or display IDs change.
+
 ## Run the comparison
 
 From the repository root with Docker running:

@@ -72,7 +72,39 @@ def exercise(root: Path) -> None:
     assert development["run_id"] == contract["run_id"]
 
 
+def sandbox_fingerprint(root: Path) -> None:
+    from harborist.sandbox.docker import policy_digest
+
+    binary = ROOT / "target/release/harborist-verify"
+    snapshot = root / "policy.json"
+    rules = [
+        {"scope": "global", "decision": "allow", "resources": ["example.org:443"],
+         "reason": "café 🔒", "id": "display"},
+        {"scope": "global", "decision": "deny", "resource_type": "network"},
+        {"scope": "sandbox", "decision": "allow", "resources": ["other.org"]},
+    ]
+    command = [binary, "sandbox-policy-digest", snapshot]
+
+    def compare() -> str:
+        raw = json.dumps({"rules": rules}).encode()
+        snapshot.write_bytes(raw)
+        actual = subprocess.check_output(command, text=True).strip()
+        assert actual == policy_digest(raw)
+        return actual
+
+    expected = compare()
+    rules[0]["id"] = "changed"
+    rules.reverse()
+    assert compare() == expected
+    rules[-1]["resources"] = ["different.org:443"]
+    assert compare() != expected
+    snapshot.write_text('{"rules":[]}')
+    result = subprocess.run(command, capture_output=True, check=False)
+    assert result.returncode != 0 and not result.stdout
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory))
+        sandbox_fingerprint(Path(directory))
     print("Rust frozen execution settings checks passed.")

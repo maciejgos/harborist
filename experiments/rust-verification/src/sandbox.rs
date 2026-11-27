@@ -91,6 +91,98 @@ fn destinations(values: Vec<String>) -> Result<Vec<String>> {
     Ok(normalized)
 }
 
+/// Fingerprint effective global rules using the canonical Python wire format.
+pub fn policy_digest(raw: &[u8]) -> Result<String> {
+    use serde_json::Value;
+    const FIELDS: [&str; 9] = [
+        "scope",
+        "resource_type",
+        "decision",
+        "resources",
+        "actions",
+        "status",
+        "origin",
+        "layer",
+        "reason",
+    ];
+    let snapshot: Value = serde_json::from_slice(raw)?;
+    let rules = snapshot["rules"]
+        .as_array()
+        .ok_or("invalid Docker network policy")?;
+    let mut effective = Vec::new();
+    for rule in rules {
+        let rule = rule.as_object().ok_or("invalid Docker network rule")?;
+        if rule.get("scope").and_then(Value::as_str) == Some("global") {
+            let projected = Value::Object(
+                FIELDS
+                    .into_iter()
+                    .map(|field| {
+                        (
+                            field.to_owned(),
+                            rule.get(field).cloned().unwrap_or(Value::Null),
+                        )
+                    })
+                    .collect(),
+            );
+            effective.push(canonical_json(&projected)?);
+        }
+    }
+    if effective.is_empty() {
+        return Err("no global Docker network policy".into());
+    }
+    effective.sort_unstable();
+    Ok(crate::store::digest(
+        format!("[{}]", effective.join(", ")).as_bytes(),
+    ))
+}
+
+fn canonical_json(value: &serde_json::Value) -> Result<String> {
+    use serde_json::Value;
+    use std::fmt::Write;
+    match value {
+        Value::String(value) => {
+            let mut ascii = String::new();
+            for unit in serde_json::to_string(value)?.encode_utf16() {
+                if unit <= 0x7e {
+                    ascii.push(char::from(u8::try_from(unit)?));
+                } else {
+                    write!(ascii, "\\u{unit:04x}")?;
+                }
+            }
+            Ok(ascii)
+        }
+        Value::Array(values) => {
+            let items = values
+                .iter()
+                .map(canonical_json)
+                .collect::<Result<Vec<_>>>()?;
+            Ok(format!("[{}]", items.join(", ")))
+        }
+        Value::Object(values) => {
+            let mut entries: Vec<_> = values.iter().collect();
+            entries.sort_unstable_by_key(|(name, _)| *name);
+            let mut fields = Vec::with_capacity(entries.len());
+            for (name, value) in entries {
+                let key = canonical_json(&Value::String(name.clone()))?;
+                fields.push(format!("{key}: {}", canonical_json(value)?));
+            }
+            Ok(format!("{{{}}}", fields.join(", ")))
+        }
+        Value::Number(number) if number.is_f64() => {
+            Err("unexpected non-integer number in effective Docker network policy".into())
+        }
+        _ => Ok(serde_json::to_string(value)?),
+    }
+}
+
+pub fn digest_file(args: &[std::ffi::OsString]) -> Result<()> {
+    let [file] = args else {
+        return Err("expected sandbox-policy-digest POLICY_JSON".into());
+    };
+    println!("{}", policy_digest(&std::fs::read(file)?)?);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
