@@ -234,39 +234,40 @@ impl NativeAgent for Codex<'_> {
         let (result, guest_output) = if let Some(policy) = policy {
             let input = File::open(&input_path)?;
             let started = std::time::Instant::now();
-            let (result, output) = crate::sandbox::with_guest(policy, name, workspace, |guest| {
-                let mut command = vec!["codex"];
-                for argument in &arguments {
-                    command.push(
-                        argument
-                            .to_str()
-                            .ok_or("guest Codex arguments must be UTF-8")?,
-                    );
-                }
-                let (capture, output) = crate::sandbox::run_codex(
-                    guest,
-                    &command,
-                    &schema_path,
-                    &input,
-                    allowance.saturating_sub(started.elapsed()),
-                    cancellation,
-                )?;
-                if capture.returncode != 0 || capture.timed_out {
-                    return Err(AgentFailure {
-                        reason: if capture.timed_out {
-                            "TIME_BUDGET_EXCEEDED"
-                        } else {
-                            "EXECUTION_FAILED"
-                        },
-                        message: format!(
-                            "Sandboxed Codex {name} failed (exit {})",
-                            capture.returncode
-                        ),
+            let (result, output) =
+                crate::sandbox::with_guest(policy, name, workspace, build, |guest| {
+                    let mut command = vec!["codex"];
+                    for argument in &arguments {
+                        command.push(
+                            argument
+                                .to_str()
+                                .ok_or("guest Codex arguments must be UTF-8")?,
+                        );
                     }
-                    .into());
-                }
-                Ok((capture, output))
-            })?;
+                    let (capture, output) = crate::sandbox::run_codex(
+                        guest,
+                        &command,
+                        &schema_path,
+                        &input,
+                        allowance.saturating_sub(started.elapsed()),
+                        cancellation,
+                    )?;
+                    if capture.returncode != 0 || capture.timed_out {
+                        return Err(AgentFailure {
+                            reason: if capture.timed_out {
+                                "TIME_BUDGET_EXCEEDED"
+                            } else {
+                                "EXECUTION_FAILED"
+                            },
+                            message: format!(
+                                "Sandboxed Codex {name} failed (exit {})",
+                                capture.returncode
+                            ),
+                        }
+                        .into());
+                    }
+                    Ok((capture, output))
+                })?;
             (result, Some(output))
         } else {
             let mut command = Command::new("codex");

@@ -204,6 +204,8 @@ elif args[0] == "cp":
     assert args[2].endswith(":/tmp/harborist-source.bundle")
 elif args[0] == "exec" and args[-2:] == ["--verify", "HEAD"]:
     print(os.environ.get("GUEST_HEAD", os.environ["SBX_HEAD"]))
+elif args[0] == "exec" and "diff" in args and os.environ.get("GUEST_DIFF"):
+    print("unexpected workspace change")
 elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     sys.exit(1)
 """)
@@ -245,7 +247,9 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     log.write_text("")
     name = subprocess.check_output([*command, repo], env=env, text=True).strip()
     calls = [json.loads(line) for line in log.read_text().splitlines()]
-    assert [call[0] for call in calls[5:]] == ["cp", "exec", "exec", "exec", "exec", "rm", "ls"]
+    assert [call[0] for call in calls[5:10]] == ["cp", "exec", "exec", "exec", "exec"]
+    assert [call[0] for call in calls[10:15]] == ["exec"] * 5
+    assert calls[15:17] == [["version"], ["policy", "ls", "--json"]]
     assert calls[7][-3:] == ["checkout", "--detach", head]
     assert calls[9][:5] == ["exec", "-i", "--workdir", "/home/agent/workspace/repository", name]
     assert calls[9][-3:] == ["status", "--porcelain", "--untracked-files=all"]
@@ -253,6 +257,12 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     log.write_text("")
     result = subprocess.run([*command, repo], env={**env, "GUEST_HEAD": "wrong"}, capture_output=True)
     assert result.returncode != 0 and b"checkout does not match" in result.stderr
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
+
+    log.write_text("")
+    result = subprocess.run([*command, repo], env={**env, "GUEST_DIFF": "1"}, capture_output=True)
+    assert result.returncode != 0 and b"read-only Docker Sandbox stage changed" in result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
 

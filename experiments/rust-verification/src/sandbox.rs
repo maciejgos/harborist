@@ -208,9 +208,13 @@ fn control(args: &[&str]) -> Result<Vec<u8>> {
 }
 
 fn control_with_timeout(args: &[&str], seconds: u64) -> Result<Vec<u8>> {
+    capture_output(args, seconds, 1024 * 1024)
+}
+
+fn capture_output(args: &[&str], seconds: u64, limit: usize) -> Result<Vec<u8>> {
     let result = match helper_host()? {
-        Some(host) => crate::sandbox_host::invoke(&host, args, seconds, 1024 * 1024, &[])?,
-        None => local_capture(args, seconds)?,
+        Some(host) => crate::sandbox_host::invoke(&host, args, seconds, limit, &[])?,
+        None => local_capture(args, seconds, limit)?,
     };
     checked_output(result)
 }
@@ -288,11 +292,11 @@ impl GuestCommand<'_> {
     }
 }
 
-fn local_capture(args: &[&str], seconds: u64) -> Result<crate::process::Capture> {
+fn local_capture(args: &[&str], seconds: u64, limit: usize) -> Result<crate::process::Capture> {
     Ok(crate::process::capture_command(
         &mut local_command(args),
         std::time::Duration::from_secs(seconds),
-        1024 * 1024,
+        limit,
     )?)
 }
 
@@ -475,6 +479,7 @@ pub fn with_guest<T>(
     policy: &DockerPolicy,
     label: &str,
     workspace: &std::path::Path,
+    build: bool,
     operation: impl FnOnce(&str) -> Result<T>,
 ) -> Result<T> {
     policy.check_baseline()?;
@@ -484,7 +489,11 @@ pub fn with_guest<T>(
     );
     let result = provision(policy, &name)
         .and_then(|_| populate(&name, workspace))
-        .and_then(|_| operation(&name));
+        .and_then(|revision| {
+            let output = operation(&name)?;
+            export_changes(policy, &name, workspace, revision.as_str(), build)?;
+            Ok(output)
+        });
     finish(&name, result.is_ok())
         .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
     result
@@ -515,7 +524,83 @@ pub fn run_codex(
     Ok((capture, response))
 }
 
-fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
+fn guest_git(name: &str, args: &[&str], limit: usize) -> Result<Vec<u8>> {
+    let mut command = vec![
+        "exec",
+        name,
+        "git",
+        "--no-replace-objects",
+        "-C",
+        GUEST_REPOSITORY,
+        "-c",
+        "core.hooksPath=/dev/null",
+    ];
+    command.extend_from_slice(args);
+    capture_output(&command, 30, limit)
+}
+
+fn export_changes(
+    policy: &DockerPolicy,
+    name: &str,
+    workspace: &std::path::Path,
+    revision: &str,
+    build: bool,
+) -> Result<()> {
+    let head = guest_git(name, &["rev-parse", "--verify", "HEAD"], 65536)?;
+    if std::str::from_utf8(&head)?.trim_end() != revision {
+        return Err("Docker Sandbox changed the starting revision".into());
+    }
+    let flags = guest_git(name, &["ls-files", "-v", "-z"], 16 * 1024 * 1024)?;
+    if flags
+        .split(|byte| *byte == 0)
+        .filter_map(|entry| entry.first())
+        .any(|flag| flag.is_ascii_lowercase() || *flag == b'S')
+    {
+        return Err("Docker Sandbox changed index tracking flags".into());
+    }
+    guest_git(name, &["clean", "-fdX", "--", "."], 65536)?;
+    guest_git(name, &["add", "--all", "--", "."], 65536)?;
+    let patch = guest_git(
+        name,
+        &[
+            "diff",
+            "--cached",
+            "--binary",
+            "--no-ext-diff",
+            "--no-textconv",
+            revision,
+            "--",
+            ".",
+        ],
+        16 * 1024 * 1024,
+    )?;
+    if !build && !patch.is_empty() {
+        return Err("read-only Docker Sandbox stage changed the workspace".into());
+    }
+    policy.check_baseline()?;
+    if !patch.is_empty() {
+        if crate::git_text(workspace, &["rev-parse", "--verify", "HEAD"])? != revision {
+            return Err("host workspace changed during Docker Sandbox execution".into());
+        }
+        let transfer = TransferDirectory::create()?;
+        let file = transfer.0.join("build.patch");
+        crate::store::write_new(&file, &patch)?;
+        crate::git(
+            workspace,
+            &[
+                "apply".as_ref(),
+                "--index".as_ref(),
+                "--binary".as_ref(),
+                "--whitespace=nowarn".as_ref(),
+                "--".as_ref(),
+                file.as_os_str(),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn populate(name: &str, repository: &std::path::Path) -> Result<harborist_verify::workflow::Sha> {
     use harborist_verify::workflow::Sha;
 
     let revision: Sha =
@@ -601,7 +686,7 @@ fn populate(name: &str, repository: &std::path::Path) -> Result<()> {
     {
         return Err("Docker Sandbox checkout is not a clean workspace".into());
     }
-    Ok(())
+    Ok(revision)
 }
 
 pub fn probe(args: &[std::ffi::OsString]) -> Result<()> {
@@ -617,8 +702,12 @@ pub fn probe(args: &[std::ffi::OsString]) -> Result<()> {
         "harborist-test-{}",
         &uuid::Uuid::new_v4().simple().to_string()[..16]
     );
-    let result = provision(&policy, &name)
-        .and_then(|_| repository.map_or(Ok(()), |repository| populate(&name, repository)));
+    let result = provision(&policy, &name).and_then(|_| {
+        repository.map_or(Ok(()), |repository| {
+            let revision = populate(&name, repository)?;
+            export_changes(&policy, &name, repository, revision.as_str(), false)
+        })
+    });
     finish(&name, result.is_ok())
         .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
     result?;
