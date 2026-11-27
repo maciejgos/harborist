@@ -114,6 +114,9 @@ if compose exec -T service harborist run "$saved_id" --context "$context" \
 fi
 queued=$(compose exec -T service harborist run "$saved_id" --context "$context" --workspace "$selected_workspace" --json)
 printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
+printf '%s\n' "$queued" | grep -Fq '"submission":'
+printf '%s\n' "$queued" | grep -Fq '"submitted_at":'
+printf '%s\n' "$queued" | grep -Fq '"workspace":"'"$selected_workspace"'"'
 status=$(compose exec -T service harborist status "$saved_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
 test "$(compose exec -T service cat /home/harborist/.harborist/build-location)" = "$selected_workspace"
@@ -204,7 +207,11 @@ offline=$(compose exec -T service harborist intake file:/home/harborist/.harbori
     --repo /home/harborist/.harborist/repository --ref 'HEAD~2' --json)
 offline_id=$(printf '%s\n' "$offline" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
 test -n "$offline_id"
-compose exec -T service harborist run "$offline_id" --foreground --json >/dev/null
+offline_result=$(compose exec -T service harborist run "$offline_id" --foreground --json)
+printf '%s\n' "$offline_result" | grep -Fq '"outcome":"VERIFIED"'
+printf '%s\n' "$offline_result" | grep -Fq '"workspace":"'
+printf '%s\n' "$offline_result" | grep -Fq '"report":"'
+printf '%s\n' "$offline_result" | grep -Fq '"evidence":"'
 curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/attempts" | grep -Fq '"attempts":[0]'
 curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/attempts/0/artifacts/spec.md" | grep -Fq 'AC-001'
 curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/artifacts/report.md" | grep -Fq VERIFIED

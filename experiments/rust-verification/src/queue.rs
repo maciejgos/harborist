@@ -74,6 +74,65 @@ pub fn read(path: &Path) -> Result<Delivery> {
     Ok(record)
 }
 
+pub(crate) fn public_delivery(control: &Path, id: Uuid) -> Result<serde_json::Value> {
+    use serde_json::{Value, json};
+
+    let path = control.join("queue").join(format!("{id}.json"));
+    let record = read(&path)?;
+    let capture = store::load_frozen(&record.directory)?;
+    if capture.contract.run_id != id {
+        return Err("queue record does not match its saved Run".into());
+    }
+    let state = match record.state {
+        State::Queued => "QUEUED",
+        State::Running => "RUNNING",
+        State::Finished => "FINISHED",
+        State::Failed => "FAILED",
+        State::Interrupted => "INTERRUPTED",
+        State::Cancelled => "CANCELLED",
+    };
+    let mut continuation = serde_json::to_value(&record.continuation)?;
+    let workspace = continuation
+        .as_object_mut()
+        .and_then(|request| request.remove("workspace"))
+        .unwrap_or(serde_json::to_value(record.workspace)?);
+    let submitted_at = utc_timestamp(record.submitted_ns)?;
+    let updated_ns = fs::metadata(path)?
+        .modified()?
+        .duration_since(UNIX_EPOCH)?
+        .as_nanos();
+    let updated_at = utc_timestamp(updated_ns.max(record.submitted_ns))?;
+    Ok(json!({
+        "version": 1,
+        "submission": {
+            "version": 1, "run_id": id, "repository": capture.contract.repository,
+            "runs_root": capture.directory.parent(), "workspace": workspace,
+            "continuation": continuation,
+        },
+        "state": state, "submitted_at": submitted_at, "updated_at": updated_at,
+        "stages": {}, "progress": Value::Null, "error": record.error,
+    }))
+}
+
+fn utc_timestamp(ns: u128) -> Result<String> {
+    let seconds = (ns / 1_000_000_000).try_into()?;
+    let mut result = std::mem::MaybeUninit::<libc::tm>::uninit();
+    if unsafe { libc::gmtime_r(&seconds, result.as_mut_ptr()) }.is_null() {
+        return Err("queue timestamp is outside the supported range".into());
+    }
+    let result = unsafe { result.assume_init() };
+    Ok(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}Z",
+        result.tm_year + 1900,
+        result.tm_mon + 1,
+        result.tm_mday,
+        result.tm_hour,
+        result.tm_min,
+        result.tm_sec,
+        (ns / 1_000) % 1_000_000,
+    ))
+}
+
 fn persist(queue: &Path, record: &Delivery, replace: bool) -> Result<()> {
     let pending = queue.join(format!(".{}.pending", Uuid::new_v4()));
     let path = queue.join(format!("{}.json", record.run_id));

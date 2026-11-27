@@ -412,17 +412,24 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         });
         if let Some(capture) = capture {
             let request = serde_json::from_value(payload)?;
-            return Ok(print_outcome(
-                id,
+            let root = capture.directory.clone();
+            return print_outcome(
+                &root,
                 crate::continuation::run(capture, &request)?,
                 json_output,
-            ));
+                true,
+                None,
+            );
         }
         (format!("/workspace/runs/{id}/continue"), payload)
     };
     let response = control::write(&directory, &route, &payload)?;
     if json_output {
-        println!("{response}");
+        if command == "cancel" {
+            println!("{response}");
+        } else {
+            println!("{}", queue::public_delivery(&directory, id)?);
+        }
     } else if command == "cancel" {
         println!("Recorded cancellation for Run {id}");
     } else {
@@ -1155,35 +1162,125 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
             None => state_path("control")?,
         };
         control::require_service(&directory)?;
-        let delivery =
-            queue::enqueue_with_workspace(&directory, capture, options.workspace.as_deref())?;
+        queue::enqueue_with_workspace(&directory, capture, options.workspace.as_deref())?;
         if options.json {
-            println!("{}", serde_json::to_string(&delivery)?);
+            println!("{}", queue::public_delivery(&directory, id)?);
         } else {
             println!("Queued Run {id}");
         }
         return Ok(0);
     }
-    Ok(print_outcome(
-        id,
-        crate::foreground::execute_with_workspace(capture, options.workspace.as_deref())?,
-        options.json,
-    ))
+    let root = capture.directory.clone();
+    let workspace = options
+        .workspace
+        .as_deref()
+        .map(|path| crate::foreground::workspace_path(&capture, path))
+        .transpose()?;
+    let result = crate::foreground::execute_with_workspace(capture, workspace.as_deref())?;
+    print_outcome(&root, result, options.json, false, workspace)
 }
 
-fn print_outcome(id: Uuid, result: serde_json::Value, json: bool) -> i32 {
-    if json {
-        println!("{result}");
+fn print_outcome(
+    root: &Path,
+    result: serde_json::Value,
+    json_output: bool,
+    continuation: bool,
+    workspace: Option<PathBuf>,
+) -> Result<i32> {
+    use serde_json::{Value, json};
+
+    let outcome = result["outcome"].as_str().unwrap_or("FAILED");
+    let id = &result["run_id"];
+    if json_output {
+        let attempt = &result["attempt"];
+        let directory = if continuation {
+            let mut selected = None;
+            for number in crate::continuation::numbers(root)?.into_iter().rev() {
+                let directory = crate::continuation::attempt_path(root, number);
+                let raw = crate::record::read_artifact(&directory, "attempt.json")?;
+                if serde_json::from_str::<Value>(&raw)? == *attempt {
+                    selected = Some(directory);
+                    break;
+                }
+            }
+            selected.ok_or("foreground Attempt evidence is unavailable")?
+        } else {
+            root.to_owned()
+        };
+        let lifecycle = match outcome {
+            "CANCELLED" => "CANCELLED",
+            "FAILED" => "FAILED",
+            _ => "COMPLETED",
+        };
+        let verification = if outcome == "VERIFIED" {
+            cli_verification(root, &directory, &result)?
+        } else {
+            Value::Null
+        };
+        let mut envelope = json!({
+            "run": {
+                "run_id": id,
+                "lifecycle": lifecycle,
+                "outcome": (lifecycle == "COMPLETED").then_some(outcome),
+                "failure_reason": result["failure_reason"],
+                "verification": verification,
+            },
+            "report": directory.join("report.md"),
+            "evidence": directory.join("evidence.json"),
+        });
+        if continuation {
+            envelope["attempt"] = attempt.clone();
+        } else {
+            envelope["workspace"] =
+                json!(workspace.unwrap_or_else(|| directory.join("build-workspace")));
+        }
+        println!("{envelope}");
     } else {
-        println!(
-            "Run {id}: {}",
-            result["outcome"].as_str().unwrap_or("FAILED")
-        );
+        println!("Run {}: {outcome}", id.as_str().unwrap_or("unknown"));
     }
-    match result["outcome"].as_str() {
-        Some("VERIFIED") => 0,
-        Some("CANCELLED") => 130,
-        Some("FAILED") | None => 1,
+    Ok(match outcome {
+        "VERIFIED" => 0,
+        "CANCELLED" => 130,
+        "FAILED" => 1,
         _ => 2,
+    })
+}
+
+fn cli_verification(
+    root: &Path,
+    directory: &Path,
+    result: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    use serde_json::{Value, json};
+
+    let capture = store::load_frozen(root)?;
+    let spec = crate::record::read_artifact(directory, "design/spec.md")?;
+    let test = crate::record::read_artifact(directory, "test/evidence.json")?;
+    let review = crate::record::read_artifact(directory, "review/final.json")?;
+    let inputs = &result["verification_inputs"];
+    if inputs["spec_sha256"] != store::digest(spec.as_bytes())
+        || inputs["test_sha256"] != store::digest(test.as_bytes())
+        || inputs["review_sha256"] != store::digest(review.as_bytes())
+    {
+        return Err("foreground verification inputs changed after execution".into());
     }
+    let specification = harborist_verify::review::Specification::parse(&spec)?;
+    let test: Value = serde_json::from_str(&test)?;
+    let review: Value = serde_json::from_str(&review)?;
+    let checks = test["checks"]
+        .as_array()
+        .ok_or("missing verified TEST checks")?;
+    let checks: Vec<_> = checks.iter().map(|check| json!({
+        "id": check["id"], "command": check["command"],
+        "passed": check["returncode"] == 0 && check["timed_out"] == false && check["error"].is_null(),
+    })).collect();
+    Ok(json!({
+        "run_id": capture.contract.run_id,
+        "attempt": result["attempt"],
+        "candidate": {"attempt_id": result["attempt"]["attempt_id"], "candidate_sha": result["candidate"]},
+        "specification": {"sha256": specification.sha256(), "criterion_ids": specification.criterion_ids()},
+        "review": review["result"],
+        "verification": {"base_sha": capture.contract.base_sha, "source_sha256": capture.contract.source_sha256, "config": capture.config},
+        "checks": checks,
+    }))
 }

@@ -376,6 +376,9 @@ ID. Any explicit repository or Runs root must match the saved context.
 Use `harborist cancel RUN_ID --runs-dir PATH --reason TEXT` to withdraw
 an unsubmitted or queued Run stored in a custom root.
 Supersession stores the replacement in the original Run’s root.
+Foreground JSON includes the Run result and the report and evidence paths.
+An initial Run includes its workspace path, and a continuation includes
+its Attempt identity.
 Inspection and methodology previews also accept Python captures with
 compatible frozen execution settings.
 

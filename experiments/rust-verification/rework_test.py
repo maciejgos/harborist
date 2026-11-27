@@ -12,6 +12,7 @@ from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
 
 from harborist.control.client import ControlClient
+from harborist.domain.run import Run
 
 
 def exercise(root: Path) -> None:
@@ -51,8 +52,11 @@ if stage == "build":''',
         env={**env, "REWORK": "1"}, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    second = json.loads(result.stdout)
-    assert second["outcome"] == "VERIFIED"
+    envelope = json.loads(result.stdout)
+    assert Run.model_validate(envelope["run"]).outcome == "VERIFIED"
+    assert Path(envelope["report"]).is_file()
+    second = json.loads(Path(envelope["evidence"]).read_bytes())
+    assert envelope["attempt"] == second["attempt"]
     assert second["attempt"]["attempt_id"] != previous
     assert second["attempt"]["start_sha"] == first["candidate"]
     assert second["base_sha"] == base
@@ -155,7 +159,7 @@ def recover(root: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert failed["failure_reason"] == "EXECUTION_FAILED"
-    assert json.loads(result.stdout)["outcome"] == "VERIFIED"
+    assert json.loads(result.stdout)["run"]["outcome"] == "VERIFIED"
     assert (directory / "evidence.json").read_bytes() == raw
     assert (root / "invocations").read_text().splitlines() == ["design", "plan", "build", "review"]
 
