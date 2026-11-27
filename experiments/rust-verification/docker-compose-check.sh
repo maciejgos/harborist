@@ -130,10 +130,13 @@ rework_id=$(printf '%s\n' "$queued" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1
 test -n "$rework_id"
 failed=$(compose exec -T service harborist status "$rework_id" --wait --interval 0.05 --json)
 printf '%s\n' "$failed" | grep -Fq '"outcome":"TEST_FAILED"'
-compose exec -T service harborist rework "$rework_id" --feedback 'Add fixed' --json
+rework_workspace=/home/harborist/.harborist/rework-worktree
+compose exec -T service harborist rework "$rework_id" --feedback 'Add fixed' --workspace "$rework_workspace" --json
 reworked=$(compose exec -T service harborist status "$rework_id" --wait --interval 0.05 --json)
 printf '%s\n' "$reworked" | grep -Fq '"outcome":"VERIFIED"'
 printf '%s\n' "$reworked" | grep -Fq '"attempt_number":1'
+test "$(compose exec -T service cat /home/harborist/.harborist/build-location)" = "$rework_workspace"
+compose exec -T service test ! -e "$rework_workspace"
 cancelled=$(compose exec -T service harborist cancel "$rework_id" --reason 'Compose test complete' --json)
 printf '%s\n' "$cancelled" | grep -Fq '"reason":"Compose test complete"'
 replacement=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \

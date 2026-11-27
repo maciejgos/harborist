@@ -90,6 +90,8 @@ pub struct Request {
     #[serde(default)]
     pub(crate) additional_seconds: u64,
     github_feedback: Option<GitHubFeedback>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq)]
@@ -239,6 +241,7 @@ pub(crate) fn current_attempt(root: &Path, id: Uuid) -> Result<Uuid> {
 }
 
 pub fn validate(capture: &store::Captured, request: &Request) -> Result<()> {
+    selected_workspace(capture, request)?;
     prepare(capture, request).map(|_| ())
 }
 
@@ -385,6 +388,14 @@ pub fn run(capture: store::Captured, request: &Request) -> Result<serde_json::Va
     execute_prepared(capture, directory, candidate, rework, request)
 }
 
+fn selected_workspace(capture: &store::Captured, request: &Request) -> Result<Option<PathBuf>> {
+    request
+        .workspace
+        .as_deref()
+        .map(|path| foreground::workspace_path(capture, path))
+        .transpose()
+}
+
 pub(crate) fn execute_prepared(
     capture: store::Captured,
     directory: PathBuf,
@@ -392,6 +403,7 @@ pub(crate) fn execute_prepared(
     rework: Rework,
     request: &Request,
 ) -> Result<serde_json::Value> {
+    let workspace = selected_workspace(&capture, request)?;
     if let Some(execution) = &capture.contract.execution {
         execution.check_runtime()?;
     }
@@ -411,7 +423,7 @@ pub(crate) fn execute_prepared(
         &serde_json::to_vec_pretty(&json!({
             "action": request.action, "previous_attempt": request.expected_attempt_id, "request_id": request.request_id, "attempt": attempt,
             "spec_sha256": rework.specification.as_ref().map(|spec| store::digest(spec.as_bytes())), "spent_seconds": rework.spent_seconds, "granted_seconds": rework.granted_seconds,
-            "context": serde_json::from_str::<serde_json::Value>(&rework.context)?,
+            "context": serde_json::from_str::<serde_json::Value>(&rework.context)?, "workspace": workspace,
         }))?,
     )?;
     File::open(&directory)?.sync_all()?;
@@ -421,7 +433,7 @@ pub(crate) fn execute_prepared(
             .ok_or("missing Attempt directory parent")?,
     )?
     .sync_all()?;
-    foreground::execute_attempt(capture, directory, attempt, Some(rework), None)
+    foreground::execute_attempt(capture, directory, attempt, Some(rework), workspace)
 }
 
 pub fn execute(action: &str, args: &[OsString]) -> Result<()> {
@@ -455,6 +467,7 @@ pub(crate) fn parse<'a>(action: &str, args: &'a [OsString]) -> Result<(&'a Path,
             .to_owned(),
         additional_seconds: extra,
         github_feedback: None,
+        workspace: None,
     };
     if request.feedback.chars().count() > 32768 || request.additional_seconds > u32::MAX as u64 {
         return Err("feedback or additional time exceeds the supported limit".into());

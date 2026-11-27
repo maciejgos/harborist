@@ -267,13 +267,14 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
             println!("Usage: harborist cancel RUN_ID --reason TEXT [--control-dir PATH]");
         } else {
             println!(
-                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--context PATH] [--foreground] [--control-dir PATH] [--json]"
+                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--context PATH] [--workspace PATH] [--foreground] [--control-dir PATH] [--json]"
             );
         }
         return Ok(0);
     }
     let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
     let mut directory = None;
+    let mut workspace = None;
     let mut context_path = None;
     let mut foreground = false;
     let mut runs = None;
@@ -291,6 +292,18 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         match flag.to_str() {
             Some("--control-dir") => directory = Some(PathBuf::from(value()?)),
             Some("--foreground") if command != "cancel" => foreground = true,
+            Some("--workspace") if command != "cancel" => {
+                let path = Path::new(value()?);
+                let parent = path
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or(Path::new("."));
+                workspace = Some(
+                    parent
+                        .canonicalize()?
+                        .join(path.file_name().ok_or("missing workspace name")?),
+                );
+            }
             Some("--context") if command != "cancel" => context_path = Some(Path::new(value()?)),
             Some("--runs-dir") if command != "cancel" => runs = Some(Path::new(value()?)),
             Some("--repo") if command != "cancel" => repository = Some(Path::new(value()?)),
@@ -393,7 +406,7 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         };
         let payload = json!({
             "request_id": Uuid::new_v4(), "action": command, "expected_attempt_id": attempt,
-            "feedback": feedback, "additional_seconds": additional, "github_feedback": github_feedback
+            "feedback": feedback, "additional_seconds": additional, "github_feedback": github_feedback, "workspace": workspace
         });
         if let Some(capture) = capture {
             let request = serde_json::from_value(payload)?;

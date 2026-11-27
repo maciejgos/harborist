@@ -370,6 +370,7 @@ harborist run file:/path/to/request.md --repo /path/to/repo --foreground --works
 Background submission requires a running control service. Saved Runs default
 to `~/.harborist/runs`; use `--runs-dir` to specify a different root.
 A saved Rust Run records its execution context in `execution-context.json`.
+Use `--workspace PATH` to select a fresh worktree for a Run or continuation.
 Pass `--context PATH` to select this context when running or continuing by
 ID. Any explicit repository or Runs root must match the saved context.
 Supersession stores the replacement in the original Run’s root.
