@@ -103,6 +103,25 @@ def exercise(root: Path) -> None:
     assert development["provenance"] == "agent-reported"
     assert development["run_id"] == contract["run_id"]
 
+    settings.write_text(text)
+    codex.write_text('#!/bin/sh\ntest "$*" = "login status"\n')
+    command = [public, "agent", "check", "--settings", settings, "--json"]
+    status = json.loads(subprocess.check_output(command, env=env))
+    assert status["connection"]["status"] == "ready"
+    assert status["profile"]["model"] == "recorded-model"
+    configure = [public, "agent", "configure", "--settings", settings]
+    subprocess.check_call([*configure, "--model", "new-model", "--effort", "high"], env=env)
+    status = json.loads(subprocess.check_output(command, env=env))
+    assert status["profile"]["model"] == "new-model" and status["profile"]["effort"] == "high"
+    before = settings.read_bytes()
+    invalid = subprocess.run([*configure, "--model", "new-model", "--effort", "invalid"],
+                             env=env, capture_output=True)
+    assert invalid.returncode != 0 and settings.read_bytes() == before
+    codex.write_text("#!/bin/sh\nexit 1\n")
+    unavailable = subprocess.run(command, env=env, capture_output=True)
+    assert unavailable.returncode == 1
+    assert json.loads(unavailable.stdout)["connection"]["status"] == "credentials_unavailable"
+
 
 def sandbox_fixture(root: Path, snapshot: Path) -> dict[str, str]:
     sbx = root / "sbx"

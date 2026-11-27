@@ -107,6 +107,32 @@ pub trait NativeAgent {
 
 pub struct Codex<'a>(pub Option<&'a Execution>);
 
+pub fn check_connection() -> Value {
+    let mut command = Command::new("codex");
+    command
+        .args(["login", "status"])
+        .stdin(std::process::Stdio::null());
+    let (status, message) = match process::capture_command(&mut command, Duration::from_secs(5), 1)
+    {
+        Ok(result) if !result.timed_out && result.returncode == 0 => {
+            ("ready", "Codex CLI reports an active login.")
+        }
+        Ok(result) if !result.timed_out && result.returncode == 1 => (
+            "credentials_unavailable",
+            "Codex credentials are unavailable. Run codex login in your terminal, then check again.",
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (
+            "cli_missing",
+            "Install Codex CLI and make it available on PATH.",
+        ),
+        _ => (
+            "check_failed",
+            "Codex CLI could not report login status. Check codex login status in your terminal.",
+        ),
+    };
+    json!({"status": status, "message": message})
+}
+
 impl NativeAgent for Codex<'_> {
     fn execute(&self, request: Request<'_>) -> Result<Output> {
         let Request {

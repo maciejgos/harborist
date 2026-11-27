@@ -248,6 +248,107 @@ impl LegacyExecution {
     }
 }
 
+pub fn profile_path(repo: &Path, explicit: Option<&Path>) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        return Ok(path.to_owned());
+    }
+    let repo = crate::store::repository(repo)?;
+    let current = repo.join("harborist.settings.yaml");
+    let previous = repo.join("shipyard.settings.yaml");
+    if current
+        .symlink_metadata()
+        .is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+        && previous.is_file()
+    {
+        return Ok(previous);
+    }
+    Ok(current)
+}
+
+fn valid_settings(source: &Settings) -> Result<()> {
+    if source.version.as_u64() != Some(1) {
+        return Err("unsupported execution settings version".into());
+    }
+    source.agent_profile.validate()?;
+    Ok(())
+}
+
+pub fn profile_status(path: &Path) -> serde_json::Value {
+    use serde_json::json;
+
+    let Ok(raw) = fs::read(path) else {
+        return json!({"status":"settings_unavailable", "message":"The execution settings file could not be read."});
+    };
+    let source = serde_yaml::from_slice::<Settings>(&raw);
+    if let Ok(settings) = source {
+        if valid_settings(&settings).is_ok() && settings.sandbox_policy.docker().is_ok() {
+            let profile = settings.agent_profile;
+            let effort = profile
+                .arguments
+                .last()
+                .and_then(|value| value.split_once('='))
+                .map(|(_, effort)| effort.trim().trim_matches(['"', '\'']));
+            return json!({"status":"configured","message":"Codex profile is configured.","model":profile.model,"effort":effort});
+        }
+    }
+    json!({"status":"invalid_profile","message":"Check the execution settings YAML and its agent_profile section."})
+}
+
+pub fn configure_profile(path: &Path, model: &str, effort: Option<&str>) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    use uuid::Uuid;
+
+    let path = path.canonicalize()?;
+    let mut raw: Value = serde_yaml::from_slice(&fs::read(&path)?)?;
+    let settings = raw
+        .as_mapping_mut()
+        .ok_or("expected execution settings mapping")?;
+    let current = settings.get("agent_profile");
+    let identity = |key, default: &str| {
+        current
+            .and_then(|current| current.get(key))
+            .cloned()
+            .unwrap_or(Value::String(default.to_owned()))
+    };
+    let mut profile = serde_yaml::Mapping::new();
+    profile.insert("name".into(), identity("name", "local-codex"));
+    profile.insert("version".into(), identity("version", "1"));
+    profile.insert("provider".into(), "codex".into());
+    profile.insert("model".into(), model.into());
+    let arguments = effort
+        .map(|effort| {
+            vec![
+                "-c".to_owned(),
+                format!("model_reasoning_effort=\"{effort}\""),
+            ]
+        })
+        .unwrap_or_default();
+    profile.insert("arguments".into(), serde_yaml::to_value(arguments)?);
+    settings.insert("agent_profile".into(), Value::Mapping(profile));
+    let source: Settings = serde_yaml::from_value(raw.clone())?;
+    valid_settings(&source)?;
+    source.sandbox_policy.docker()?;
+    let parent = path.parent().ok_or("settings file has no parent")?;
+    let pending = parent.join(format!(".harborist-settings-{}.pending", Uuid::new_v4()));
+    let content = serde_yaml::to_string(&raw)?;
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(&pending)?;
+    let written = (|| -> io::Result<()> {
+        file.write_all(content.as_bytes())?;
+        file.sync_all()?;
+        fs::rename(&pending, &path)?;
+        fs::File::open(parent)?.sync_all()
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&pending);
+    }
+    Ok(written?)
+}
+
 impl Execution {
     pub fn load(repository: &Path, explicit: Option<&Path>) -> Result<Option<Self>> {
         let settings = repository.join("harborist.settings.yaml");

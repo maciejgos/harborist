@@ -872,6 +872,82 @@ fn tickets(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn agent(args: &[OsString]) -> Result<i32> {
+    let [action, args @ ..] = args else {
+        return Err("expected harborist agent check or configure".into());
+    };
+    if action == "--help" || action == "-h" || args.iter().any(|arg| arg == "--help" || arg == "-h")
+    {
+        println!("Usage: harborist agent check [--repo PATH] [--settings PATH] [--json]");
+        println!(
+            "       harborist agent configure --model MODEL [--effort EFFORT] [--repo PATH] [--settings PATH]"
+        );
+        return Ok(0);
+    }
+    let mut repository = PathBuf::from(".");
+    let mut settings = None;
+    let mut model = None;
+    let mut effort = None;
+    let mut json = false;
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        let mut value = || args.next().ok_or("missing agent option value");
+        match flag.to_str() {
+            Some("--repo") => repository = PathBuf::from(value()?),
+            Some("--settings") => settings = Some(Path::new(value()?)),
+            Some("--json") if action == "check" => json = true,
+            Some("--model") if action == "configure" => {
+                model = Some(value()?.to_str().ok_or("invalid model")?)
+            }
+            Some("--effort") if action == "configure" => {
+                effort = Some(value()?.to_str().ok_or("invalid reasoning effort")?)
+            }
+            _ => {
+                return Err(format!("unexpected agent argument: {}", flag.to_string_lossy()).into());
+            }
+        }
+    }
+    let path = crate::settings::profile_path(&repository, settings);
+    match action.to_str() {
+        Some("check") => {
+            let connection = crate::native::check_connection();
+            let profile = path.map(|path| crate::settings::profile_status(&path)).unwrap_or_else(|_| {
+                serde_json::json!({"status":"settings_unavailable","message":"Select a Git checkout with --repo or a settings file with --settings."})
+            });
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"connection": connection, "profile": profile})
+                );
+            } else {
+                println!("{}", connection["message"].as_str().unwrap_or_default());
+                println!("{}", profile["message"].as_str().unwrap_or_default());
+                if profile["status"] == "configured" {
+                    println!(
+                        "Model {} · reasoning effort {}",
+                        profile["model"].as_str().unwrap_or_default(),
+                        profile["effort"].as_str().unwrap_or("Codex default")
+                    );
+                }
+            }
+            Ok(i32::from(
+                connection["status"] != "ready" || profile["status"] != "configured",
+            ))
+        }
+        Some("configure") => {
+            let path = path?;
+            let model = model.ok_or("agent configure requires --model")?;
+            crate::settings::configure_profile(&path, model, effort)?;
+            println!(
+                "Saved the Codex profile in {} for future Runs.",
+                path.display()
+            );
+            Ok(0)
+        }
+        _ => Err("expected harborist agent check or configure".into()),
+    }
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -879,9 +955,12 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web|inspect|methodology|tickets> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web|inspect|methodology|tickets|agent> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if command == "agent" {
+        return agent(args);
     }
     if command == "tickets" {
         return tickets(args);
