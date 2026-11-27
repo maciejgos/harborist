@@ -764,7 +764,7 @@ fn inspect(command: &str, args: &[OsString]) -> Result<i32> {
     } else {
         let execution = execution.ok_or("saved Run has no frozen methodology")?;
         let preview = match stage {
-            Some(stage) => execution.guidance(stage)?,
+            Some(stage) => execution.preview_guidance(stage)?,
             None => execution.methodology()?,
         };
         println!("{preview}");

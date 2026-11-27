@@ -130,23 +130,41 @@ impl Asset {
         })
     }
 
-    fn header<T: for<'de> Deserialize<'de>>(&self) -> Result<T> {
+    fn document(&self) -> Result<(&str, &str)> {
         if self.sha256 != digest(self.content.as_bytes()) {
             return Err("captured methodology digest mismatch".into());
         }
-        let mut lines = self.content.lines();
-        if lines.next() != Some("---") {
+        let source = self
+            .content
+            .strip_prefix('\u{feff}')
+            .unwrap_or(&self.content);
+        let mut lines = source.split_inclusive('\n');
+        let opening = lines.next().ok_or("empty methodology document")?;
+        if opening.trim_end_matches(['\r', '\n']) != "---" {
             return Err("methodology asset requires YAML front matter".into());
         }
-        let mut header = String::new();
+        let mut offset = opening.len();
         for line in lines {
-            if line == "---" {
-                return Ok(serde_yaml::from_str(&header)?);
+            if line.trim_end_matches(['\r', '\n']) == "---" {
+                let body = &source[offset + line.len()..];
+                if body.trim().is_empty() {
+                    return Err("methodology requires nonblank Markdown guidance".into());
+                }
+                return Ok((&source[opening.len()..offset], body));
             }
-            header.push_str(line);
-            header.push('\n');
+            offset += line.len();
         }
         Err("missing closing methodology delimiter".into())
+    }
+
+    fn header<T: for<'de> Deserialize<'de>>(&self) -> Result<T> {
+        Ok(serde_yaml::from_str(self.document()?.0)?)
+    }
+
+    fn preview_identity(&self, kind: &str) -> serde_json::Value {
+        serde_json::json!({
+            "kind": kind, "name": self.name, "version": self.version, "sha256": self.sha256,
+        })
     }
 
     fn identity(&self, id: &str, version: &Value) -> bool {
@@ -181,6 +199,7 @@ struct Step {
 #[derive(Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 enum Executor {
+    #[serde(alias = "shipyard")]
     Harborist,
     NativeAgent,
     TrustedTest,
@@ -335,14 +354,46 @@ impl Execution {
     }
 
     pub fn methodology(&self) -> Result<serde_json::Value> {
+        use serde_json::json;
+
         let playbook: Playbook = self.playbook.header()?;
         let mut skills = Vec::new();
         for asset in &self.skills {
             let skill: Skill = asset.header()?;
-            skills.push(serde_json::json!({"identity": asset, "metadata": skill}));
+            skills.push(json!({
+                "identity": asset.preview_identity("skill"),
+                "metadata": {"id": skill.id, "version": asset.version, "description": skill.description, "stages": skill.stages},
+                "guidance": asset.document()?.1,
+            }));
         }
-        Ok(serde_json::json!({
-            "playbook": {"identity": self.playbook, "definition": playbook},
+        Ok(json!({
+            "playbook": {
+                "identity": self.playbook.preview_identity("playbook"),
+                "definition": {"name": playbook.id, "version": self.playbook.version, "stages": playbook.stages},
+                "guidance": self.playbook.document()?.1,
+            },
+            "skills": skills,
+        }))
+    }
+
+    pub fn preview_guidance(&self, stage: Stage) -> Result<serde_json::Value> {
+        use serde_json::json;
+
+        let mut skills = Vec::new();
+        for asset in &self.skills {
+            let skill: Skill = asset.header()?;
+            if skill.stages.contains(&stage) {
+                skills.push(json!({
+                    "identity": asset.preview_identity("skill"),
+                    "description": skill.description,
+                    "content": asset.document()?.1,
+                }));
+            }
+        }
+        Ok(json!({
+            "stage": stage,
+            "playbook": self.playbook.preview_identity("playbook"),
+            "playbook_guidance": self.playbook.document()?.1,
             "skills": skills,
         }))
     }

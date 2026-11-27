@@ -54,10 +54,13 @@ def exercise(root: Path) -> None:
         [sys.executable, "-m", "harborist", *inspection], env=env,
     ))
     assert json.loads(subprocess.check_output([public, *inspection], env=env)) == python_contract
-    guidance = json.loads(subprocess.check_output(
-        [public, "methodology", run_id, "--runs-dir", runs, "--stage", "design"], env=env,
-    ))
-    assert guidance["playbook"] and guidance["skills"]
+    methodology = ["methodology", run_id, "--runs-dir", str(runs)]
+    for stage in ([], ["--stage", "design"], ["--stage", "review"]):
+        python_preview = json.loads(subprocess.check_output(
+            [sys.executable, "-m", "harborist", *methodology, *stage], env=env,
+        ))
+        rust_preview = json.loads(subprocess.check_output([public, *methodology, *stage], env=env))
+        assert rust_preview == python_preview
     with subprocess.Popen([binary, "service", control, "--runs-dir", runs], env=env) as service:
         try:
             deadline = time.monotonic() + 5
