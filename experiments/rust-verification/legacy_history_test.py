@@ -75,6 +75,19 @@ def exercise(root: Path) -> None:
             route = f"/runs/{run_id}"
             assert client.request("GET", f"{route}/attempts")["attempts"] == [0]
             assert client.request("GET", f"{route}/attempts/0")["has_specification"]
+            log_route = f"{route}/attempts/0/artifacts/test-0000-stdout"
+            log = directory / "test/logs/0000.stdout.log"
+            original_log = log.read_bytes()
+            assert client.request("GET", log_route)["content"] == original_log.decode()
+            log.write_bytes(original_log + b"tampered")
+            try:
+                client.request("GET", log_route)
+            except ValueError as error:
+                assert "digest" in str(error)
+            else:
+                raise AssertionError("tampered historical TEST log was served")
+            finally:
+                log.write_bytes(original_log)
             report = client.request("GET", f"{route}/attempts/0/artifacts/report.md")
             assert report["content"] == (directory / "report.md").read_text()
             (directory / "events.jsonl").write_text("")

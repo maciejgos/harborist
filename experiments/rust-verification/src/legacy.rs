@@ -385,6 +385,31 @@ pub fn artifact(root: &Path, id: Uuid, number: Option<u32>, name: &str) -> Resul
     Ok(json!({"name": name, "content": content}))
 }
 
+pub fn test_log(
+    root: &Path,
+    id: Uuid,
+    number: Option<u32>,
+    index: u16,
+    stderr: bool,
+) -> Result<Value> {
+    let (_, directory) = select(root, number)?;
+    let historical = HistoricalPackage::load(&directory, id)?;
+    let test: Value = serde_json::from_str(&historical.get("test/manifest.json")?)?;
+    let stream = if stderr { "stderr" } else { "stdout" };
+    let path = format!("test/logs/{index:04}.{stream}.log");
+    let check = test["collection"]["checks"]
+        .get(usize::from(index))
+        .ok_or("historical TEST check is unavailable")?;
+    if test != historical.package["test"]
+        || test["run_id"] != json!(id)
+        || test["attempt_id"] != json!(historical.attempt.id())
+        || check[format!("{stream}_path")] != json!(directory.join(&path))
+    {
+        return Err("historical TEST log does not match its validated capture".into());
+    }
+    Ok(json!({"name": format!("test-{index:04}-{stream}"), "content": historical.get(&path)?}))
+}
+
 pub fn locate(root: &Path, id: Uuid) -> Result<PathBuf> {
     let directory = root.join(id.to_string());
     let metadata = fs::symlink_metadata(&directory)?;

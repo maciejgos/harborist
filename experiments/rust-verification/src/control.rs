@@ -352,8 +352,8 @@ fn serve_history(root: &Path, id: Uuid, route: Route) -> Result<Value> {
                 ArtifactName::Report => "report.md",
                 ArtifactName::Evidence => "evidence.json",
                 ArtifactName::Specification => "spec.md",
-                ArtifactName::TestLog { .. } => {
-                    return Err("unsupported historical test log".into());
+                ArtifactName::TestLog { index, stderr } => {
+                    return crate::legacy::test_log(&directory, id, number, index, stderr);
                 }
             };
             crate::legacy::artifact(&directory, id, number, name)
