@@ -481,7 +481,7 @@ pub fn with_guest<T>(
     workspace: &std::path::Path,
     build: bool,
     operation: impl FnOnce(&str) -> Result<T>,
-) -> Result<T> {
+) -> Result<(T, Result<()>)> {
     policy.check_baseline()?;
     let name = format!(
         "harborist-{label}-{}",
@@ -491,11 +491,14 @@ pub fn with_guest<T>(
         .and_then(|_| populate(&name, workspace))
         .and_then(|revision| {
             let output = operation(&name)?;
-            export_changes(policy, &name, workspace, revision.as_str(), build)?;
-            Ok(output)
+            let exported = export_changes(policy, &name, workspace, revision.as_str(), build);
+            Ok((output, exported))
         });
-    finish(&name, result.is_ok())
-        .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
+    finish(
+        &name,
+        result.as_ref().is_ok_and(|(_, exported)| exported.is_ok()),
+    )
+    .map_err(|error| format!("Sandbox {name} cleanup failed: {error}"))?;
     result
 }
 

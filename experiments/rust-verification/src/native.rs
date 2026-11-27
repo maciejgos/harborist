@@ -234,7 +234,7 @@ impl NativeAgent for Codex<'_> {
         let (result, guest_output) = if let Some(policy) = policy {
             let input = File::open(&input_path)?;
             let started = std::time::Instant::now();
-            let (result, output) =
+            let ((result, output), exported) =
                 crate::sandbox::with_guest(policy, name, workspace, build, |guest| {
                     let mut command = vec!["codex"];
                     for argument in &arguments {
@@ -268,6 +268,7 @@ impl NativeAgent for Codex<'_> {
                     }
                     Ok((capture, output))
                 })?;
+            exported?;
             (result, Some(output))
         } else {
             let mut command = Command::new("codex");

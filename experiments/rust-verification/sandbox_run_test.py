@@ -72,7 +72,7 @@ else:
 """
 
 
-def exercise(root: Path, check: str, expected: str) -> None:
+def exercise(root: Path, check: str, expected: str, *, mutation: bool = False) -> None:
     repo, base, _ = fixture(root, [check])
     canonical = Path("/opt/harborist/src/harborist")
     (repo / "harborist.settings.yaml").write_text(
@@ -117,7 +117,15 @@ def exercise(root: Path, check: str, expected: str) -> None:
     if expected == "VERIFIED":
         stages.append("review")
     assert [name.split("-")[1] for name in names] == stages
-    assert len(set(names)) == len(stages) and not list(guests.iterdir())
+    assert len(set(names)) == len(stages)
+    if mutation:
+        [retained] = guests.iterdir()
+        assert retained.name == names[-1] and (retained / "stopped").is_file()
+        test = json.loads((output / "test/evidence.json").read_text())
+        assert test["checks"][0]["returncode"] == 0 and not test["passed"]
+        assert "changed the workspace" in test["workspace_error"]
+    else:
+        assert not list(guests.iterdir())
     assert invocations.read_text().splitlines() == [stage for stage in stages if stage != "test"]
     assert any(call[0] == "exec" and "/bin/sh" in call and call[-1] == check for call in calls)
 
@@ -127,4 +135,6 @@ if __name__ == "__main__":
         exercise(Path(directory), 'test "$IN_FIXTURE_GUEST" = 1 && test -f message.txt', "VERIFIED")
     with tempfile.TemporaryDirectory() as directory:
         exercise(Path(directory), 'test "$IN_FIXTURE_GUEST" = 1 && false', "TEST_FAILED")
+    with tempfile.TemporaryDirectory() as directory:
+        exercise(Path(directory), "touch changed-by-test", "TEST_FAILED", mutation=True)
     print("Rust Docker Sandbox workflow fixture passed.")

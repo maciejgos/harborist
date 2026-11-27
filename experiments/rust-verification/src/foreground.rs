@@ -283,7 +283,7 @@ impl Run<'_> {
                 require_clean(workspace, candidate.as_str())?;
                 let left = self.allowance(Stage::Test)?;
                 if let Some(policy) = self.docker_policy {
-                    let checks =
+                    let (checks, exported) =
                         crate::sandbox::with_guest(policy, "test", workspace, false, |name| {
                             let left = self.allowance(Stage::Test)?;
                             crate::collect_checks(
@@ -301,7 +301,7 @@ impl Run<'_> {
                                 },
                             )
                         })?;
-                    return Ok((checks, None));
+                    return Ok((checks, exported.err().map(|error| error.to_string())));
                 }
                 let checks = run_checks_with_budget(
                     config,
