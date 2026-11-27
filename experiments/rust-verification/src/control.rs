@@ -430,12 +430,12 @@ fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> 
         if action == "continue" {
             return queue::continue_run(control, id, &body);
         }
+        if action == "cancel" {
+            return cancel_run(control, id, &body);
+        }
         let delivery = queue::read(&control.join("queue").join(format!("{id}.json")))?;
         if action == "supersede" {
             return workspace::supersede(control, &delivery, &body);
-        }
-        if action == "cancel" {
-            return queue::cancel(control, &delivery, &body);
         }
         if matches!(delivery.state, State::Queued | State::Running) {
             return Err("publication requires a terminal Run".into());
@@ -455,6 +455,45 @@ fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> 
         "/tickets/list" => crate::github::list(control, &body),
         "/tickets/queue" => workspace::queue_ticket(control, &body),
         _ => Err("unknown control command".into()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CancelRequest {
+    reason: String,
+    runs_dir: Option<PathBuf>,
+}
+
+fn cancel_run(control: &Path, id: Uuid, body: &[u8]) -> Result<Value> {
+    let request: CancelRequest = serde_json::from_slice(body)?;
+    let root = request
+        .runs_dir
+        .map(|root| root.canonicalize())
+        .transpose()?;
+    let body = serde_json::to_vec(&json!({"reason": request.reason}))?;
+    let path = control.join("queue").join(format!("{id}.json"));
+    match queue::read(&path) {
+        Ok(delivery) => {
+            if root
+                .as_deref()
+                .is_some_and(|root| delivery.directory.parent() != Some(root))
+            {
+                return Err("saved Run does not match the requested Runs root".into());
+            }
+            queue::cancel(control, &delivery, &body)
+        }
+        Err(error)
+            if error
+                .downcast_ref::<io::Error>()
+                .is_some_and(|error| error.kind() == io::ErrorKind::NotFound) =>
+        {
+            let root = root
+                .or_else(crate::legacy::default_root)
+                .ok_or("missing Runs root")?;
+            crate::retirement::cancel(&root.join(id.to_string()), id, &body)
+        }
+        Err(error) => Err(error),
     }
 }
 

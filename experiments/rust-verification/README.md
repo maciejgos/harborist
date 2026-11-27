@@ -373,6 +373,8 @@ A saved Rust Run records its execution context in `execution-context.json`.
 Use `--workspace PATH` to select a fresh worktree for a Run or continuation.
 Pass `--context PATH` to select this context when running or continuing by
 ID. Any explicit repository or Runs root must match the saved context.
+Use `harborist cancel RUN_ID --runs-dir PATH --reason TEXT` to withdraw
+an unsubmitted or queued Run stored in a custom root.
 Supersession stores the replacement in the original Run’s root.
 Inspection and methodology previews also accept Python captures with
 compatible frozen execution settings.

@@ -264,7 +264,9 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
     };
     if id == "--help" || id == "-h" {
         if command == "cancel" {
-            println!("Usage: harborist cancel RUN_ID --reason TEXT [--control-dir PATH]");
+            println!(
+                "Usage: harborist cancel RUN_ID --reason TEXT [--runs-dir PATH] [--control-dir PATH]"
+            );
         } else {
             println!(
                 "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--context PATH] [--workspace PATH] [--foreground] [--control-dir PATH] [--json]"
@@ -305,7 +307,7 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
                 );
             }
             Some("--context") if command != "cancel" => context_path = Some(Path::new(value()?)),
-            Some("--runs-dir") if command != "cancel" => runs = Some(Path::new(value()?)),
+            Some("--runs-dir") => runs = Some(Path::new(value()?)),
             Some("--repo") if command != "cancel" => repository = Some(Path::new(value()?)),
             Some("--json") => json_output = true,
             Some("--reason") if command == "cancel" => {
@@ -350,7 +352,7 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         let reason = crate::retirement::validate_reason(reason.ok_or("cancel requires --reason")?)?;
         (
             format!("/workspace/runs/{id}/cancel"),
-            json!({"reason": reason}),
+            json!({"reason": reason, "runs_dir": runs.map(Path::canonicalize).transpose()?}),
         )
     } else {
         if observation.is_some() == feedback_ids.is_empty() {

@@ -185,6 +185,13 @@ compose exec -T service sh -ec '
     done
     exit 1
 '
+unsubmitted=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --runs-dir "$custom" --json)
+unsubmitted_id=$(printf '%s\n' "$unsubmitted" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$unsubmitted_id"
+record=$(compose exec -T service harborist cancel "$unsubmitted_id" --runs-dir "$custom" --reason 'Withdraw before submission' --json)
+printf '%s\n' "$record" | grep -Fq '"reason":"Withdraw before submission"'
+compose exec -T service test -f "$custom/$unsubmitted_id/retirement.json"
 stopping=$(compose exec -T service harborist service stop)
 printf '%s\n' "$stopping" | grep -Fq '"stopping":true'
 compose wait service || { compose logs service >&2; exit 1; }
