@@ -4,6 +4,7 @@ mod continuation;
 mod control;
 mod foreground;
 mod github;
+mod integrations;
 mod legacy;
 mod native;
 mod process;

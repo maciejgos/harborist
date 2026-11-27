@@ -24,18 +24,18 @@ fn default_reserve() -> u64 {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Workspace {
+pub(crate) struct Workspace {
     id: Uuid,
     name: String,
-    repository: PathBuf,
-    settings: Option<PathBuf>,
+    pub(crate) repository: PathBuf,
+    pub(crate) settings: Option<PathBuf>,
     #[serde(default = "default_ref", rename = "ref")]
     reference: String,
     #[serde(default = "default_total")]
     timeout: u64,
     #[serde(default = "default_reserve")]
     verification_reserve: u64,
-    github_repository: Option<String>,
+    pub(crate) github_repository: Option<String>,
 }
 
 #[derive(Deserialize, PartialEq, Serialize)]
@@ -78,6 +78,15 @@ fn base(repo: &Path, reference: &str) -> Result<Sha> {
         ],
     )?;
     Ok(resolved.parse()?)
+}
+
+pub(crate) fn load(control: &Path, id: Uuid) -> Result<Workspace> {
+    let path = control.join("workspaces").join(format!("{id}.json"));
+    let workspace: Workspace = serde_json::from_slice(&fs::read(path)?)?;
+    if workspace.id != id {
+        return Err("Workspace identity mismatch".into());
+    }
+    Ok(workspace)
 }
 
 pub fn list(control: &Path) -> Result<Value> {
@@ -326,13 +335,7 @@ pub fn queue_ticket(control: &Path, body: &[u8]) -> Result<Value> {
             saved
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            let path = control
-                .join("workspaces")
-                .join(format!("{}.json", request.workspace_id));
-            let workspace: Workspace = serde_json::from_slice(&fs::read(path)?)?;
-            if workspace.id != request.workspace_id {
-                return Err("Workspace identity mismatch".into());
-            }
+            let workspace = load(control, request.workspace_id)?;
             let saved = TicketSnapshot {
                 workspace_id: workspace.id,
                 capture: CaptureRequest {

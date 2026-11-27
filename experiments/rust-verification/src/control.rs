@@ -418,10 +418,14 @@ fn is_write(route: &str) -> bool {
         route,
         "/workspaces" | "/workspace/runs" | "/tickets/list" | "/tickets/queue"
     ) || run_command_route(route).is_some()
+        || crate::integrations::is_write(route)
 }
 
 fn command(control: &Path, route: &str, request: &mut Request) -> Result<Value> {
     let body = request_body(request)?;
+    if crate::integrations::is_write(route) {
+        return crate::integrations::write(control, route, &body);
+    }
     if let Some((id, action)) = run_command_route(route) {
         if action == "continue" {
             return queue::continue_run(control, id, &body);
@@ -585,6 +589,13 @@ fn serve(control: &Path, legacy_root: Option<PathBuf>, managed: bool) -> Result<
                     }
                     continue;
                 }
+                if request.method() == &Method::Get && crate::integrations::is_read(request.url()) {
+                    match crate::integrations::read(control, request.url()) {
+                        Ok(value) => respond_json(request, 200, value),
+                        Err(error) => error_response(request, 404, error),
+                    }
+                    continue;
+                }
                 let route = Route::parse(request.url());
                 match (request.method(), route) {
                     (&Method::Get, Some(route)) => {
@@ -729,7 +740,7 @@ pub fn web(args: &[OsString]) -> Result<()> {
             continue;
         }
         if let Some(route) = path.strip_prefix("/api") {
-            if Route::parse(route).is_none() {
+            if Route::parse(route).is_none() && !crate::integrations::is_read(route) {
                 error_response(request, 404, "Unknown API route");
             } else {
                 match proxy(control, route, None) {
@@ -741,7 +752,7 @@ pub fn web(args: &[OsString]) -> Result<()> {
         }
         let page = if matches!(
             path.as_str(),
-            "/runs" | "/evidence" | "/workspaces" | "/tickets"
+            "/runs" | "/evidence" | "/workspaces" | "/tickets" | "/integrations"
         ) || matches!(Route::parse(&path), Some(Route::Run(_)))
         {
             "/"

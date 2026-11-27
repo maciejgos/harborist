@@ -47,6 +47,11 @@ impl Default for DockerPolicy {
 }
 
 impl DockerPolicy {
+    pub(crate) fn without_baseline(mut self) -> Self {
+        self.baseline_sha256 = None;
+        self
+    }
+
     pub fn freeze(mut self) -> Result<Self> {
         self.baseline_sha256 = Some(baseline()?);
         Ok(self)
@@ -317,7 +322,7 @@ fn local_command(args: &[&str]) -> std::process::Command {
     command
 }
 
-fn baseline() -> Result<String> {
+pub(crate) fn baseline() -> Result<String> {
     static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bv0\.54\.[0-9]+\b").unwrap());
     if !VERSION.is_match(std::str::from_utf8(&control(&["version"])?)?) {
         return Err("this adapter requires Docker Sandboxes 0.54.x".into());

@@ -372,6 +372,9 @@ Supersession stores the replacement in the original Run’s root.
 Inspection and methodology previews also accept Python captures with
 compatible frozen execution settings.
 
+The browser's **Integrations** page can check GitHub, Codex, and Docker
+Sandboxes, and edit a Workspace's Codex profile and Sandbox policy for future Runs.
+
 ## Run the comparison
 
 From the repository root with Docker running:

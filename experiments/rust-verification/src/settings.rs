@@ -22,7 +22,7 @@ struct Settings {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-enum SandboxPolicy {
+pub(crate) enum SandboxPolicy {
     Mode(String),
     Docker(crate::sandbox::DockerPolicy),
 }
@@ -295,10 +295,6 @@ pub fn profile_status(path: &Path) -> serde_json::Value {
 }
 
 pub fn configure_profile(path: &Path, model: &str, effort: Option<&str>) -> Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    use uuid::Uuid;
-
     let path = path.canonicalize()?;
     let mut raw: Value = serde_yaml::from_slice(&fs::read(&path)?)?;
     let settings = raw
@@ -329,6 +325,49 @@ pub fn configure_profile(path: &Path, model: &str, effort: Option<&str>) -> Resu
     let source: Settings = serde_yaml::from_value(raw.clone())?;
     valid_settings(&source)?;
     source.sandbox_policy.docker()?;
+    save_settings(&path, &raw)
+}
+
+pub(crate) fn policy_status(path: &Path) -> serde_json::Value {
+    use serde_json::json;
+    let policy = (|| -> Result<serde_json::Value> {
+        let source: Settings = serde_yaml::from_slice(&fs::read(path)?)?;
+        valid_settings(&source)?;
+        Ok(match source.sandbox_policy.docker()? {
+            Some(policy) => serde_json::to_value(policy)?,
+            None => json!("trusted-local"),
+        })
+    })();
+    let defaults = crate::sandbox::DockerPolicy::default();
+    match policy {
+        Ok(policy) => json!({"status":"configured","policy":policy,"defaults":defaults}),
+        Err(_) => {
+            json!({"status":"settings_unavailable","message":"Cannot read valid execution settings.","defaults":defaults})
+        }
+    }
+}
+
+pub(crate) fn configure_policy(path: &Path, policy: SandboxPolicy) -> Result<()> {
+    let path = path.canonicalize()?;
+    let mut raw: Value = serde_yaml::from_slice(&fs::read(&path)?)?;
+    let settings = raw
+        .as_mapping_mut()
+        .ok_or("expected execution settings mapping")?;
+    let policy = match policy.docker()? {
+        Some(policy) => serde_yaml::to_value(policy.without_baseline())?,
+        None => "trusted-local".into(),
+    };
+    settings.insert("sandbox_policy".into(), policy);
+    let source: Settings = serde_yaml::from_value(raw.clone())?;
+    valid_settings(&source)?;
+    save_settings(&path, &raw)
+}
+
+fn save_settings(path: &Path, raw: &Value) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    use uuid::Uuid;
+
     let parent = path.parent().ok_or("settings file has no parent")?;
     let pending = parent.join(format!(".harborist-settings-{}.pending", Uuid::new_v4()));
     let content = serde_yaml::to_string(&raw)?;
