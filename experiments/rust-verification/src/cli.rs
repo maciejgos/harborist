@@ -772,6 +772,106 @@ fn inspect(command: &str, args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn tickets(args: &[OsString]) -> Result<i32> {
+    use serde_json::json;
+
+    let [action, args @ ..] = args else {
+        return Err("expected harborist tickets list, refresh, or queue".into());
+    };
+    if action == "--help" || action == "-h" || args.iter().any(|arg| arg == "--help" || arg == "-h")
+    {
+        println!("Usage: harborist tickets <list|refresh> OWNER/REPO [--control-dir PATH]");
+        println!(
+            "       harborist tickets queue OWNER/REPO#NUMBER --workspace UUID [--request-id UUID] [--control-dir PATH]"
+        );
+        return Ok(0);
+    }
+    let [source, options @ ..] = args else {
+        return Err("expected a GitHub repository or issue".into());
+    };
+    let source = source.to_str().ok_or("invalid ticket source")?;
+    let mut directory = None;
+    let mut workspace = None;
+    let mut request_id = None;
+    let mut options = options.iter();
+    while let Some(flag) = options.next() {
+        let value = options.next().ok_or("missing ticket option value")?;
+        match flag.to_str() {
+            Some("--control-dir") => directory = Some(PathBuf::from(value)),
+            Some("--workspace") if action == "queue" => {
+                workspace = Some(Uuid::parse_str(
+                    value.to_str().ok_or("invalid Workspace UUID")?,
+                )?);
+            }
+            Some("--request-id") if action == "queue" => {
+                request_id = Some(Uuid::parse_str(
+                    value.to_str().ok_or("invalid request UUID")?,
+                )?);
+            }
+            _ => {
+                return Err(
+                    format!("unexpected tickets argument: {}", flag.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    let directory = match directory {
+        Some(path) => path,
+        None => state_path("control")?,
+    };
+    match action.to_str() {
+        Some("list" | "refresh") => {
+            let response =
+                control::write(&directory, "/tickets/list", &json!({"repository": source}))?;
+            let issues = response["issues"]
+                .as_array()
+                .ok_or("invalid ticket list response")?;
+            if issues.is_empty() {
+                println!("No open issues in {source}.");
+            }
+            for issue in issues {
+                let identity = issue["identity"]
+                    .as_str()
+                    .ok_or("missing ticket identity")?;
+                let title = issue["title"].as_str().ok_or("missing ticket title")?;
+                let labels = issue["labels"]
+                    .as_array()
+                    .ok_or("missing ticket labels")?
+                    .iter()
+                    .map(|value| value.as_str().ok_or("invalid ticket label"))
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                let labels = if labels.is_empty() {
+                    "none".to_owned()
+                } else {
+                    labels.join(", ")
+                };
+                println!("{identity}\t{title}\tLabels: {labels}");
+            }
+        }
+        Some("queue") => {
+            let workspace = workspace.ok_or("ticket queueing requires --workspace")?;
+            let id = request_id.unwrap_or_else(Uuid::new_v4);
+            let response = control::write(
+                &directory,
+                "/tickets/queue",
+                &json!({
+                    "request_id": id, "source": source, "workspace_id": workspace,
+                }),
+            )
+            .map_err(|error| format!("{error}\nRequest ID: {id}"))?;
+            if response["run_id"] != json!(id) {
+                return Err(format!(
+                    "invalid Run identity returned by the local service\nRequest ID: {id}"
+                )
+                .into());
+            }
+            println!("{id}");
+        }
+        _ => return Err("expected harborist tickets list, refresh, or queue".into()),
+    }
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -779,9 +879,12 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web|inspect|methodology> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status|supersede|service|web|inspect|methodology|tickets> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if command == "tickets" {
+        return tickets(args);
     }
     if matches!(command, "inspect" | "methodology") {
         return inspect(command, args);

@@ -638,7 +638,11 @@ fn request(control: &Path, route: &str, payload: Option<&[u8]>) -> Result<Value>
 
 fn proxy(control: &Path, route: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>)> {
     let mut stream = UnixStream::connect(socket_path(control))?;
-    let timeout = Some(Duration::from_secs(if body.is_some() { 45 } else { 5 }));
+    let timeout = Some(Duration::from_secs(match (body, route) {
+        (Some(_), "/tickets/list" | "/tickets/queue") => 180,
+        (Some(_), _) => 45,
+        (None, _) => 5,
+    }));
     stream.set_read_timeout(timeout)?;
     stream.set_write_timeout(timeout)?;
     if let Some(body) = body {

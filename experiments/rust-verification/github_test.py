@@ -53,6 +53,8 @@ def exercise(root: Path) -> None:
 
 
     control = root / "control"
+    public = root / "harborist"
+    public.symlink_to(binary)
     with subprocess.Popen([binary, "service", control], env=env) as service:
         try:
             deadline = time.monotonic() + 5
@@ -67,10 +69,21 @@ def exercise(root: Path) -> None:
             listing = client.request("POST", "/tickets/list", {"repository": "example/project"})
             ticket = listing["issues"][0]
             assert ticket["identity"] == "example/project#7" and ticket["labels"] == ["agent", "bug"]
+            for action in ("list", "refresh"):
+                result = subprocess.check_output(
+                    [public, "tickets", action, "example/project", "--control-dir", control],
+                    env=env, text=True,
+                )
+                assert result.strip() == "example/project#7\tPinned issue\tLabels: agent, bug"
             request = {
                 "request_id": str(uuid.uuid4()), "workspace_id": workspace["id"],
                 "source": ticket["identity"],
             }
+            queued_id = subprocess.check_output([
+                public, "tickets", "queue", request["source"], "--workspace", request["workspace_id"],
+                "--request-id", request["request_id"], "--control-dir", control,
+            ], env=env, text=True).strip()
+            assert queued_id == request["request_id"]
             queued = client.request("POST", "/tickets/queue", request)
             assert client.request("POST", "/tickets/queue", request) == queued
             found = client.request("GET", f"/runs/{queued['run_id']}")
