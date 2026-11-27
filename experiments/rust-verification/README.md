@@ -349,6 +349,7 @@ harborist rework RUN_ID --feedback "Address the failed check"
 harborist recover RUN_ID --additional-seconds 600
 harborist cancel RUN_ID --reason "Stopped by operator"
 harborist apply RUN_ID --branch existing-local-branch
+harborist publish RUN_ID --approve CANDIDATE_SHA --destination OWNER/REPO --base main
 harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
 ```
 

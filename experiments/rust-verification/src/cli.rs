@@ -347,12 +347,20 @@ fn apply(args: &[OsString]) -> Result<i32> {
             Some("--repo") => repository = Some(Path::new(value)),
             Some("--runs-dir") => runs = Some(Path::new(value)),
             _ => {
-                return Err(format!("unexpected apply argument: {}", flag.to_string_lossy()).into());
+                return Err(
+                    format!("unexpected apply argument: {}", flag.to_string_lossy()).into(),
+                );
             }
         }
     }
     let branch = branch.ok_or("apply requires --branch")?;
-    let directory = match runs {
+    let directory = saved_directory(id, runs)?;
+    crate::apply::apply_saved(&directory, branch, Some(id), repository)?;
+    Ok(0)
+}
+
+fn saved_directory(id: Uuid, runs: Option<&Path>) -> Result<PathBuf> {
+    Ok(match runs {
         Some(root) => root.join(id.to_string()),
         None => {
             let saved = state_path("runs")?.join(id.to_string());
@@ -365,8 +373,51 @@ fn apply(args: &[OsString]) -> Result<i32> {
                 queue::read(&file)?.directory
             }
         }
+    })
+}
+
+fn publish(args: &[OsString]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "Usage: harborist publish RUN_ID --approve SHA --destination OWNER/REPO --base BRANCH [--expect-head SHA] [--runs-dir PATH]"
+        );
+        return Ok(0);
+    }
+    let [id, options @ ..] = args else {
+        return Err("publish requires a Run UUID".into());
     };
-    crate::apply::apply_saved(&directory, branch, Some(id), repository)?;
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let mut approve = None;
+    let mut destination = None;
+    let mut base = None;
+    let mut expect_head = None;
+    let mut runs = None;
+    let mut options = options.iter();
+    while let Some(flag) = options.next() {
+        let value = options.next().ok_or("missing publication option value")?;
+        match flag.to_str() {
+            Some("--approve") => approve = Some(crate::commit(value)?),
+            Some("--destination") => {
+                destination = Some(value.to_str().ok_or("invalid destination")?.to_owned())
+            }
+            Some("--base") => base = Some(value.to_str().ok_or("invalid base branch")?.to_owned()),
+            Some("--expect-head") => expect_head = Some(crate::commit(value)?),
+            Some("--runs-dir") => runs = Some(Path::new(value)),
+            _ => {
+                return Err(
+                    format!("unexpected publish argument: {}", flag.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    let request = crate::publication::PublishRequest {
+        approve: approve.ok_or("publish requires --approve")?,
+        destination: destination.ok_or("publish requires --destination")?,
+        base: base.ok_or("publish requires --base")?,
+        expected_attempt: None,
+        expect_head,
+    };
+    crate::publication::publish_saved(&saved_directory(id, runs)?, Some(id), request)?;
     Ok(0)
 }
 
@@ -376,8 +427,13 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     };
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
-        println!("Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply> [OPTIONS]");
+        println!(
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish> [OPTIONS]"
+        );
         return Ok(0);
+    }
+    if command == "publish" {
+        return publish(args);
     }
     if command == "apply" {
         return apply(args);

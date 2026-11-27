@@ -171,12 +171,12 @@ fn validate_pull(pull: &Pull, approval: &Approval, branch: &str, head: &Sha) -> 
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PublishRequest {
-    approve: Sha,
-    expected_attempt: Option<Uuid>,
-    destination: String,
-    base: String,
-    expect_head: Option<Sha>,
+pub(crate) struct PublishRequest {
+    pub(crate) approve: Sha,
+    pub(crate) expected_attempt: Option<Uuid>,
+    pub(crate) destination: String,
+    pub(crate) base: String,
+    pub(crate) expect_head: Option<Sha>,
 }
 
 pub fn browser(directory: &Path, id: Uuid, body: &[u8]) -> Result<serde_json::Value> {
@@ -265,13 +265,25 @@ pub fn execute(args: &[OsString]) -> Result<()> {
         expected_attempt: None,
         expect_head,
     };
-    let root = Path::new(directory).canonicalize()?;
+    publish_saved(Path::new(directory), None, request)
+}
+
+pub(crate) fn publish_saved(
+    directory: &Path,
+    id: Option<Uuid>,
+    request: PublishRequest,
+) -> Result<()> {
+    let root = directory.canonicalize()?;
     let raw = read_artifact(&root, "contract.json")?;
     let contract: serde_json::Value = serde_json::from_str(&raw)?;
     let pull = if contract.get("intent").is_some() && contract.get("version").is_none() {
-        publish_python(&root, request)?
+        publish_python(&root, id, request)?
     } else {
-        publish(store::load(&root)?, request)?
+        let run = store::load(&root)?;
+        if id.is_some_and(|id| id != run.contract.run_id) {
+            return Err("saved Run does not match the requested publication context".into());
+        }
+        publish(run, request)?
     };
     println!("{}", pull.html_url);
     Ok(())
@@ -295,13 +307,16 @@ fn publish(run: store::Captured, request: PublishRequest) -> Result<Pull> {
     )
 }
 
-fn publish_python(root: &Path, request: PublishRequest) -> Result<Pull> {
+fn publish_python(root: &Path, expected: Option<Uuid>, request: PublishRequest) -> Result<Pull> {
     let lock = File::open(root)?;
     // Use the Python Run's directory lock to preserve exclusive continuation.
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
     let (id, repo, verified) = crate::legacy::verified(root)?;
+    if expected.is_some_and(|expected| expected != id) {
+        return Err("saved Run does not match the requested publication context".into());
+    }
     let parent = root.parent().ok_or("historical Run has no parent")?;
     let previous_records = parent.join("publications").join(id.to_string());
     let raw = read_artifact(root, "contract.json")?;

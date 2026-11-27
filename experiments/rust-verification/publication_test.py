@@ -95,7 +95,10 @@ else:
            "PR_STATE": str(root / "pull.json")}
     binary = ROOT / "target/release/harborist-verify"
     directory = root / "run"
-    control = root / "control"
+    control = root / ".harborist" / "control"
+    env["HOME"] = str(root)
+    public = root / "harborist"
+    public.symlink_to(binary)
     subprocess.check_call([binary, "intake", repo, base, intent, directory], env=env)
     subprocess.check_call([binary, "submit", control, directory], env=env)
     subprocess.check_call([binary, "worker", control, "--once"], env=env)
@@ -103,7 +106,8 @@ else:
 
     def publish(sha: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [binary, "publish", directory, sha, "example/project", "main"],
+            [public, "publish", evidence["run_id"], "--approve", sha,
+             "--destination", "example/project", "--base", "main"],
             env=env, text=True, capture_output=True, check=False,
         )
 
