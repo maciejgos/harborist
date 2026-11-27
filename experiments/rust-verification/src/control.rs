@@ -260,6 +260,7 @@ fn serve_route(queue_root: &Path, legacy_root: Option<&Path>, route: Route) -> R
     if let Some(root) = legacy_root {
         let id = match &route {
             Route::Run(id)
+            | Route::GitHub(id)
             | Route::Attempts(id)
             | Route::Attempt(id, _)
             | Route::Artifact(id, _, _) => Some(*id),
@@ -320,29 +321,25 @@ fn serve_route(queue_root: &Path, legacy_root: Option<&Path>, route: Route) -> R
 fn serve_history(root: &Path, id: Uuid, route: Route) -> Result<Value> {
     let native = root.join(id.to_string());
     if !native.join("run.json").try_exists()? && native.join("contract.json").try_exists()? {
-        let capture = crate::store::load(&native)?;
+        let capture = crate::store::load_frozen(&native)?;
         if capture.contract.run_id != id {
             return Err("saved Run ID does not match its directory".into());
         }
         return match route {
-            Route::Run(_) => {
-                let mut view = project_latest(queue::saved(id, native))?;
-                view["source"] = json!("saved");
-                view["state"] = Value::Null;
-                if view["run"].is_null() && view["run_error"].is_null() {
-                    let lifecycle = if select_attempt(&capture.directory, None)?
-                        .join("attempt.json")
-                        .is_file()
-                    {
-                        "RUNNING"
-                    } else {
-                        "CREATED"
-                    };
-                    view["run"] = json!({"run_id": id, "lifecycle": lifecycle, "outcome": null});
-                }
-                Ok(view)
+            Route::Runs | Route::Health | Route::Workspaces => {
+                Err("saved Rust Run route is unavailable".into())
             }
-            _ => Err("saved Rust Run route is unavailable".into()),
+            Route::GitHub(_) => crate::publication::delivery(&capture.directory, id),
+            Route::Attempts(_) => {
+                Ok(json!({"attempts": crate::continuation::numbers(&capture.directory)?}))
+            }
+            Route::Run(_) => saved_attempt_view(id, &capture.directory, None),
+            Route::Attempt(_, number) => saved_attempt_view(id, &capture.directory, Some(number)),
+            Route::Artifact(_, number, name) => {
+                let directory = select_attempt(&capture.directory, number)?;
+                let terminal = Terminal::load(&directory, id)?;
+                name.read(&directory, &terminal)
+            }
         };
     }
     let directory = crate::legacy::locate(root, id)?;
@@ -363,6 +360,24 @@ fn serve_history(root: &Path, id: Uuid, route: Route) -> Result<Value> {
         }
         _ => Err("historical Run route is unavailable".into()),
     }
+}
+
+fn saved_attempt_view(id: Uuid, root: &Path, number: Option<u32>) -> Result<Value> {
+    let directory = select_attempt(root, number)?;
+    let number = number.map_or_else(|| crate::continuation::latest(root), Ok)?;
+    let mut view = project(queue::saved(id, root.to_owned()), number);
+    view["source"] = json!("saved");
+    view["state"] = Value::Null;
+    view["has_specification"] = json!(read_artifact(&directory, "design/spec.md").is_ok());
+    if view["run"].is_null() && view["run_error"].is_null() {
+        let lifecycle = if directory.join("attempt.json").is_file() {
+            "RUNNING"
+        } else {
+            "CREATED"
+        };
+        view["run"] = json!({"run_id": id, "lifecycle": lifecycle, "outcome": null});
+    }
+    Ok(view)
 }
 
 fn select_attempt(root: &Path, number: Option<u32>) -> Result<PathBuf> {
@@ -791,7 +806,7 @@ pub fn web(args: &[OsString]) -> Result<()> {
         }
         let page = if matches!(
             path.as_str(),
-            "/runs" | "/evidence" | "/workspaces" | "/tickets" | "/integrations"
+            "/runs" | "/evidence" | "/workspaces" | "/tickets" | "/integrations" | "/settings"
         ) || matches!(Route::parse(&path), Some(Route::Run(_)))
         {
             "/"

@@ -199,6 +199,15 @@ compose start --wait service
 drained=$(compose exec -T service harborist status "$drain_id" --json)
 printf '%s\n' "$drained" | grep -Fq '"state":"FINISHED"'
 printf '%s\n' "$drained" | grep -Fq '"outcome":"VERIFIED"'
+curl --fail-with-body --silent --show-error "$origin/settings" | grep -Fq '<title>Harborist'
+offline=$(compose exec -T service harborist intake file:/home/harborist/.harborist/issue.md \
+    --repo /home/harborist/.harborist/repository --ref 'HEAD~2' --json)
+offline_id=$(printf '%s\n' "$offline" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
+test -n "$offline_id"
+compose exec -T service harborist run "$offline_id" --foreground --json >/dev/null
+curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/attempts" | grep -Fq '"attempts":[0]'
+curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/attempts/0/artifacts/spec.md" | grep -Fq 'AC-001'
+curl --fail-with-body --silent --show-error "$origin/api/runs/$offline_id/artifacts/report.md" | grep -Fq VERIFIED
 detached=/home/harborist/.harborist/detached-control
 started=$(compose exec -T service harborist service start --control-dir "$detached")
 printf '%s\n' "$started" | grep -Fq '"stopping":false'
