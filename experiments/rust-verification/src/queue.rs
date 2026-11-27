@@ -40,6 +40,18 @@ pub struct Delivery {
     python_source: Option<PathBuf>,
 }
 
+pub(crate) fn saved(run_id: Uuid, directory: PathBuf) -> Delivery {
+    Delivery {
+        run_id,
+        directory,
+        submitted_ns: 0,
+        state: State::Queued,
+        error: None,
+        continuation: None,
+        python_source: None,
+    }
+}
+
 pub fn queue_directory(root: &Path) -> Result<PathBuf> {
     DirBuilder::new().recursive(true).mode(0o700).create(root)?;
     let directory = root.canonicalize()?.join("queue");

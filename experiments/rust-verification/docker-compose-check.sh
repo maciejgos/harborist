@@ -90,14 +90,12 @@ captured=$(compose exec -T service harborist intake file:/home/harborist/.harbor
     --repo /home/harborist/.harborist/repository --json)
 saved_id=$(printf '%s\n' "$captured" | sed -n 's/.*"run_id":"\([0-9a-f-]*\)".*/\1/p')
 test -n "$saved_id"
+created=$(compose exec -T service harborist status "$saved_id" --json)
+printf '%s\n' "$created" | grep -Fq '"lifecycle":"CREATED"'
+listing=$(compose exec -T service harborist runs --json)
+printf '%s\n' "$listing" | grep -Fq '"run_id":"'"$saved_id"'"'
 queued=$(compose exec -T service harborist run "$saved_id" --json)
 printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
-for attempt in $(seq 1 25); do
-    status=$(curl --fail-with-body --silent --show-error "$origin/api/runs/$saved_id")
-    if printf '%s' "$status" | grep -q '"state":"FINISHED"'; then
-        break
-    fi
-    sleep 1
-done
+status=$(compose exec -T service harborist status "$saved_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'

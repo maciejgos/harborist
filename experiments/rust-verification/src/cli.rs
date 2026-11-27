@@ -126,14 +126,113 @@ fn state_path(name: &str) -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".harborist").join(name))
 }
 
+fn read_status(command: &str, args: &[OsString]) -> Result<i32> {
+    let mut id = None;
+    let mut directory = None;
+    let mut wait = false;
+    let mut json = false;
+    let mut interval = 1.0;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--help" | "-h") => {
+                if command == "runs" {
+                    println!("Usage: harborist runs [--control-dir PATH] [--json]");
+                } else {
+                    println!(
+                        "Usage: harborist status RUN_ID [--control-dir PATH] [--wait] [--interval SECONDS] [--json]"
+                    );
+                }
+                return Ok(0);
+            }
+            Some("--control-dir") => {
+                directory = Some(PathBuf::from(
+                    args.next().ok_or("--control-dir needs a path")?,
+                ))
+            }
+            Some("--json") => json = true,
+            Some("--wait") if command == "status" => wait = true,
+            Some("--no-wait") if command == "status" => wait = false,
+            Some("--interval") if command == "status" => {
+                interval = args
+                    .next()
+                    .and_then(|value| value.to_str())
+                    .ok_or("missing polling interval")?
+                    .parse()?;
+                if !(0.01..=60.0).contains(&interval) {
+                    return Err("polling interval must be between 0.01 and 60 seconds".into());
+                }
+            }
+            Some(value) if command == "status" && id.is_none() && !value.starts_with('-') => {
+                id = Some(Uuid::parse_str(value)?);
+            }
+            _ => {
+                return Err(
+                    format!("unexpected {command} argument: {}", arg.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    if command == "status" && id.is_none() {
+        return Err("status requires a Run UUID".into());
+    }
+    let directory = match directory {
+        Some(path) => path,
+        None => state_path("control")?,
+    };
+    let route = id.map_or_else(|| "/runs".to_owned(), |id| format!("/runs/{id}"));
+    loop {
+        let record = control::read(&directory, &route)?;
+        let terminal = matches!(
+            record["state"].as_str(),
+            Some("FINISHED" | "FAILED" | "INTERRUPTED" | "CANCELLED")
+        ) || matches!(
+            record["run"]["lifecycle"].as_str(),
+            Some("COMPLETED" | "FAILED" | "CANCELLED")
+        );
+        if !wait || terminal {
+            if json {
+                println!("{record}");
+            } else if command == "runs" {
+                for run in record["runs"]
+                    .as_array()
+                    .ok_or("invalid Run list response")?
+                {
+                    print_run(run);
+                }
+            } else {
+                print_run(&record);
+            }
+            return Ok(0);
+        }
+        std::thread::sleep(std::time::Duration::from_secs_f64(interval));
+    }
+}
+
+fn print_run(record: &serde_json::Value) {
+    let id = record["run"]["run_id"]
+        .as_str()
+        .or_else(|| record["submission"]["run_id"].as_str())
+        .unwrap_or("unknown");
+    let state = record["state"]
+        .as_str()
+        .or_else(|| record["run"]["lifecycle"].as_str())
+        .unwrap_or("UNKNOWN");
+    let outcome = record["run"]["outcome"].as_str().unwrap_or("");
+    println!("{id} {state} {outcome}");
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
-        return Err("expected harborist run or intake".into());
+        return Err("expected a Harborist command".into());
     };
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
-        println!("Usage: harborist <run|intake> SOURCE_OR_RUN_ID [OPTIONS]");
+        println!("Usage: harborist <run|intake|runs|status> [OPTIONS]");
         return Ok(0);
+    }
+    if matches!(command, "runs" | "status") {
+        return read_status(command, args);
     }
     if !matches!(command, "run" | "intake") {
         return Err(format!("unsupported Harborist command: {command}").into());

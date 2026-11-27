@@ -390,7 +390,10 @@ pub fn ids(root: &Path) -> Result<Vec<Uuid>> {
             .to_str()
             .and_then(|name| Uuid::parse_str(name).ok())
         {
-            if entry.file_type()?.is_dir() && entry.path().join("run.json").is_file() {
+            if entry.file_type()?.is_dir()
+                && (entry.path().join("run.json").is_file()
+                    || entry.path().join("contract.json").is_file())
+            {
                 ids.push(id);
             }
         }

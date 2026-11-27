@@ -343,6 +343,8 @@ and the shared Harborist state:
 ```sh
 harborist intake file:/path/to/request.md --repo /path/to/repo --json
 harborist run RUN_ID --json
+harborist runs --json
+harborist status RUN_ID --wait --json
 harborist run file:/path/to/request.md --repo /path/to/repo --foreground --json
 ```
 

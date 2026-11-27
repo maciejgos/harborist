@@ -283,11 +283,7 @@ fn serve_route(queue_root: &Path, legacy_root: Option<&Path>, route: Route) -> R
             if let Some(root) = legacy_root {
                 for id in crate::legacy::ids(root)? {
                     if !deliveries.iter().any(|delivery| delivery.run_id == id) {
-                        views.push(crate::legacy::view(
-                            &crate::legacy::locate(root, id)?,
-                            id,
-                            None,
-                        )?);
+                        views.push(serve_history(root, id, Route::Run(id))?);
                     }
                 }
             }
@@ -322,6 +318,33 @@ fn serve_route(queue_root: &Path, legacy_root: Option<&Path>, route: Route) -> R
 }
 
 fn serve_history(root: &Path, id: Uuid, route: Route) -> Result<Value> {
+    let native = root.join(id.to_string());
+    if !native.join("run.json").try_exists()? && native.join("contract.json").try_exists()? {
+        let capture = crate::store::load(&native)?;
+        if capture.contract.run_id != id {
+            return Err("saved Run ID does not match its directory".into());
+        }
+        return match route {
+            Route::Run(_) => {
+                let mut view = project_latest(queue::saved(id, native))?;
+                view["source"] = json!("saved");
+                view["state"] = Value::Null;
+                if view["run"].is_null() && view["run_error"].is_null() {
+                    let lifecycle = if select_attempt(&capture.directory, None)?
+                        .join("attempt.json")
+                        .is_file()
+                    {
+                        "RUNNING"
+                    } else {
+                        "CREATED"
+                    };
+                    view["run"] = json!({"run_id": id, "lifecycle": lifecycle, "outcome": null});
+                }
+                Ok(view)
+            }
+            _ => Err("saved Rust Run route is unavailable".into()),
+        };
+    }
     let directory = crate::legacy::locate(root, id)?;
     match route {
         Route::Run(_) => crate::legacy::view(&directory, id, None),
@@ -526,6 +549,19 @@ pub fn service(args: &[OsString]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn read(control: &Path, route: &str) -> Result<Value> {
+    let (status, body) = proxy(control, route, None)?;
+    let response: Value = serde_json::from_slice(&body)?;
+    if status != 200 {
+        return Err(response["error"]
+            .as_str()
+            .unwrap_or("control request failed")
+            .to_owned()
+            .into());
+    }
+    Ok(response)
 }
 
 fn proxy(control: &Path, route: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>)> {
