@@ -14,6 +14,8 @@ mod sandbox;
 #[allow(dead_code)] // Wired into the host server once its runtime is ported.
 mod sandbox_authority;
 mod sandbox_host;
+#[allow(dead_code)] // Used by the forthcoming Rust host server.
+mod sandbox_runtime;
 mod settings;
 mod store;
 mod workspace;

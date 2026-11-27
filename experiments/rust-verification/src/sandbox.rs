@@ -396,10 +396,10 @@ pub const GUEST_SCHEMA: &str = "/tmp/harborist-schema.json";
 pub const GUEST_FINAL: &str = "/tmp/harborist-final.json";
 pub const GUEST_REPOSITORY: &str = "/home/agent/workspace/repository";
 
-struct TransferDirectory(std::path::PathBuf);
+pub(crate) struct TransferDirectory(pub(crate) std::path::PathBuf);
 
 impl TransferDirectory {
-    fn create() -> Result<Self> {
+    pub(crate) fn create() -> Result<Self> {
         use std::os::unix::fs::DirBuilderExt;
 
         let directory =
