@@ -15,6 +15,7 @@ struct RunOptions {
     repository: Option<PathBuf>,
     settings: Option<PathBuf>,
     workspace: Option<PathBuf>,
+    context: Option<PathBuf>,
     runs: Option<PathBuf>,
     control: Option<PathBuf>,
     reference: Option<String>,
@@ -40,6 +41,7 @@ impl RunOptions {
                 Some("--repo") => options.repository = Some(value(&mut args)?.into()),
                 Some("--settings") => options.settings = Some(value(&mut args)?.into()),
                 Some("--workspace") => options.workspace = Some(value(&mut args)?.into()),
+                Some("--context") => options.context = Some(value(&mut args)?.into()),
                 Some("--runs-dir") => options.runs = Some(value(&mut args)?.into()),
                 Some("--control-dir") => options.control = Some(value(&mut args)?.into()),
                 Some("--ref") => {
@@ -117,6 +119,35 @@ impl RunOptions {
                 .unwrap_or(store::VERIFICATION_RESERVE_SECONDS),
         })
     }
+}
+
+fn selected_context(
+    path: &Path,
+    id: Uuid,
+    runs: Option<&Path>,
+    repo: Option<&Path>,
+) -> Result<store::ExecutionContext> {
+    let context: store::ExecutionContext = serde_json::from_slice(&fs::read(path)?)?;
+    if context.version != 1
+        || context.run_id != id
+        || !context.repository.is_absolute()
+        || !context.runs_root.is_absolute()
+        || context.runs_root.canonicalize()? != context.runs_root
+        || store::repository(&context.repository)? != context.repository
+    {
+        return Err("execution context does not match the requested Run".into());
+    }
+    if let Some(root) = runs {
+        if root.canonicalize()? != context.runs_root {
+            return Err("--runs-dir does not match the saved execution context".into());
+        }
+    }
+    if let Some(repo) = repo {
+        if store::repository(repo)? != context.repository {
+            return Err("--repo does not match the saved execution context".into());
+        }
+    }
+    Ok(context)
 }
 
 fn seconds(value: &OsString) -> Result<u64> {
@@ -236,13 +267,14 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
             println!("Usage: harborist cancel RUN_ID --reason TEXT [--control-dir PATH]");
         } else {
             println!(
-                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--foreground] [--control-dir PATH] [--json]"
+                "Usage: harborist {command} RUN_ID [--expected-attempt UUID] [--additional-seconds N] [--feedback TEXT] [--runs-dir PATH] [--repo PATH] [--context PATH] [--foreground] [--control-dir PATH] [--json]"
             );
         }
         return Ok(0);
     }
     let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
     let mut directory = None;
+    let mut context_path = None;
     let mut foreground = false;
     let mut runs = None;
     let mut repository = None;
@@ -259,6 +291,7 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
         match flag.to_str() {
             Some("--control-dir") => directory = Some(PathBuf::from(value()?)),
             Some("--foreground") if command != "cancel" => foreground = true,
+            Some("--context") if command != "cancel" => context_path = Some(Path::new(value()?)),
             Some("--runs-dir") if command != "cancel" => runs = Some(Path::new(value()?)),
             Some("--repo") if command != "cancel" => repository = Some(Path::new(value()?)),
             Some("--json") => json_output = true,
@@ -288,6 +321,13 @@ fn change_run(command: &str, args: &[OsString]) -> Result<i32> {
                 );
             }
         }
+    }
+    let context = context_path
+        .map(|path| selected_context(path, id, runs, repository))
+        .transpose()?;
+    if let Some(context) = &context {
+        runs = Some(&context.runs_root);
+        repository = Some(&context.repository);
     }
     let directory = match directory {
         Some(path) => path,
@@ -1048,7 +1088,7 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Usage: harborist {command} SOURCE_OR_RUN_ID [--repo PATH] [--ref REF] [--settings PATH] [--runs-dir PATH] [--control-dir PATH] [--timeout SECONDS] [--verification-reserve SECONDS] [--workspace PATH] [--foreground] [--json]"
+            "Usage: harborist {command} SOURCE_OR_RUN_ID [--repo PATH] [--ref REF] [--settings PATH] [--runs-dir PATH] [--context PATH] [--control-dir PATH] [--timeout SECONDS] [--verification-reserve SECONDS] [--workspace PATH] [--foreground] [--json]"
         );
         return Ok(0);
     }
@@ -1056,11 +1096,35 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     if command == "intake" && options.workspace.is_some() {
         return Err("--workspace is only supported by run".into());
     }
-    let root = match &options.runs {
-        Some(path) => path.clone(),
-        None => state_path("runs")?,
+    let context = if let Some(path) = &options.context {
+        let id = options
+            .source
+            .as_deref()
+            .and_then(|value| value.to_str())
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .filter(|_| command == "run")
+            .ok_or("--context selects an existing Run UUID")?;
+        Some(selected_context(
+            path,
+            id,
+            options.runs.as_deref(),
+            options.repository.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    let root = match (&context, &options.runs) {
+        (Some(context), _) => context.runs_root.clone(),
+        (None, Some(path)) => path.clone(),
+        (None, None) => state_path("runs")?,
     };
     let capture = options.capture(&root, command == "run")?;
+    if context
+        .as_ref()
+        .is_some_and(|context| capture.contract.repository != context.repository)
+    {
+        return Err("frozen contract does not match its execution context".into());
+    }
     let id = capture.contract.run_id;
     if command == "intake" {
         if options.json {

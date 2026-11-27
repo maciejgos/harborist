@@ -32,6 +32,15 @@ pub struct Contract {
     pub execution: Option<Execution>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExecutionContext {
+    pub version: u32,
+    pub run_id: Uuid,
+    pub repository: PathBuf,
+    pub runs_root: PathBuf,
+}
+
 pub struct Captured {
     pub directory: PathBuf,
     pub contract: Contract,
@@ -185,6 +194,16 @@ pub fn save(directory: &Path, contract: &Contract, intent: &str, frozen: &[u8]) 
     fs::create_dir(directory)?;
     write_new(&directory.join("intent.md"), intent.as_bytes())?;
     write_new(&directory.join("harborist.yaml"), frozen)?;
+    let context = ExecutionContext {
+        version: 1,
+        run_id: contract.run_id,
+        repository: contract.repository.clone(),
+        runs_root: directory.parent().ok_or("missing Run parent")?.to_owned(),
+    };
+    write_new(
+        &directory.join("execution-context.json"),
+        &serde_json::to_vec_pretty(&context)?,
+    )?;
     // Publish the contract only after its referenced inputs are complete.
     write_new(
         &directory.join(".contract.pending"),

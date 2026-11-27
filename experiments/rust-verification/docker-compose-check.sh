@@ -106,7 +106,13 @@ printf '%s\n' "$created" | grep -Fq '"lifecycle":"CREATED"'
 listing=$(compose exec -T service harborist runs --json)
 printf '%s\n' "$listing" | grep -Fq '"run_id":"'"$saved_id"'"'
 selected_workspace=/home/harborist/.harborist/custom-worktree
-queued=$(compose exec -T service harborist run "$saved_id" --workspace "$selected_workspace" --json)
+context="/home/harborist/.harborist/runs/$saved_id/execution-context.json"
+if compose exec -T service harborist run "$saved_id" --context "$context" \
+    --runs-dir /home/harborist/.harborist/control/runs --json; then
+    printf 'Explicit execution context unexpectedly accepted a conflicting Runs root.\n' >&2
+    exit 1
+fi
+queued=$(compose exec -T service harborist run "$saved_id" --context "$context" --workspace "$selected_workspace" --json)
 printf '%s\n' "$queued" | grep -Fq '"run_id":"'"$saved_id"'"'
 status=$(compose exec -T service harborist status "$saved_id" --wait --interval 0.05 --json)
 printf '%s\n' "$status" | grep -q '"outcome":"VERIFIED"'
