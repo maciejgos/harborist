@@ -164,7 +164,11 @@ else:
             changed = json.loads(pull_path.read_text())
             changed["head"]["sha"] = unrelated
             pull_path.write_text(json.dumps(changed))
-            latest = client.request("POST", f"/workspace/runs/{run_id}/observe", {})
+            status = subprocess.run(
+                [public, "github-status", run_id], env=env, check=True, text=True, capture_output=True,
+            )
+            latest = {"observation": json.loads(status.stdout), "observation_path": status.stderr.strip()}
+            assert json.loads(Path(latest["observation_path"]).read_text()) == latest["observation"]
             assert latest["observation"]["head"] == unrelated
             assert not latest["observation"]["head_verified"]
             assert latest["observation"]["verified_candidate"] == approval

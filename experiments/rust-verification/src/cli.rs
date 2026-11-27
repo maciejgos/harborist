@@ -421,6 +421,28 @@ fn publish(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn github_status(args: &[OsString]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("Usage: harborist github-status RUN_ID [--runs-dir PATH]");
+        return Ok(0);
+    }
+    let (id, root) = match args {
+        [id] => (id, None),
+        [id, flag, path] if flag == "--runs-dir" => (id, Some(Path::new(path))),
+        _ => return Err("expected harborist github-status RUN_ID [--runs-dir PATH]".into()),
+    };
+    let id = Uuid::parse_str(id.to_str().ok_or("invalid Run UUID")?)?;
+    let result = crate::publication::observe(&saved_directory(id, root)?, id)?;
+    println!("{}", result["observation"]);
+    eprintln!(
+        "{}",
+        result["observation_path"]
+            .as_str()
+            .ok_or("missing saved observation path")?
+    );
+    Ok(0)
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32> {
     let [command, args @ ..] = args else {
         return Err("expected a Harborist command".into());
@@ -428,9 +450,12 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let command = command.to_str().ok_or("invalid Harborist command")?;
     if command == "--help" || command == "-h" {
         println!(
-            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish> [OPTIONS]"
+            "Usage: harborist <run|intake|runs|status|cancel|rework|recover|apply|publish|github-status> [OPTIONS]"
         );
         return Ok(0);
+    }
+    if command == "github-status" {
+        return github_status(args);
     }
     if command == "publish" {
         return publish(args);
