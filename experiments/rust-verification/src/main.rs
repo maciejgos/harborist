@@ -11,6 +11,8 @@ mod queue;
 mod record;
 mod retirement;
 mod sandbox;
+#[allow(dead_code)] // Wired into the host server once its runtime is ported.
+mod sandbox_authority;
 mod sandbox_host;
 mod settings;
 mod store;

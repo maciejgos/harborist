@@ -5,7 +5,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-const CODEX_KIT: &str =
+pub(crate) const CODEX_KIT: &str =
     "docker.io/sbx/codex@sha256:7d283f7cacf5c069b6f61cdcba87ce3b570a0c5a43c36d88d3f8873732503162";
 static TEMPLATE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\A[a-zA-Z0-9./:_-]+@sha256:[0-9a-f]{64}\z").unwrap());
@@ -89,7 +89,7 @@ impl DockerPolicy {
     }
 }
 
-fn destinations(values: Vec<String>) -> Result<Vec<String>> {
+pub(crate) fn destinations(values: Vec<String>) -> Result<Vec<String>> {
     if values.len() > 64 {
         return Err("Docker sandbox policy permits up to 64 destinations per list".into());
     }
@@ -391,7 +391,7 @@ fn finish(name: &str, exported: bool) -> Result<()> {
     Ok(())
 }
 
-const GUEST_BUNDLE: &str = "/tmp/harborist-source.bundle";
+pub(crate) const GUEST_BUNDLE: &str = "/tmp/harborist-source.bundle";
 pub const GUEST_SCHEMA: &str = "/tmp/harborist-schema.json";
 pub const GUEST_FINAL: &str = "/tmp/harborist-final.json";
 pub const GUEST_REPOSITORY: &str = "/home/agent/workspace/repository";
