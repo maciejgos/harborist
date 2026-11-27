@@ -3,12 +3,28 @@ set -euo pipefail
 umask 077
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-export HARBORIST_DEPLOY_STATE="${HARBORIST_DEPLOY_STATE:-$HOME/.local/share/harborist-deployment}"
+runtime="${HARBORIST_DEPLOY_RUNTIME:-python}"
+case "$runtime" in
+    rust)
+        default_state="$HOME/.local/share/harborist-rust-deployment"
+        default_project=harborist-rust
+        compose_file=compose.rust.yaml
+        cli=(harborist)
+        ;;
+    python)
+        default_state="$HOME/.local/share/harborist-deployment"
+        default_project=harborist
+        compose_file=compose.yaml
+        cli=(python -m harborist)
+        ;;
+    *) echo "HARBORIST_DEPLOY_RUNTIME must be rust or python." >&2; exit 2 ;;
+esac
+export HARBORIST_DEPLOY_STATE="${HARBORIST_DEPLOY_STATE:-$default_state}"
 export HARBORIST_SANDBOX_PORT="${HARBORIST_SANDBOX_PORT:-19454}"
-project="${HARBORIST_DEPLOY_PROJECT:-harborist}"
+project="${HARBORIST_DEPLOY_PROJECT:-$default_project}"
 label="local.harborist.sandbox.$project"
 domain="gui/$UID"
-compose=(docker compose --project-name "$project" -f "$root/compose.yaml" -f "$root/deploy/compose.sandbox.yaml")
+compose=(docker compose --project-name "$project" -f "$root/$compose_file" -f "$root/deploy/compose.sandbox.yaml")
 
 case "${1:-start}" in
     stop|remove)
@@ -20,7 +36,7 @@ case "${1:-start}" in
         ;;
     exec)
         shift
-        exec "${compose[@]}" exec -T service python -m harborist "$@"
+        exec "${compose[@]}" exec -T service "${cli[@]}" "$@"
         ;;
     start) ;;
     *) echo "Usage: deploy/harborist [start|stop|remove|exec ARGS...]" >&2; exit 2 ;;
@@ -32,7 +48,6 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 || "$(sysctl -n kern.hv_
 fi
 docker info >/dev/null
 docker compose version >/dev/null
-command -v uv >/dev/null || { echo "Install uv to prepare the host helper." >&2; exit 1; }
 sbx="$(command -v sbx)" || { echo "Install Docker Sandboxes 0.54.x with Homebrew." >&2; exit 1; }
 if ! "$sbx" version | grep -Eq '(^|[[:space:]])v0\.54\.[0-9]+([[:space:]]|$)'; then
     echo "Harborist requires Docker Sandboxes 0.54.x." >&2
@@ -46,6 +61,38 @@ fi
 mkdir -p "$HARBORIST_DEPLOY_STATE"
 HARBORIST_DEPLOY_STATE="$(cd "$HARBORIST_DEPLOY_STATE" && pwd)"
 chmod 700 "$HARBORIST_DEPLOY_STATE"
+if [[ "$runtime" == rust ]]; then
+    helper="${HARBORIST_RUST_HELPER:-}"
+    if [[ -z "$helper" ]]; then
+        command -v cargo >/dev/null || { echo "Install Cargo or set HARBORIST_RUST_HELPER to a native Harborist binary." >&2; exit 1; }
+        cargo build --manifest-path "$root/experiments/rust-verification/Cargo.toml" \
+            --target-dir "$HARBORIST_DEPLOY_STATE/build" --locked --release
+        helper="$HARBORIST_DEPLOY_STATE/build/release/harborist-verify"
+    fi
+    if [[ "$helper" != /* || ! -x "$helper" ]]; then
+        echo "HARBORIST_RUST_HELPER must be an absolute path to an executable native binary." >&2
+        exit 1
+    fi
+    token="$HARBORIST_DEPLOY_STATE/token"
+    if [[ ! -e "$token" ]]; then
+        (set -o noclobber; openssl rand -hex 32 >"$token")
+    fi
+    chmod 444 "$token"
+    plist="$(mktemp "$HARBORIST_DEPLOY_STATE/helper.XXXXXX")"
+    plutil -create xml1 "$plist"
+    plutil -insert Label -string "$label" "$plist"
+    plutil -insert ProgramArguments -array "$plist"
+    arguments=("$helper" sandbox-host "$HARBORIST_DEPLOY_STATE" "$HARBORIST_SANDBOX_PORT" --sbx "$sbx")
+    for index in "${!arguments[@]}"; do
+        plutil -insert "ProgramArguments.$index" -string "${arguments[$index]}" "$plist"
+    done
+    plutil -insert KeepAlive -bool YES "$plist"
+    plutil -insert StandardOutPath -string "$HARBORIST_DEPLOY_STATE/helper.log" "$plist"
+    plutil -insert StandardErrorPath -string "$HARBORIST_DEPLOY_STATE/helper.log" "$plist"
+    plutil -lint "$plist" >/dev/null
+    mv "$plist" "$HARBORIST_DEPLOY_STATE/helper.plist"
+else
+command -v uv >/dev/null || { echo "Install uv to prepare the host helper." >&2; exit 1; }
 export UV_PROJECT_ENVIRONMENT="$HARBORIST_DEPLOY_STATE/venv"
 uv sync --project "$root" --locked --no-dev
 
@@ -78,6 +125,8 @@ log = str(directory / "helper.log")
     "StandardErrorPath": log,
 }))
 PY
+fi
+
 
 # Keep the host principal and token stable when updating the stack.
 if launchctl print "$domain/$label" >/dev/null 2>&1; then
@@ -96,8 +145,12 @@ for attempt in {1..20}; do
     sleep 0.25
 done
 "${compose[@]}" up --build --wait
-if ! "${compose[@]}" exec -T service python -c \
-    'from harborist.sandbox.docker import DockerSandboxRuntime; print(DockerSandboxRuntime().baseline_digest())' >/dev/null; then
+if [[ "$runtime" == rust ]]; then
+    sandbox_check=(harborist-verify sandbox-check)
+else
+    sandbox_check=(python -c 'from harborist.sandbox.docker import DockerSandboxRuntime; print(DockerSandboxRuntime().baseline_digest())')
+fi
+if ! "${compose[@]}" exec -T service "${sandbox_check[@]}" >/dev/null; then
     echo "The deployed worker could not reach an initialized Docker Sandboxes helper." >&2
     exit 1
 fi
