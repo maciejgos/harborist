@@ -180,4 +180,17 @@ compose start --wait service
 drained=$(compose exec -T service harborist status "$drain_id" --json)
 printf '%s\n' "$drained" | grep -Fq '"state":"FINISHED"'
 printf '%s\n' "$drained" | grep -Fq '"outcome":"VERIFIED"'
+detached=/home/harborist/.harborist/detached-control
+started=$(compose exec -T service harborist service start --control-dir "$detached")
+printf '%s\n' "$started" | grep -Fq '"stopping":false'
+test "$(compose exec -T service harborist service status --control-dir "$detached")" = "$started"
+test "$(compose exec -T service harborist service start --control-dir "$detached")" = "$started"
+compose exec -T service harborist service stop --control-dir "$detached" | grep -Fq '"stopping":true'
+compose exec -T service sh -ec '
+    for attempt in $(seq 1 25); do
+        test ! -S "$1/service.sock" && exit 0
+        sleep 0.1
+    done
+    exit 1
+' sh "$detached"
 printf 'Rust Compose queued workflow reached VERIFIED and served its evidence.\n'

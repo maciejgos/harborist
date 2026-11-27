@@ -343,6 +343,7 @@ and the shared Harborist state:
 harborist intake file:/path/to/request.md --repo /path/to/repo --json
 harborist run RUN_ID --json
 harborist service serve
+harborist service start
 harborist service status
 harborist service stop
 harborist web --port 8765

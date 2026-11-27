@@ -606,18 +606,75 @@ fn web(args: &[OsString]) -> Result<i32> {
     Ok(0)
 }
 
+fn start_service(directory: &Path) -> Result<serde_json::Value> {
+    use std::{
+        os::unix::{fs::OpenOptionsExt, process::CommandExt},
+        process::{Command, Stdio},
+        time::{Duration, Instant},
+    };
+
+    if let Ok(health) = control::read(directory, "/health") {
+        return Ok(health);
+    }
+    queue::queue_directory(directory)?;
+    let log_path = directory.join("service.log");
+    let log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(&log_path)?;
+    let mut command = Command::new(std::env::current_exe()?);
+    command
+        .arg0("harborist")
+        .args(["service", "serve", "--control-dir"])
+        .arg(directory)
+        .stdin(Stdio::null())
+        .stdout(log.try_clone()?)
+        .stderr(log);
+    // Detach from the submitting terminal without changing its repository or environment.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(health) = control::read(directory, "/health") {
+            return Ok(health);
+        }
+        if child.try_wait()?.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Err(format!(
+        "Harborist service did not become ready; see {}",
+        log_path.display()
+    )
+    .into())
+}
+
 fn service(args: &[OsString]) -> Result<i32> {
     let (command, args) = match args {
-        [command, args @ ..] if matches!(command.to_str(), Some("serve" | "status" | "stop")) => {
+        [command, args @ ..]
+            if matches!(
+                command.to_str(),
+                Some("serve" | "start" | "status" | "stop")
+            ) =>
+        {
             (command, args)
         }
         [flag] if flag == "--help" || flag == "-h" => {
-            println!("Usage: harborist service status [--control-dir PATH]");
+            println!("Usage: harborist service <serve|start|status|stop> [--control-dir PATH]");
             return Ok(0);
         }
         _ => {
             return Err(
-                "expected harborist service <serve|status|stop> [--control-dir PATH]".into(),
+                "expected harborist service <serve|start|status|stop> [--control-dir PATH]".into(),
             );
         }
     };
@@ -633,12 +690,13 @@ fn service(args: &[OsString]) -> Result<i32> {
         }
         _ => {
             return Err(
-                "expected harborist service <serve|status|stop> [--control-dir PATH]".into(),
+                "expected harborist service <serve|start|status|stop> [--control-dir PATH]".into(),
             );
         }
     };
     match command.to_str() {
         Some("serve") => control::serve_managed(&directory)?,
+        Some("start") => println!("{}", start_service(&directory)?),
         Some("stop") => println!(
             "{}",
             control::write(&directory, "/shutdown", &serde_json::json!({}))?
