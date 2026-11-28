@@ -305,13 +305,13 @@ else:
         binary, "continue-python", "recover", historical, interrupted_destination,
         failed["attempt"]["attempt_id"], "Recover interrupted execution",
     ]
-    refused = subprocess.run(interrupted_command, env=env, capture_output=True, text=True)
+    refused = subprocess.run(interrupted_command, check=False, env=env, capture_output=True, text=True)
     assert refused.returncode != 0 and "explicit" in refused.stderr
     assert not interrupted_destination.exists()
     spec_path = historical / "design/spec.md"
     durable_spec = spec_path.read_bytes()
     spec_path.write_bytes(durable_spec + b"tampered")
-    refused = subprocess.run([*interrupted_command, "600"], env=env, capture_output=True, text=True)
+    refused = subprocess.run([*interrupted_command, "600"], check=False, env=env, capture_output=True, text=True)
     assert refused.returncode != 0 and "digest" in refused.stderr
     assert not interrupted_destination.exists()
     spec_path.write_bytes(durable_spec)

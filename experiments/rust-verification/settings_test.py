@@ -5,13 +5,13 @@ import os
 import shutil
 import subprocess
 import tempfile
-from threading import Thread
 from pathlib import Path
-
-from harborist.domain.run_contract import RunContract
+from threading import Thread
 
 from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
+
+from harborist.domain.run_contract import RunContract
 
 
 def exercise(root: Path) -> None:
@@ -105,7 +105,7 @@ def exercise(root: Path) -> None:
         assert methodology["playbook"]["definition"]["stages"][0]["stage"] == "intake"
         guidance = json.loads(subprocess.check_output([public, "methodology", *args, "--stage", "build"], env=env))
         assert guidance["playbook"] and guidance["skills"]
-        rejected = subprocess.run([public, "methodology", *args, "--stage", "test"], env=env, capture_output=True)
+        rejected = subprocess.run([public, "methodology", *args, "--stage", "test"], check=False, env=env, capture_output=True)
         assert rejected.returncode != 0
         assert (capture_path / "contract.json").read_bytes() == before
     finally:
@@ -132,10 +132,10 @@ def exercise(root: Path) -> None:
     assert status["profile"]["model"] == "new-model" and status["profile"]["effort"] == "high"
     before = settings.read_bytes()
     invalid = subprocess.run([*configure, "--model", "new-model", "--effort", "invalid"],
-                             env=env, capture_output=True)
+                             check=False, env=env, capture_output=True)
     assert invalid.returncode != 0 and settings.read_bytes() == before
     codex.write_text("#!/bin/sh\nexit 1\n")
-    unavailable = subprocess.run(command, env=env, capture_output=True)
+    unavailable = subprocess.run(command, check=False, env=env, capture_output=True)
     assert unavailable.returncode == 1
     assert json.loads(unavailable.stdout)["connection"]["status"] == "credentials_unavailable"
 
@@ -185,10 +185,10 @@ def sandbox_fingerprint(root: Path) -> None:
     check = [binary, "sandbox-check"]
     assert subprocess.check_output(check, env=env, text=True).strip() == current
     assert subprocess.check_output([*check, current], env=env, text=True).strip() == current
-    changed = subprocess.run([*check, expected], env=env, capture_output=True)
+    changed = subprocess.run([*check, expected], check=False, env=env, capture_output=True)
     assert changed.returncode != 0 and b"changed since capture" in changed.stderr
     env["SBX_VERSION"] = "sbx v0.55.0"
-    unsupported = subprocess.run(check, env=env, capture_output=True)
+    unsupported = subprocess.run(check, check=False, env=env, capture_output=True)
     assert unsupported.returncode != 0 and b"requires Docker Sandboxes 0.54.x" in unsupported.stderr
     snapshot.write_text('{"rules":[]}')
     result = subprocess.run(command, capture_output=True, check=False)
@@ -369,7 +369,7 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
         ["ls", "--json"],
     ]
     log.write_text("")
-    result = subprocess.run(command, env={**env, "FAIL_PROVISION": "1"}, capture_output=True)
+    result = subprocess.run(command, check=False, env={**env, "FAIL_PROVISION": "1"}, capture_output=True)
     assert result.returncode != 0
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
@@ -388,13 +388,13 @@ elif args[:2] == ["policy", "deny"] and os.environ.get("FAIL_PROVISION"):
     assert calls[9][-3:] == ["status", "--porcelain", "--untracked-files=all"]
     assert calls[-2] == ["rm", "--force", name]
     log.write_text("")
-    result = subprocess.run([*command, repo], env={**env, "GUEST_HEAD": "wrong"}, capture_output=True)
+    result = subprocess.run([*command, repo], check=False, env={**env, "GUEST_HEAD": "wrong"}, capture_output=True)
     assert result.returncode != 0 and b"checkout does not match" in result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
 
     log.write_text("")
-    result = subprocess.run([*command, repo], env={**env, "GUEST_DIFF": "1"}, capture_output=True)
+    result = subprocess.run([*command, repo], check=False, env={**env, "GUEST_DIFF": "1"}, capture_output=True)
     assert result.returncode != 0 and b"read-only Docker Sandbox stage changed" in result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls[-2:] == [["stop", calls[2][2]], ["ls", "--json"]]
