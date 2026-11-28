@@ -8,6 +8,8 @@ import tempfile
 from threading import Thread
 from pathlib import Path
 
+from harborist.domain.run_contract import RunContract
+
 from compare import ROOT, fixture, git
 from foreground_test import FAKE_CODEX
 
@@ -15,7 +17,7 @@ from foreground_test import FAKE_CODEX
 def exercise(root: Path) -> None:
     repo, base, _ = fixture(root, ["test -f message.txt"])
     intent = root / "issue.md"
-    intent.write_text("Write the requested message.")
+    intent.write_text("Write the requested message. Dziękuję!\n")
     assets = Path("/opt/harborist/src/harborist")
     playbook = root / "playbook.md"
     skill = root / "skill.md"
@@ -52,15 +54,19 @@ def exercise(root: Path) -> None:
     saved = root / "saved"
 
     settings.write_text(text.replace("trusted-local", "{kind: docker-sandboxes}"))
-    sandbox_run = root / "sandbox-run"
+    public = root / "harborist"
+    public.symlink_to(binary)
     policy = root / "intake-policy.json"
     policy.write_text('{"rules":[{"scope":"global","decision":"deny"}]}')
     sandbox_env = sandbox_fixture(root, policy)
-    contract = json.loads(subprocess.check_output(
-        [binary, "intake", repo, base, intent, sandbox_run], env=sandbox_env,
-    ))
+    contract = json.loads(subprocess.check_output([
+        public, "intake", intent, "--repo", repo, "--ref", base,
+        "--runs-dir", root, "--json",
+    ], env=sandbox_env))
+    RunContract.model_validate(contract)
+    sandbox_run = root / contract["run_id"]
     expected = subprocess.check_output([binary, "sandbox-check"], env=sandbox_env, text=True).strip()
-    assert contract["execution"]["docker_policy"]["baseline_sha256"] == expected
+    assert contract["execution"]["sandbox_policy"]["baseline_sha256"] == expected
     command = [binary, "execute", sandbox_run]
     policy.write_text('{"rules":[{"scope":"global","decision":"allow"}]}')
     result = subprocess.run(command, env=sandbox_env, capture_output=True, text=True, check=False)
@@ -70,11 +76,16 @@ def exercise(root: Path) -> None:
     settings.write_text(text)
     contract = json.loads(subprocess.check_output([binary, "intake", repo, base, intent, saved], env=env))
     assert contract["execution"]["profile"]["model"] == "recorded-model"
+    submitted = json.loads(subprocess.check_output([
+        public, "intake", intent, "--repo", repo, "--ref", base, "--runs-dir", root, "--json",
+    ], env=env))
+    RunContract.model_validate(submitted)
+    assert submitted["intent"]["markdown"] == intent.read_text()
+    assert "source_url" not in submitted["intent"]
+    assert submitted["execution"]["agent_profile"]["model"] == "recorded-model"
     settings.unlink()
     playbook.unlink()
     skill.unlink()
-    public = root / "harborist"
-    public.symlink_to(binary)
     capture_path = root / contract["run_id"]
     saved.rename(capture_path)
     before = (capture_path / "contract.json").read_bytes()
@@ -83,7 +94,13 @@ def exercise(root: Path) -> None:
     try:
         args = [contract["run_id"], "--runs-dir", root]
         inspected = json.loads(subprocess.check_output([public, "inspect", *args], env=env))
-        assert inspected == contract
+        RunContract.model_validate(inspected)
+        assert inspected["run_id"] == contract["run_id"]
+        assert inspected["verification"]["source_sha256"] == contract["source_sha256"]
+        saved_public = json.loads(subprocess.check_output(
+            [public, "inspect", submitted["run_id"], "--runs-dir", root], env=env,
+        ))
+        assert saved_public == submitted
         methodology = json.loads(subprocess.check_output([public, "methodology", *args], env=env))
         assert methodology["playbook"]["definition"]["stages"][0]["stage"] == "intake"
         guidance = json.loads(subprocess.check_output([public, "methodology", *args, "--stage", "build"], env=env))

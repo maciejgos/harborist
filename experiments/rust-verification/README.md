@@ -379,6 +379,9 @@ Supersession stores the replacement in the original Run’s root.
 Foreground JSON includes the Run result and the report and evidence paths.
 An initial Run includes its workspace path, and a continuation includes
 its Attempt identity.
+For Runs with frozen execution settings, `intake --json` and `inspect`
+return the same public Run contract as the Python CLI. Rust captures made
+without execution settings return `null` for `execution`.
 Inspection and methodology previews also accept Python captures with
 compatible frozen execution settings.
 

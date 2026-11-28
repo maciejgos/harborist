@@ -867,7 +867,7 @@ fn inspect(command: &str, args: &[OsString]) -> Result<i32> {
         if captured.contract.run_id != id {
             return Err("saved Run does not match the requested identifier".into());
         }
-        let contract = serde_json::to_value(&captured.contract)?;
+        let contract = captured.public_contract();
         (contract, captured.contract.execution)
     };
     if command == "inspect" {
@@ -1150,7 +1150,7 @@ pub fn execute(args: &[OsString]) -> Result<i32> {
     let id = capture.contract.run_id;
     if command == "intake" {
         if options.json {
-            println!("{}", serde_json::to_string(&capture.contract)?);
+            println!("{}", capture.public_contract());
         } else {
             println!("Captured Run {id}");
         }

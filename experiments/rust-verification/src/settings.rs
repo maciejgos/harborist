@@ -389,6 +389,25 @@ fn save_settings(path: &Path, raw: &Value) -> Result<()> {
 }
 
 impl Execution {
+    pub fn public_snapshot(&self, total_seconds: u64, reserve: u64) -> serde_json::Value {
+        use serde_json::json;
+
+        let sandbox_policy = match &self.docker_policy {
+            Some(policy) => json!(policy),
+            None => json!("trusted-local"),
+        };
+        json!({
+            "playbook": self.playbook,
+            "skills": self.skills,
+            "agent_profile": self.profile,
+            "sandbox_policy": sandbox_policy,
+            "budget": {
+                "total_seconds": total_seconds,
+                "verification_reserve_seconds": reserve,
+            },
+        })
+    }
+
     pub fn load(repository: &Path, explicit: Option<&Path>) -> Result<Option<Self>> {
         let settings = repository.join("harborist.settings.yaml");
         let path = if let Some(path) = explicit {

@@ -48,6 +48,53 @@ pub struct Captured {
     pub intent: String,
 }
 
+impl Captured {
+    pub fn public_contract(&self) -> serde_json::Value {
+        use serde_json::json;
+
+        let contract = &self.contract;
+        // Derive a stable identity even for captures that predate public contract output.
+        let mut hash = Sha256::new();
+        hash.update(b"harborist:intent:");
+        hash.update(contract.run_id.as_bytes());
+        hash.update(contract.intent_sha256.as_bytes());
+        let hash = hash.finalize();
+        let mut bytes = [0; 16];
+        bytes.copy_from_slice(&hash[..16]);
+        let artifact_id = uuid::Builder::from_custom_bytes(bytes).into_uuid();
+        let mut intent = json!({
+            "source_ref": contract.source_ref.as_deref().unwrap_or("file:intent.md"),
+            "markdown": self.intent,
+            "artifact": {
+                "artifact_id": artifact_id,
+                "run_id": contract.run_id,
+                "kind": "intent",
+                "produced_by": "intake",
+                "sha256": contract.intent_sha256,
+                "size_bytes": self.intent.len(),
+                "attempt_id": null,
+            },
+        });
+        if let Some(url) = &contract.source_url {
+            intent["source_url"] = json!(url);
+        }
+        json!({
+            "run_id": contract.run_id,
+            "intent": intent,
+            "base_sha": contract.base_sha,
+            "verification": {
+                "base_sha": contract.base_sha,
+                "source_sha256": contract.source_sha256,
+                "config": self.config,
+            },
+            "execution": contract.execution.as_ref().map(|execution| execution.public_snapshot(
+                contract.total_seconds,
+                contract.verification_reserve_seconds,
+            )),
+        })
+    }
+}
+
 pub fn attempt_candidate_ref(run_id: Uuid, attempt_id: Uuid) -> String {
     format!("refs/harborist/rust-runs/{run_id}/attempts/{attempt_id}/candidate")
 }
