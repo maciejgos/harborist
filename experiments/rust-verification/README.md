@@ -422,12 +422,6 @@ checkout. Failed checks appear in the JSON with `passed: false`. Setup failures
 return a nonzero exit code. The JSON is experiment output and carries no Harborist
 Run verification or application authority.
 
-The full application still uses the Python entry points. The Rust foreground
-command uses its own arguments, stage evidence and candidate ref namespace.
-Continuing started Python Runs, updating publications originally recorded by
-Python, integration management, and Docker Sandboxes remain outside the Rust
-implementation.
-
 ## Rust workflow contracts
 
 The Rust library also implements canonical receipt routing and structured
@@ -476,3 +470,27 @@ The median speedup was **40.02×** for this fresh-process workload.
 The result includes Python imports and process startup. A persistent worker
 pays startup once, and long-running checks or model calls could dominate total
 Run time. The benchmark does not estimate end-to-end Harborist speedup.
+
+## Public CLI benchmark and image reuse
+
+The table below uses the public `harborist run --foreground --json` interface
+for both implementations, passing the same settings, Git base, intent, and
+workspace options. The verification-only workload uses the same parser and
+check runner comparison described above. Each workload had 60 measured
+trials per implementation, alternating order in one offline ARM64 Linux
+container with a two-CPU limit. The workflow fixture checked the candidate
+tree, outcome, agent invocation order, and check logs on every trial. The
+Codex fixture makes model latency independent of the timing.
+
+| Run | Workload | Python median / p95 | Rust median / p95 | Median speedup |
+| --- | --- | ---: | ---: | ---: |
+| Initial | Full foreground workflow | 602.00 / 682.25 ms | 119.22 / 139.46 ms | 5.05× |
+| Initial | Fresh-process verification | 302.82 / 306.04 ms | 9.15 / 9.56 ms | 33.10× |
+| Reused image and binary | Full foreground workflow | 609.34 / 720.39 ms | 121.11 / 142.09 ms | 5.03× |
+| Reused image and binary | Fresh-process verification | 304.60 / 313.03 ms | 9.09 / 9.59 ms | 33.52× |
+
+The initial Docker image builds took 7.44 s for Python and 45.23 s for Rust,
+including release compilation. The engine started with zero images and zero
+build cache. Build timing is separate from workflow timing. The rerun used
+a fresh container from the existing image and reused the compiled Rust
+binary, with zero image pulls or builds.
